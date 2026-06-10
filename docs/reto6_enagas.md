@@ -2,6 +2,7 @@
 
 > Análisis técnico del reto. Documento de referencia para todo el grupo.
 > Enunciado original en [`retos_alumnos.md`](retos_alumnos.md) (sección "Retos 5 y 6 — Enagás").
+> Objetivos progresivos (8 hitos MVP) de Enagás analizados en [`hitos_mvp.md`](hitos_mvp.md).
 
 ## 1. El problema
 
@@ -37,6 +38,16 @@ Para cada ruta generada se calculan estas métricas (el análogo a los "3 parám
 ### Por qué el coste es relativo (índice) y no en euros
 
 Un coste en € exigiría precios de obra, expropiaciones, técnicas de cruce, terreno, permisos… datos que no tenemos y que cambian por proyecto. Lo honesto es un **índice de coste relativo**: cada celda del terreno recibe un coste adimensional (más pendiente → más coste; suelo urbano → más coste; zona protegida → más coste o prohibición), y el coste de una ruta es la suma de las celdas que atraviesa. Sirve para **ordenar alternativas entre sí**, que es justo lo que pide el reto. Prometer € sería falsear la precisión.
+
+### La matriz de condicionantes
+
+Antes de convertir las capas en coste conviene organizarlas en una **matriz de condicionantes** que clasifica cada criterio en uno de tres tipos (terminología de Enagás, ver [`hitos_mvp.md`](hitos_mvp.md) — MVP 1):
+
+- **Técnicos** — pendiente, cruces de infraestructuras, hidrografía (lo que afecta a la constructibilidad).
+- **Ambientales** — Red Natura 2000 y otras figuras de protección.
+- **Administrativos** — usos del suelo, suelo urbano, afección por términos municipales.
+
+La matriz es el puente entre "capas GIS" y "superficie de coste": cada condicionante se traduce en un coste por celda con su peso. Como parte de MVP 1 hay también que **validar la calidad de los datos** (cobertura sobre el AOI, huecos, consistencia): un vacío silencioso de datos hace que los costes mientan igual que una mala alineación.
 
 ## 3. El reto técnico central
 
@@ -74,7 +85,7 @@ Entrada: origen (planta H₂) + destino (conexión red troncal) + AOI
 2. SUPERFICIES DE COSTE (raster multicriterio)
    · cada capa → coste por celda · PERFILES DE PRIORIDAD (vectores de pesos distintos)
    ▼
-3. MOTOR LCP (camino de mínimo coste)
+3. MOTOR LCP (camino de mínimo coste: A* / Dijkstra)
    · una ruta por perfil · DIFERENCIACIÓN (corridor masking + pesos distintos)
    ▼
 4. MÉTRICAS multicriterio por ruta
@@ -107,20 +118,44 @@ Capas públicas a catalogar (URL, fecha de descarga, CRS original, resolución) 
 
 > 📌 **Tarea de fuentes:** localizar las capas públicas, descargarlas a `proyecto/data/raw/`, registrarlas en `FUENTES.md` (con CRS y resolución originales) y reproyectarlas a **EPSG:25830** sobre una rejilla común antes de usarlas.
 
-## 6. Entregables
+## 6. Objetivos progresivos (escalera MVP)
 
-- **Prototipo funcional** que, dado origen/destino/AOI, genera 3-5 rutas diferenciadas con tabla comparativa y mapa.
-- **Catálogo de capas GIS** alineadas (CRS y rejilla comunes), trazables a su fuente.
+Enagás define el avance como una **escalera de 8 hitos MVP**, cada uno una versión más madura del producto (tabla completa y análisis en [`hitos_mvp.md`](hitos_mvp.md)):
+
+1. **Datos y condicionantes** — caso de estudio, capas alineadas, matriz de condicionantes, calidad de datos.
+2. **Trazado base automático** — ráster de coste + un trazado por A\*/Dijkstra.
+3. **Alternativas de trazado** — 3-5 rutas diferenciadas (mínima distancia, mínimo impacto, mínimos cruces, equilibrio).
+4. **Comparador multicriterio (decisión)** — caracterización + ranking + recomendación + **backtesting** con un ramal real.
+5. **Pre-ingeniería básica** — "paquete tipo EV-500" de la alternativa elegida.
+6. **Validado (backtesting extendido)** — contraste frente a trazado real y ajuste del modelo de costes.
+7. **Herramienta operativa** — prototipo usable por terceros (UI + salidas shapefile/Excel).
+8. **Piloto industrializable** — replicable, versionado de escenarios, alineación completa con EV-500.
+
+> **Alcance del verano:** el núcleo comprometido es **MVP 1-4**; el **backtesting** (MVP 4/6) se aborda si Enagás facilita un ramal real; MVP 5, 7 y 8 son ambición/continuidad.
+
+### Backtesting frente a un ramal real
+
+La validación más convincente no es interna, sino **empírica**: tomar un **ramal de H₂ ya existente** (origen y destino conocidos), ejecutar el modelo y comprobar si la ruta real **aparece entre las alternativas generadas** (o cerca de una). Las **desviaciones** se explican vía pesos y condicionantes, y se usan para **ajustar iterativamente** el modelo de costes. Es el mejor argumento de credibilidad de la demo.
+
+### El paquete tipo EV-500
+
+EV-500 es el formato de **pre-ingeniería de Enagás** para empaquetar la alternativa seleccionada: plano del trazado, **exportable GIS** (shapefile/GeoPackage), relación de **cruces especiales**, **afección por términos municipales** y narrativa justificativa. Es la frontera entre "comparador de trazados" e "ingeniería". *El alcance exacto del estándar EV-500 debe confirmarse con Enagás* antes de comprometerlo (MVP 5/8).
+
+## 7. Entregables
+
+- **Prototipo funcional** que, dado origen/destino/AOI, genera 3-5 rutas diferenciadas con tabla comparativa, ranking y mapa.
+- **Catálogo de capas GIS** alineadas (CRS y rejilla comunes) + **matriz de condicionantes**, trazables a su fuente.
 - **Documentación** de la arquitectura, las fuentes y las decisiones de pesos/perfiles.
-- **Presentación final** (17 jul) tipo mini-consultoría.
+- **Backtesting** frente a un ramal real (si disponible) que valide el modelo.
+- **Presentación final** (17 jul) tipo mini-consultoría, con MVP 5-8 como hoja de ruta de continuidad.
 
-## 7. Casos tipo que el prototipo debe resolver bien
+## 8. Casos tipo que el prototipo debe resolver bien
 
 - "Dame 3 trazados: el más corto, el de menor impacto ambiental y el de menor pendiente." → tres perfiles de prioridad, tres rutas distintas, tabla comparativa.
 - "¿Cuántos cruces de río y de carretera tiene cada alternativa?" → métricas de cruces por ruta.
 - "¿Qué ruta minimiza los km en Red Natura 2000 sin disparar la longitud?" → trade-off visible en la comparativa.
 - "Enséñame las rutas en un mapa para decidir." → mapa con las 3-5 rutas diferenciadas y su tabla.
 
-## 8. Glosario
+## 9. Glosario
 
-Términos GIS (DEM, CRS/EPSG, raster vs vector, superficie de coste, LCP, corridor masking…) en [`glosario.md`](glosario.md).
+Términos GIS (DEM, CRS/EPSG, raster vs vector, superficie de coste, LCP, corridor masking, matriz de condicionantes, backtesting, EV-500…) en [`glosario.md`](glosario.md).

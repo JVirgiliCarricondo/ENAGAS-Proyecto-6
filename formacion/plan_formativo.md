@@ -34,6 +34,7 @@ Formación intensiva común del CI2 Lab. Objetivos para este grupo:
 
 - Lectura guiada de [`../docs/reto6_enagas.md`](../docs/reto6_enagas.md) y [`../docs/glosario.md`](../docs/glosario.md).
 - Sesión de dominio: qué aporta cada capa (DEM, CLC, OSM, hidrografía IGN, Red Natura 2000, IGME) y de dónde se descarga. (Apoyarse en Enagás durante los días presenciales.)
+- Organizar los criterios en una **matriz de condicionantes** (técnicos / ambientales / administrativos) y **validar la calidad de los datos** (cobertura sobre el AOI, huecos).
 - Python geoespacial: leer rasters con `rasterio`, vectores con `geopandas`, geometrías con `shapely`, reproyectar con `pyproj`.
 - CRS, reproyección y remuestreo: llevar todas las capas a **EPSG:25830** sobre una **rejilla común**.
 - **Ejercicio:** descargar un DEM de la AOI, reproyectarlo a EPSG:25830 y derivar un raster de pendiente.
@@ -79,10 +80,11 @@ Formación intensiva común del CI2 Lab. Objetivos para este grupo:
 
 ## Bloque 6 (S6) — Evaluación
 
-- Casos tipo (ver [`../docs/reto6_enagas.md`](../docs/reto6_enagas.md) §7).
+- Casos tipo (ver [`../docs/reto6_enagas.md`](../docs/reto6_enagas.md) §8).
 - Comprobar que las rutas son realmente distintas y que las métricas son correctas (cruces, km en cada zona, pendiente).
+- **Backtesting:** comparar las alternativas con un ramal real existente (si Enagás lo facilita) y explicar las desviaciones vía pesos/condicionantes.
 - Robustez: cambiar AOI/origen/destino y ver que el pipeline aguanta.
-- **Hecho cuando:** se pasan los casos sin rutas duplicadas ni métricas erróneas, y todo coste es relativo (nunca €).
+- **Hecho cuando:** se pasan los casos sin rutas duplicadas ni métricas erróneas, todo coste es relativo (nunca €), y (si hay ramal real) el backtesting es coherente.
 
 ## Bloque 7 (S7) — Comunicación
 
