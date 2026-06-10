@@ -1,0 +1,28 @@
+# Caso de estudio — Grupo 6 (Reto 6, Enagás)
+# Define el CRS y la rejilla de trabajo, el área de interés (AOI) y el par origen→destino.
+# Los valores 0 son PLANTILLA: rellenar con el caso real (en coordenadas de crs_trabajo).
+
+crs_trabajo: "EPSG:25830"     # ETRS89 / UTM 30N (península). CRS común de todas las capas.
+resolucion_m: 30               # tamaño de celda de la rejilla común, en metros
+
+# Área de interés: bounding box en crs_trabajo (metros) o, alternativamente, ruta a un .geojson
+aoi:
+  # opción A — bounding box:
+  xmin: 0
+  ymin: 0
+  xmax: 0
+  ymax: 0
+  # opción B — polígono: descomentar y apuntar a un fichero en esta carpeta
+  # geojson: "aoi.geojson"
+
+# Origen: planta de H₂ (coordenadas en crs_trabajo)
+origen:
+  nombre: "Planta H2 (PENDIENTE)"
+  x: 0
+  y: 0
+
+# Destino: conexión a la red troncal (coordenadas en crs_trabajo)
+destino:
+  nombre: "Conexion red troncal (PENDIENTE)"
+  x: 0
+  y: 0

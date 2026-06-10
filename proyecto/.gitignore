@@ -1,0 +1,44 @@
+# Secretos
+.env
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Datos GIS: no versionar capas pesadas ni rasters generados (sí versionar FUENTES.md y data/config)
+data/raw/*
+!data/raw/FUENTES.md
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+!data/processed/README.md
+
+# Rasters / capas pesadas en cualquier ubicación
+*.tif
+*.tiff
+*.vrt
+*.img
+*.asc
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.geojson
+# excepción: ficheros de configuración del caso de estudio sí se versionan
+!data/config/**
+
+# Notebooks: checkpoints
+.ipynb_checkpoints/
+
+# Sistema
+.DS_Store
+Thumbs.db
