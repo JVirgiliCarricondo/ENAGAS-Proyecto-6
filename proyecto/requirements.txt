@@ -1,0 +1,28 @@
+# Dependencias del prototipo — Grupo 6 (Reto 6, Enagás)
+# Fijar versiones cuando el stack se estabilice. Lista inicial orientativa.
+# En Windows, instalar el bloque geoespacial con conda (canal conda-forge) suele dar menos problemas que pip.
+
+# --- Geoespacial (núcleo) ---
+rasterio
+geopandas
+shapely
+pyproj
+numpy
+
+# --- Descarga de datos ---
+osmnx          # OpenStreetMap
+requests       # servicios WCS/WFS/WMS de Copernicus, IGN, IGME
+
+# --- Camino de mínimo coste (LCP) ---
+scikit-image   # skimage.graph (MCP_Geometric / route_through_array)
+networkx       # alternativa para LCP sobre grafo
+
+# --- Visualización / UI ---
+folium
+matplotlib
+contextily
+streamlit
+
+# --- Calidad / pruebas ---
+pytest
+ruff

@@ -1,0 +1,47 @@
+# Secretos
+.env
+*.env
+!.env.example
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Herramientas locales
+.claude/
+
+# Datos GIS pesados y generados
+proyecto/data/raw/*
+!proyecto/data/raw/FUENTES.md
+!proyecto/data/raw/.gitkeep
+proyecto/data/processed/*
+!proyecto/data/processed/.gitkeep
+!proyecto/data/processed/README.md
+
+# Rasters / capas pesadas en cualquier ubicacion
+*.tif
+*.tiff
+*.vrt
+*.img
+*.asc
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.geojson
+
+# Notebooks: checkpoints
+.ipynb_checkpoints/
+
+# Sistema
+.DS_Store
+Thumbs.db
