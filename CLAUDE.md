@@ -12,7 +12,7 @@ Este workspace acompaña al **Grupo 6**, que resuelve el **Reto 6 propuesto por 
 
 > **Generación automatizada de trazados de ramales de H₂.** Dado un **punto de origen** (planta de H₂) y un **destino** (conexión a red troncal), una herramienta genera automáticamente **3-5 trazados alternativos diferenciados** sobre **GIS público** y los presenta en **comparativa multi-criterio**: longitud, coste *relativo* (índice, **no €**), nº y tipo de cruces especiales, km en zona protegida, km en zona urbana/periurbana, pendiente máxima y media. El énfasis está en el **problema de selección y comparación de trazados**, no en estimar costes absolutos.
 
-Desglose técnico detallado del reto en [`docs/reto6_enagas.md`](docs/reto6_enagas.md).
+Desglose técnico detallado del reto en [`docs/reto6_enagas.md`](docs/reto6_enagas.md). Objetivos progresivos (8 hitos MVP, de Enagás) en [`docs/hitos_mvp.md`](docs/hitos_mvp.md).
 
 ## Las tres dimensiones de trabajo
 
@@ -50,7 +50,7 @@ Detalle de hitos y sprints en [`coordinacion/plan_proyecto.md`](coordinacion/pla
 
 - [`CLAUDE.md`](CLAUDE.md) — este fichero: contexto y árbol del workspace.
 - [`estado.md`](estado.md) — resumen ejecutivo del avance.
-- [`docs/`](docs/) — contexto compartido y análisis técnico del reto.
+- [`docs/`](docs/) — contexto compartido y análisis técnico del reto. Incluye [`docs/referencias_sig/`](docs/referencias_sig/): biblioteca SIG anotada ([`biblioteca_sig.md`](docs/referencias_sig/biblioteca_sig.md)) — base de conocimiento del futuro agente geógrafo-SIG.
 - [`formacion/`](formacion/) — dimensión 1: plan y materiales de formación.
 - [`coordinacion/`](coordinacion/) — dimensión 2: gestión del proyecto y seguimiento.
 - [`proyecto/`](proyecto/) — dimensión 3: el prototipo (código, datos, pruebas).

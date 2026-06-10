@@ -12,7 +12,9 @@
 
 ## Hito actual
 
-**Sprint 1 (1–5 jun): Setup + catálogo de capas + AOI.** Dejar el entorno geoespacial funcionando, catalogar las capas GIS públicas y definir el área de interés (AOI), el origen (planta H₂) y el destino (conexión a red troncal).
+**Sprint 1 (1–5 jun): Setup + catálogo de capas + AOI → MVP 1.** Dejar el entorno geoespacial funcionando, catalogar las capas GIS públicas, definir AOI/origen/destino, montar la primera **matriz de condicionantes** (técnicos/ambientales/administrativos) y validar la calidad de los datos.
+
+> El avance se sigue por dos ejes: los **sprints semanales** ([`coordinacion/plan_proyecto.md`](coordinacion/plan_proyecto.md)) y la **escalera de 8 hitos MVP** de Enagás ([`docs/hitos_mvp.md`](docs/hitos_mvp.md)). Núcleo comprometido del verano: **MVP 1-4**.
 
 ## Riesgos abiertos
 
@@ -20,6 +22,8 @@
 - **Diferenciación real de rutas:** que las 3-5 rutas no acaben siendo el mismo corredor con ruido. Validar diferenciación (corridor masking + perfiles de prioridad distintos) desde que el motor LCP produzca la primera ruta.
 - **Coste relativo, nunca €:** mantener la disciplina de índice normalizado; no prometer estimación económica.
 - **Descarga de capas públicas:** confirmar acceso y licencias de DEM Copernicus, CLC, OSM, hidrografía IGN, Red Natura 2000 e IGME.
+- **Ramal real para backtesting:** pedir a Enagás un ramal de H₂ existente (origen/destino) para validar el modelo (MVP 4/6). Sin él, la validación se queda en interna.
+- **Alcance de EV-500:** confirmar con Enagás el contenido exacto del "paquete tipo EV-500" antes de comprometer MVP 5/8.
 - **Equipo nominal:** pendiente registrar los 3-4 alumnos asignados en [`coordinacion/equipo.md`](coordinacion/equipo.md).
 
 ## Próximos pasos
@@ -30,13 +34,13 @@
 
 ## Bitácora de sprints
 
-| Sprint | Fechas | Objetivo | Estado |
-|--------|--------|----------|--------|
-| S0 | 25-29 may | Formación intensiva | ✅ |
-| S1 | 1-5 jun | Setup + catálogo de capas GIS + AOI/origen/destino | 🟡 En curso |
-| S2 | 8-12 jun | Ingesta: descarga, reproyección y alineación a rejilla común | ⬜ |
-| S3 | 15-19 jun | Superficies de coste multicriterio + perfiles de prioridad | ⬜ |
-| S4 | 22-26 jun | Motor LCP (una ruta por perfil) | ⬜ |
-| S5 | 29 jun-3 jul | Diferenciación + métricas + comparativa + mapa | ⬜ |
-| S6 | 6-10 jul | Evaluación (rutas distintas, métricas correctas) + robustez | ⬜ |
-| S7 | 13-17 jul | Pulido + presentación final | ⬜ |
+| Sprint | Fechas | Objetivo | MVP | Estado |
+|--------|--------|----------|-----|--------|
+| S0 | 25-29 may | Formación intensiva | — | ✅ |
+| S1 | 1-5 jun | Setup + catálogo de capas + AOI + matriz de condicionantes | MVP 1 | 🟡 En curso |
+| S2 | 8-12 jun | Ingesta: descarga, reproyección y alineación a rejilla común | MVP 1 | ⬜ |
+| S3 | 15-19 jun | Superficies de coste + perfiles + trazado base (A\*/Dijkstra) | MVP 2 | ⬜ |
+| S4 | 22-26 jun | Motor LCP (una ruta por perfil) | MVP 2-3 | ⬜ |
+| S5 | 29 jun-3 jul | Alternativas diferenciadas + métricas + comparador + ranking | MVP 3-4 | ⬜ |
+| S6 | 6-10 jul | Evaluación + backtesting con ramal real + robustez | MVP 4, 6 | ⬜ |
+| S7 | 13-17 jul | Pulido + presentación (+ EV-500/herramienta si da tiempo) | MVP 5/7 | ⬜ |

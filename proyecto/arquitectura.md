@@ -146,6 +146,14 @@ destino:                            # conexión a red troncal
 
 Registrar cualquier cambio de stack en [`../coordinacion/seguimiento.md`](../coordinacion/seguimiento.md).
 
+## Encaje con la escalera MVP
+
+Los componentes de arriba cubren el **núcleo comprometido (MVP 1-4)** de la escalera de objetivos de Enagás ([`../docs/hitos_mvp.md`](../docs/hitos_mvp.md)): ingesta+alineación (MVP 1), superficies de coste + trazado base por **A\*/Dijkstra** (MVP 2), diferenciación (MVP 3) y métricas+comparativa+ranking (MVP 4). Sobre esa base se apoyan, como **reach/continuidad**:
+
+- **MVP 4/6 — backtesting:** un módulo de validación que compara las rutas generadas con un ramal real y explica desviaciones (puede vivir en `src/comparacion/` o en `tests/`).
+- **MVP 5/7 — salidas EV-500 / herramienta operativa:** exportación de la alternativa elegida a **GIS (shapefile/GeoPackage)** y **Excel comparativo**, relación de cruces y afección municipal. Encaja como nuevos formatos de salida de `src/comparacion/` y `src/app/`.
+- **MVP 8 — industrialización:** versionado de escenarios (`data/config/`) y trazabilidad de decisiones; no requiere rediseño, sí disciplina.
+
 ## Lo que este sistema NO hace
 
 - No estima costes absolutos en € (solo índice de coste relativo).
