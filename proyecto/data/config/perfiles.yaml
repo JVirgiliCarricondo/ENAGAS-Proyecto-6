@@ -1,0 +1,45 @@
+# Perfiles de prioridad — Grupo 6 (Reto 6, Enagás)
+# Cada perfil es un vector de PESOS (adimensionales) sobre las capas de coste.
+# Pesos distintos -> superficies de coste distintas -> rutas DIFERENCIADAS.
+# Estos valores son orientativos: calibrarlos con el caso real (ver seguimiento.md).
+#
+# Capas de coste esperadas (ver src/superficie/):
+#   pendiente  -> coste por inclinación (del DEM)
+#   uso_suelo  -> coste por tipo de suelo (CLC/OSM; urbano caro)
+#   protegida  -> coste por estar en Red Natura 2000 (muy alto o prohibido)
+#   longitud   -> coste base por distancia recorrida
+
+perfiles:
+  - id: corto
+    nombre: "Más corto"
+    descripcion: "Minimiza la longitud; tolera más pendiente e impacto."
+    pesos:
+      pendiente: 0.2
+      uso_suelo: 0.2
+      protegida: 0.3
+      longitud: 1.0
+
+  - id: ambiental
+    nombre: "Menor impacto ambiental"
+    descripcion: "Evita zonas protegidas y suelo urbano aunque alargue el trazado."
+    pesos:
+      pendiente: 0.2
+      uso_suelo: 0.5
+      protegida: 1.0
+      longitud: 0.3
+
+  - id: pendiente
+    nombre: "Menor pendiente"
+    descripcion: "Busca terreno llano (constructivamente más sencillo)."
+    pesos:
+      pendiente: 1.0
+      uso_suelo: 0.3
+      protegida: 0.4
+      longitud: 0.3
+
+# Parámetros de diferenciación de rutas (corridor masking)
+diferenciacion:
+  penalizacion_proximidad: 5.0   # factor de coste extra cerca de rutas ya generadas
+  radio_corredor_m: 500          # ancho del corredor penalizado a cada lado, en metros
+  max_solapamiento: 0.3          # solapamiento máximo admitido entre dos rutas (0-1)
+  n_rutas: 3                     # nº de alternativas a generar (3-5)
