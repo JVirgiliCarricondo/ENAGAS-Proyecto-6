@@ -21,7 +21,9 @@ proyecto/
 ├── .env.example          # variables de entorno (claves de descarga si aplica) — copiar a .env
 ├── data/
 │   ├── raw/              # capas GIS originales (NO se versionan) + FUENTES.md
-│   ├── processed/        # rasters alineados / superficies de coste (NO se versionan)
+│   ├── processed/        # salidas del pipeline (NO se versionan)
+│   │   ├── Recorte_AOI/  #   vectores recortados al AOI (.gpkg); vacíos si sin datos
+│   │   └── Rasters_AOI/  #   rasters alineados (.tif): DEM de ingesta + rasters de superficie/
 │   └── config/           # AOI, origen/destino y perfiles de prioridad (sí se versionan)
 ├── src/
 │   ├── ingesta/         # descarga, recorte, reproyección, remuestreo, rasterización
