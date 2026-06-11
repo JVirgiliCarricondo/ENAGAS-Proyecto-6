@@ -17,6 +17,9 @@ __pycache__/
 data/raw/*
 !data/raw/FUENTES.md
 !data/raw/.gitkeep
+!data/raw/openTopography/
+!data/raw/openTopography/**/
+!data/raw/openTopography/**/*.gitkeep
 data/processed/*
 !data/processed/.gitkeep
 !data/processed/README.md
