@@ -53,7 +53,10 @@ Todo el cálculo es reproducible y auditable: las capas se alinean a un CRS y re
 ## Componentes
 
 ### 1. Ingesta (`src/ingesta/`)
-Descarga/lee las capas de `data/raw/` (DEM, CLC, OSM, hidrografía IGN, Red Natura 2000, IGME), las **recorta al AOI**, las **reproyecta a EPSG:25830** y las **remuestrea a una rejilla común** (misma resolución y origen de celda). Rasteriza las capas vectoriales a esa rejilla. Salida: un conjunto de rasters **alineados** en `data/processed/`.
+Descarga/lee las capas de `data/raw/` (DEM, CLC, OSM, hidrografía IGN, Red Natura 2000, IGME), las **recorta al AOI**, las **reproyecta a EPSG:25830** y las **remuestrea a una rejilla común** (misma resolución y origen de celda). Salida en dos subcarpetas de `data/processed/`:
+
+- **`Recorte_AOI/`** — capas vectoriales recortadas y reproyectadas (`.gpkg`). Si una capa no tiene geometrías en el AOI se guarda igualmente un `.gpkg` vacío.
+- **`Rasters_AOI/`** — rasters alineados a la rejilla común (`.tif`). El DEM sale aquí directamente; las capas vectoriales las rasteriza `src/superficie/` y también las deposita aquí.
 
 Librerías: `rasterio` (raster, reproyección, remuestreo), `geopandas`/`shapely` (vectores), `pyproj` (CRS), `osmnx` (OSM).
 
