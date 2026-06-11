@@ -24,7 +24,9 @@ data/processed/*
 !data/processed/.gitkeep
 !data/processed/README.md
 !data/processed/Recorte_AOI/
+!data/processed/Recorte_AOI/*.gpkg
 !data/processed/Rasters_AOI/
+!data/processed/Rasters_AOI/*.tif
 
 # Rasters / capas pesadas en cualquier ubicación
 *.tif
