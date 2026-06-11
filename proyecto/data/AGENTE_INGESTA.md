@@ -71,15 +71,33 @@ conservar antes de guardar.
 
 ## Salidas en `data/processed/`
 
+Las capas se guardan en dos subcarpetas según su tipo de salida:
+
+### `data/processed/Recorte_AOI/` — capas vectoriales recortadas
+
 | Archivo | Contenido |
 |---------|-----------|
-| `dem_aoi.tif` | DEM recortado, reproyectado y alineado |
 | `clc_aoi.gpkg` | Corine Land Cover recortado y reproyectado |
 | `natura2000_aoi.gpkg` | Red Natura 2000 recortada y reproyectada |
 | `osm_aoi.gpkg` | Datos OSM recortados y reproyectados |
 | `hidrografia_aoi.gpkg` | Hidrografía IGN recortada |
 | `igme_aoi.gpkg` | Mapa geológico recortado |
-| `log_alineacion.txt` | Log completo del proceso |
+
+> Si una capa vectorial no tiene geometrías dentro del AOI, se guarda igualmente un `.gpkg` vacío para registrar que la capa fue procesada.
+
+### `data/processed/Rasters_AOI/` — rasters alineados
+
+| Archivo | Contenido |
+|---------|-----------|
+| `dem_aoi.tif` | DEM recortado, reproyectado y alineado a la rejilla común |
+
+> Aquí irán también los rasters derivados que genere `src/superficie/` (pendiente, coste por celda, superficie combinada).
+
+### Raíz de `data/processed/`
+
+| Archivo | Contenido |
+|---------|-----------|
+| `log_alineacion.txt` | Log completo del proceso de ingesta |
 
 ---
 
