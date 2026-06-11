@@ -49,6 +49,8 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # proyecto/
 DATA_RAW = PROJECT_ROOT / "data" / "raw"
 DATA_PROCESSED = PROJECT_ROOT / "data" / "processed"
+DATA_RECORTE = DATA_PROCESSED / "Recorte_AOI"   # vectores recortados al AOI (.gpkg)
+DATA_RASTERS = DATA_PROCESSED / "Rasters_AOI"   # rasters alineados (.tif)
 CONFIG_ESCENARIO = PROJECT_ROOT / "data" / "config" / "escenario.yaml"
 LOG_PATH = DATA_PROCESSED / "log_alineacion.txt"
 
@@ -74,6 +76,7 @@ LAYERS: list[LayerSpec] = [
             "DEM.tif", "DEM.tiff",
             "**/DEM.tif", "**/DEM.tiff",
             "**/*COP30*.tif", "**/*cop30*.tif",
+            "**/rasters_COP30/*.tif",           # output_hh.tif bajo ModeloDigitalElevacion/
             "**/dem*.tif", "**/elevation*.tif",
         ],
         output_name="dem_aoi.tif",
@@ -96,6 +99,8 @@ LAYERS: list[LayerSpec] = [
         glob_patterns=[
             "RN2000.gpkg", "RN2000.shp", "RN2000.geojson",
             "**/RN2000*.gpkg", "**/RN2000*.geojson",
+            "**/n2000_spatial_es_pibal*.geojson",  # Península+Baleares (prioridad)
+            "**/n2000*.geojson",
             "**/*natura2000*.gpkg", "**/*natura*.gpkg",
         ],
         output_name="natura2000_aoi.gpkg",
@@ -107,6 +112,7 @@ LAYERS: list[LayerSpec] = [
         glob_patterns=[
             "OSM.gpkg", "OSM.shp", "OSM.geojson",
             "**/OSM.gpkg", "**/osm*.gpkg",
+            "**/gis_osm_roads_free_1.shp",      # capa de carreteras Geofabrik
         ],
         output_name="osm_aoi.gpkg",
     ),
@@ -117,6 +123,10 @@ LAYERS: list[LayerSpec] = [
         glob_patterns=[
             "HID-IGN.gpkg", "HID-IGN.shp", "HIDROGRAFIA.gpkg",
             "**/HID*.gpkg", "**/hidrografia*.gpkg", "**/Hidrografia*.gpkg",
+            "**/hi_redtramo_l_ES040.shp",       # red fluvial Guadiana (Puertollano en ES040)
+            "**/hi_redtramo_l_ES050.shp",       # red fluvial Guadalquivir
+            "**/hi_redtramo_l_*.shp",            # red fluvial genérica
+            "**/IGR_HI*.gpkg",
         ],
         output_name="hidrografia_aoi.gpkg",
     ),
@@ -127,6 +137,7 @@ LAYERS: list[LayerSpec] = [
         glob_patterns=[
             "GEO-IGME.gpkg", "GEO-IGME.shp", "IGME.gpkg",
             "**/IGME*.gpkg", "**/igme*.gpkg", "**/GEO*.gpkg",
+            "**/geopb*.shp",                    # geopb_1000.shp bajo geologico_1000_shapes/
         ],
         output_name="igme_aoi.gpkg",
     ),
@@ -167,6 +178,13 @@ _DOWNLOAD_HINTS: dict[str, str] = {
 # --------------------------------------------------------------------------- #
 def _setup_logging() -> logging.Logger:
     DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
+    DATA_RECORTE.mkdir(parents=True, exist_ok=True)
+    DATA_RASTERS.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except AttributeError:
+            pass
     log = logging.getLogger("ingesta")
     log.setLevel(logging.DEBUG)
     fmt = logging.Formatter(
@@ -257,7 +275,7 @@ def process_raster(
     log: logging.Logger,
 ) -> Path | None:
     """Reproyecta y remuestrea un raster a la rejilla común. Devuelve la ruta de salida."""
-    out_path = DATA_PROCESSED / spec.output_name
+    out_path = DATA_RASTERS / spec.output_name
     resampling = Resampling.nearest if spec.categorical else Resampling.bilinear
 
     try:
@@ -312,7 +330,7 @@ def process_vector(
     log: logging.Logger,
 ) -> tuple[Path | None, "gpd.GeoDataFrame | None"]:
     """Reproyecta y recorta una capa vectorial al AOI. Devuelve (ruta_salida, gdf)."""
-    out_path = DATA_PROCESSED / spec.output_name
+    out_path = DATA_RECORTE / spec.output_name
 
     try:
         gdf = gpd.read_file(src_path)
@@ -331,7 +349,14 @@ def process_vector(
 
         if gdf_clipped.empty:
             log.warning(f"  Ninguna geometría de {src_path.name} cae dentro del AOI.")
-            return None, None
+            try:
+                gdf_clipped.to_file(out_path, driver="GPKG")
+                log.info(
+                    f"  Guardado (sin datos en AOI): {out_path.relative_to(PROJECT_ROOT)}"
+                )
+            except Exception as exc_empty:
+                log.warning(f"  No se pudo guardar el archivo vacío: {exc_empty}")
+            return out_path, None
 
         gdf_clipped.to_file(out_path, driver="GPKG")
         log.info(
@@ -458,10 +483,14 @@ def main() -> None:
 
     # ── Comprobar sobreescritura ─────────────────────────────────────────  #
     DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
-    existing = [
-        f for f in DATA_PROCESSED.iterdir()
-        if f.name not in (".gitkeep", "log_alineacion.txt")
-    ]
+    DATA_RECORTE.mkdir(parents=True, exist_ok=True)
+    DATA_RASTERS.mkdir(parents=True, exist_ok=True)
+    existing = []
+    for subdir in (DATA_RECORTE, DATA_RASTERS):
+        existing.extend([
+            f for f in subdir.iterdir()
+            if f.name != ".gitkeep" and f.suffix not in (".md", ".txt")
+        ])
     if existing:
         print(
             f"\n{len(existing)} archivo(s) ya existen en "
