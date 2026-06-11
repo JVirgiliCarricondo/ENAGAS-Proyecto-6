@@ -19,7 +19,7 @@ __pycache__/
 .claude/
 
 # Datos GIS pesados y generados
-proyecto/data/raw/*
+proyecto/data/raw/*`n!proyecto/data/raw/Hidrografía IGN`n!proyecto/data/raw/OSM
 !proyecto/data/raw/FUENTES.md
 !proyecto/data/raw/.gitkeep
 proyecto/data/processed/*
