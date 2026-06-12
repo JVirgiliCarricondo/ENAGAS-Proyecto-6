@@ -141,6 +141,18 @@ LAYERS: list[LayerSpec] = [
         ],
         output_name="igme_aoi.gpkg",
     ),
+    LayerSpec(
+        label="Catastro - Usos del Suelo Urbanística",
+        layer_type="vector",
+        categorical=True,
+        glob_patterns=[
+            "Catastro.gpkg", "Catastro.shp",
+            "**/PARCELA.shp",                   # Parcelas del Catastro Inmobiliario
+            "**/Catastro/*.shp", "**/Catastro/**/*.shp",
+            "**/*PARCELA*.shp",
+        ],
+        output_name="catastro_aoi.gpkg",
+    ),
 ]
 
 # Instrucciones de descarga por capa (para el mensaje de capas faltantes)
@@ -169,6 +181,11 @@ _DOWNLOAD_HINTS: dict[str, str] = {
     "IGME geológico": (
         "  → https://www.igme.es/\n"
         "    Guárdalo como: data/raw/GEO-IGME.gpkg"
+    ),
+    "Catastro - Usos del Suelo Urbanística": (
+        "  → Catastro Inmobiliario: https://www.catastro.minhap.gob.es/\n"
+        "    Descarga por municipio y descomprime los ZIP.\n"
+        "    Los archivos PARCELA.shp se procesan automáticamente desde data/raw/Catastro/"
     ),
 }
 
@@ -346,6 +363,11 @@ def process_vector(
 
         aoi_gdf = gpd.GeoDataFrame({"geometry": [aoi_box]}, crs=target_crs)
         gdf_clipped = gpd.clip(gdf, aoi_gdf)
+
+        # Descarta cualquier geometría vacía o no intersectante después del corte.
+        if not gdf_clipped.empty:
+            gdf_clipped = gdf_clipped[gdf_clipped.geometry.notnull()]
+            gdf_clipped = gdf_clipped[gdf_clipped.geometry.intersects(aoi_box)]
 
         if gdf_clipped.empty:
             log.warning(f"  Ninguna geometría de {src_path.name} cae dentro del AOI.")
