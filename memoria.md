@@ -6,26 +6,20 @@ Este documento recoge la trazabilidad de las tareas realizadas en el proyecto, l
 
 Mantener un historial sencillo y accesible de qué se ha hecho, cuándo y por qué, para facilitar la coordinación del equipo y la revisión posterior.
 
-## Estructura sugerida
-
-- Fecha
-- Autor / participante
-- Tarea realizada
-- Archivos modificados o añadidos
-- Resultado / estado
-- Observaciones
-
 ## Registro de actividades
 
 ### Semana 1
-- Buscar fuentes: redirigirse al archivo "nuestras fuentes.md" (/raw)
-- Reunión con los contactos de Enagás
+- Lectura del enunciado del reto y conceptos clave (GIS, LCP, coste multicriterio)
+- Formación en QGIS
 
 ### Semana 2 
-- Hito 1:
--   Punto de origen: Planta de hidrógeno de Tordesillas (38.68151749377432, -4.049492223656498)
--   Punto final: Calatrava (38.80681007796324, -4.028723916034112)
--   Reproyectar los diferentes mapas (de momento falta el rural): redirigirse a /processed
--   Creación del archivo `memoria.md` en la raíz del workspace para documentar la trazabilidad del trabajo.Propósito: disponer de un punto centralizado para anotar avances y decisiones.
+- Reunión con los contactos de Enagás
+- **Hito 1 completado:**
+    -   Origen: planta de hidrógeno de Puertollano (38.68151749377432, -4.049492223656498)
+    -   Punto final: norte de Puertollano (38.80681007796324, -4.028723916034112)
+    -   Fuentes catalogadas: ver `data/raw/FUENTES.md`
+    -   Capas reproyectadas a EPSG:25830 (de momento falta el rural) → ver `data/processed/` 
+    -   Distinguir entre ficheros tipo .gpkg () y tipo .tif () y fuardárlos respectivamente en 'data/processed/Recorte_AOI' y 'data/processed/Rasters_AOI'
+- Creación de `memoria.md` para la trazabilidad del trabajo.
 
 
