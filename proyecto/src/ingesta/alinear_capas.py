@@ -11,9 +11,12 @@ Ejecutar desde la raíz del proyecto (proyecto/):
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import math
+import re
 import sys
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -55,6 +58,7 @@ CONFIG_ESCENARIO = PROJECT_ROOT / "data" / "config" / "escenario.yaml"
 LOG_PATH = DATA_PROCESSED / "log_alineacion.txt"
 
 DUPLICATE_THRESHOLD = 0.70  # fracción de solapamiento para avisar de duplicados
+CATASTRO_MUNICIPALITY_RE = re.compile(r"^\d+[ur]A \d+ .+", re.IGNORECASE)
 
 # --------------------------------------------------------------------------- #
 # Registro de capas esperadas                                                  #
@@ -65,6 +69,7 @@ class LayerSpec(NamedTuple):
     categorical: bool          # True → nearest; False → bilinear
     glob_patterns: list[str]   # buscados recursivamente bajo DATA_RAW
     output_name: str           # nombre de salida en data/processed/
+    multi_source: bool = False  # True → fusionar varias fuentes (p. ej. Catastro)
 
 
 LAYERS: list[LayerSpec] = [
@@ -152,6 +157,7 @@ LAYERS: list[LayerSpec] = [
             "**/*PARCELA*.shp",
         ],
         output_name="catastro_aoi.gpkg",
+        multi_source=True,
     ),
 ]
 
@@ -253,30 +259,184 @@ def _common_transform(xmin: float, ymin: float, xmax: float, ymax: float,
 
 def _discover_layer(spec: LayerSpec, log: logging.Logger) -> Path | None:
     """Busca el primer archivo que coincida con alguno de los patrones de la capa."""
+    sources = _discover_layer_sources(spec, log)
+    return sources[0] if sources else None
+
+
+def _discover_layer_sources(spec: LayerSpec, log: logging.Logger) -> list[Path]:
+    """Devuelve una o varias fuentes para la capa."""
+    if spec.multi_source and spec.label.startswith("Catastro"):
+        return _discover_catastro_sources(log)
+
     for pattern in spec.glob_patterns:
         hits = sorted(DATA_RAW.glob(pattern))
-        # Excluir archivos comprimidos; se manejan por separado
         hits = [h for h in hits if h.suffix not in (".gz", ".zip", ".tar")]
         if hits:
             log.debug(f"  [{spec.label}] → {hits[0].relative_to(PROJECT_ROOT)}")
-            return hits[0]
-    return None
+            return [hits[0]]
+    return []
+
+
+def _catastro_municipality_name(shp: Path, catastro_dir: Path) -> str:
+    """Identifica la carpeta de municipio aunque esté anidada bajo un ZIP provincial."""
+    for parent in shp.parents:
+        if parent == catastro_dir:
+            break
+        if CATASTRO_MUNICIPALITY_RE.match(parent.name):
+            return parent.name
+    return shp.relative_to(catastro_dir).parts[0]
+
+
+def _is_catastro_layer_zip(archive: Path) -> bool:
+    """ZIP de capa municipal del Catastro (p. ej. *_PARCELA.ZIP)."""
+    tokens = (
+        "_PARCELA", "_CONSTRU", "_SUBPARCE", "_ALTIPUN", "_CARVIA", "_EJES",
+        "_ELEMLIN", "_ELEMPUN", "_ELEMTEX", "_HOJAS", "_LIMITES", "_MAPA",
+        "_MASA", "_RUCULTIVO", "_RUSUBPARCE",
+    )
+    stem = archive.stem.upper()
+    return any(token in stem for token in tokens)
+
+
+def _zip_extracted(archive: Path, target_dir: Path) -> bool:
+    """True si el ZIP ya parece extraído en target_dir."""
+    if not target_dir.exists():
+        return False
+    data_files = [
+        p for p in target_dir.rglob("*")
+        if p.is_file() and p.suffix.lower() not in {".zip", ".gz", ".tar"}
+    ]
+    return bool(data_files)
+
+
+def _safe_extract_zip(archive: Path, target_dir: Path, log: logging.Logger) -> tuple[int, int]:
+    """Extrae un ZIP miembro a miembro; devuelve (ok, errores)."""
+    ok = errors = 0
+    target_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as zf:
+        for member in zf.infolist():
+            try:
+                zf.extract(member, target_dir)
+                ok += 1
+            except (zipfile.BadZipFile, OSError, ValueError) as exc:
+                errors += 1
+                if errors <= 3:
+                    log.warning(
+                        f"    No se pudo extraer {member.filename} "
+                        f"de {archive.name}: {exc}"
+                    )
+    if errors > 3:
+        log.warning(f"    … y {errors - 3} entradas más con error en {archive.name}")
+    return ok, errors
+
+
+def _has_extracted_municipalities(catastro_dir: Path) -> bool:
+    return any(
+        CATASTRO_MUNICIPALITY_RE.match(path.name)
+        and any(path.rglob("PARCELA.shp"))
+        for path in catastro_dir.iterdir()
+        if path.is_dir()
+    )
+
+
+def _extract_catastro_archives(log: logging.Logger) -> int:
+    """Descomprime recursivamente los ZIP bajo data/raw/Catastro/."""
+    catastro_dir = DATA_RAW / "Catastro"
+    if not catastro_dir.exists():
+        return 0
+
+    municipalities_ready = _has_extracted_municipalities(catastro_dir)
+    extracted = 0
+    for _ in range(100):
+        archives = sorted({
+            p for p in catastro_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() == ".zip"
+        })
+        archives = [a for a in archives if "recovered" not in a.name.lower()]
+
+        pending: list[tuple[Path, Path]] = []
+        for archive in archives:
+            if _is_catastro_layer_zip(archive):
+                target_dir = archive.parent / archive.stem
+            elif archive.parent == catastro_dir:
+                if municipalities_ready:
+                    continue
+                target_dir = catastro_dir / archive.stem
+            else:
+                target_dir = archive.parent / archive.stem
+
+            if _zip_extracted(archive, target_dir):
+                continue
+            pending.append((archive, target_dir))
+
+        if not pending:
+            break
+
+        for archive, target_dir in pending:
+            log.info(
+                f"  Extrayendo {archive.relative_to(PROJECT_ROOT)} "
+                f"→ {target_dir.relative_to(PROJECT_ROOT)}/"
+            )
+            ok, errors = _safe_extract_zip(archive, target_dir, log)
+            if ok:
+                extracted += 1
+            elif errors:
+                log.warning(
+                    f"  ZIP omitido o incompleto: {archive.name} "
+                    f"({errors} entradas con error)"
+                )
+
+    if extracted:
+        log.info(f"  ZIPs extraídos en Catastro: {extracted}")
+    return extracted
+
+
+def _discover_catastro_sources(log: logging.Logger) -> list[Path]:
+    """Un PARCELA.shp por municipio bajo data/raw/Catastro/ (exportación fechada si existe)."""
+    catastro_dir = DATA_RAW / "Catastro"
+    if not catastro_dir.exists():
+        return []
+
+    _extract_catastro_archives(log)
+
+    by_municipality: dict[str, list[Path]] = {}
+    for shp in sorted(catastro_dir.rglob("PARCELA.shp")):
+        municipality = _catastro_municipality_name(shp, catastro_dir)
+        by_municipality.setdefault(municipality, []).append(shp)
+
+    selected: list[Path] = []
+    for municipality, paths in sorted(by_municipality.items()):
+        dated_exports = [p for p in paths if p.parent.name.endswith("_PARCELA")]
+        chosen = dated_exports[0] if dated_exports else paths[0]
+        selected.append(chosen)
+        log.debug(
+            f"  [Catastro] {municipality} → {chosen.relative_to(PROJECT_ROOT)}"
+        )
+    return selected
 
 
 def _warn_archives(log: logging.Logger) -> list[Path]:
     """Detecta archivos comprimidos en data/raw/ e imprime instrucciones."""
+    catastro_dir = DATA_RAW / "Catastro"
+    if catastro_dir.exists():
+        _extract_catastro_archives(log)
+
     archives = (
         list(DATA_RAW.rglob("*.tar.gz"))
         + list(DATA_RAW.rglob("*.tar.bz2"))
         + list(DATA_RAW.rglob("*.zip"))
     )
-    for arch in archives:
+    remaining = [
+        arch for arch in archives
+        if catastro_dir not in arch.parents and arch.parent != catastro_dir
+    ]
+    for arch in remaining:
         log.warning(
             f"Archivo comprimido detectado: {arch.relative_to(PROJECT_ROOT)}\n"
             f"  → Extrae su contenido en {arch.parent.relative_to(PROJECT_ROOT)}/ "
             f"y vuelve a ejecutar el script."
         )
-    return archives
+    return remaining
 
 
 # --------------------------------------------------------------------------- #
@@ -340,7 +500,7 @@ def process_raster(
 
 
 def process_vector(
-    src_path: Path,
+    src_paths: Path | list[Path],
     spec: LayerSpec,
     target_crs: str,
     aoi_box,
@@ -348,15 +508,49 @@ def process_vector(
 ) -> tuple[Path | None, "gpd.GeoDataFrame | None"]:
     """Reproyecta y recorta una capa vectorial al AOI. Devuelve (ruta_salida, gdf)."""
     out_path = DATA_RECORTE / spec.output_name
+    paths = [src_paths] if isinstance(src_paths, Path) else list(src_paths)
 
     try:
-        gdf = gpd.read_file(src_path)
+        frames: list["gpd.GeoDataFrame"] = []
+        read_kwargs: dict = {}
+        if spec.multi_source and len(paths) > 1:
+            read_kwargs["bbox"] = aoi_box.bounds
+
+        for src_path in paths:
+            part = gpd.read_file(src_path, **read_kwargs)
+            if part.empty:
+                log.debug(
+                    f"  Sin datos en AOI: {src_path.relative_to(PROJECT_ROOT)}"
+                )
+                continue
+            log.info(
+                f"  Fuente       : {src_path.relative_to(PROJECT_ROOT)} "
+                f"({len(part)} filas en ventana AOI)"
+            )
+            frames.append(part)
+
+        if not frames:
+            log.warning(f"  Ninguna geometría de {spec.label} cae dentro del AOI.")
+            try:
+                gpd.GeoDataFrame(geometry=[], crs=target_crs).to_file(out_path, driver="GPKG")
+                log.info(
+                    f"  Guardado (sin datos en AOI): {out_path.relative_to(PROJECT_ROOT)}"
+                )
+            except Exception as exc_empty:
+                log.warning(f"  No se pudo guardar el archivo vacío: {exc_empty}")
+            return out_path, None
+
+        gdf = (
+            frames[0]
+            if len(frames) == 1
+            else gpd.GeoDataFrame(gpd.pd.concat(frames, ignore_index=True), crs=frames[0].crs)
+        )
         orig_crs = str(gdf.crs) if gdf.crs else "desconocido"
         log.info(f"  CRS original : {orig_crs}")
         log.info(f"  Filas        : {len(gdf)}")
 
         if gdf.crs is None:
-            log.warning(f"  CRS no definido en {src_path.name}; se asume EPSG:4326")
+            log.warning(f"  CRS no definido en {paths[0].name}; se asume EPSG:4326")
             gdf = gdf.set_crs(epsg=4326)
 
         gdf = gdf.to_crs(target_crs)
@@ -370,7 +564,8 @@ def process_vector(
             gdf_clipped = gdf_clipped[gdf_clipped.geometry.intersects(aoi_box)]
 
         if gdf_clipped.empty:
-            log.warning(f"  Ninguna geometría de {src_path.name} cae dentro del AOI.")
+            src_label = paths[0].name if len(paths) == 1 else f"{len(paths)} fuentes"
+            log.warning(f"  Ninguna geometría de {src_label} cae dentro del AOI.")
             try:
                 gdf_clipped.to_file(out_path, driver="GPKG")
                 log.info(
@@ -388,7 +583,8 @@ def process_vector(
         return out_path, gdf_clipped
 
     except Exception as exc:
-        log.error(f"  ✗ error procesando {src_path.name}: {exc}")
+        src_label = paths[0].name if len(paths) == 1 else spec.label
+        log.error(f"  ✗ error procesando {src_label}: {exc}")
         return None, None
 
 
@@ -453,7 +649,24 @@ def detect_duplicates(
 # --------------------------------------------------------------------------- #
 # Punto de entrada                                                              #
 # --------------------------------------------------------------------------- #
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Ingesta y alineación de capas GIS al AOI.")
+    parser.add_argument(
+        "--only",
+        metavar="CAPA",
+        help="Procesar solo la capa indicada (nombre exacto del registro LAYERS).",
+    )
+    parser.add_argument(
+        "-y", "--yes",
+        action="store_true",
+        help="Sobrescribir salidas existentes sin preguntar.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = _parse_args()
+
     if _MISSING:
         print(
             "ERROR: Faltan dependencias Python:\n"
@@ -513,7 +726,23 @@ def main() -> None:
             f for f in subdir.iterdir()
             if f.name != ".gitkeep" and f.suffix not in (".md", ".txt")
         ])
-    if existing:
+    layers_to_run = LAYERS
+    if args.only:
+        layers_to_run = [s for s in LAYERS if s.label == args.only]
+        if not layers_to_run:
+            valid = ", ".join(s.label for s in LAYERS)
+            log.error(f"Capa desconocida: {args.only!r}. Opciones: {valid}")
+            sys.exit(1)
+        existing = [
+            f for spec in layers_to_run
+            for subdir in (
+                (DATA_RASTERS,) if spec.layer_type == "raster" else (DATA_RECORTE,)
+            )
+            for f in subdir.iterdir()
+            if f.name == spec.output_name
+        ]
+
+    if existing and not args.yes:
         print(
             f"\n{len(existing)} archivo(s) ya existen en "
             f"{DATA_PROCESSED.relative_to(PROJECT_ROOT)}/."
@@ -533,26 +762,29 @@ def main() -> None:
     found_layers: list[str] = []
     processed_vectors: list[tuple[str, gpd.GeoDataFrame]] = []
 
-    for spec in LAYERS:
+    for spec in layers_to_run:
         log.info(f"\n[{spec.label}]")
-        src_path = _discover_layer(spec, log)
+        src_paths = _discover_layer_sources(spec, log)
 
-        if src_path is None:
+        if not src_paths:
             log.warning(f"  ✗ no encontrado en data/raw/")
             missing_layers.append(spec.label)
             continue
 
         found_layers.append(spec.label)
-        log.info(f"  Fuente : {src_path.relative_to(PROJECT_ROOT)}")
+        if len(src_paths) == 1:
+            log.info(f"  Fuente : {src_paths[0].relative_to(PROJECT_ROOT)}")
+        else:
+            log.info(f"  Fuentes: {len(src_paths)} archivos (fusión multi-municipio)")
         log.info(f"  Tipo   : {spec.layer_type}")
 
         if spec.layer_type == "raster":
             process_raster(
-                src_path, spec, target_crs,
+                src_paths[0], spec, target_crs,
                 target_transform, grid_w, grid_h, log,
             )
         else:
-            _, gdf = process_vector(src_path, spec, target_crs, aoi_box, log)
+            _, gdf = process_vector(src_paths, spec, target_crs, aoi_box, log)
             if gdf is not None:
                 processed_vectors.append((spec.label, gdf))
 
@@ -567,7 +799,7 @@ def main() -> None:
     log.info("\n" + "=" * 62)
     log.info("RESUMEN")
     log.info("=" * 62)
-    log.info(f"  Capas encontradas    : {len(found_layers)}/{len(LAYERS)}")
+    log.info(f"  Capas encontradas    : {len(found_layers)}/{len(layers_to_run)}")
     log.info(f"  Archivos comprimidos : {len(archives)} (requieren extracción manual)")
 
     if missing_layers:
