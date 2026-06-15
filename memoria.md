@@ -24,6 +24,12 @@ Mantener un historial sencillo y accesible de qué se ha hecho, cuándo y por qu
     -Elaborar prompts del hito 2 para semana 3
 - Creación de `memoria.md` para la trazabilidad del trabajo.
 
+### Semana 3
+- Utilizar prompt para hacer el hito 2: 
+    - Construir primer ráster de coste multicriterio: [insertar criterio: pendiente, uso del suelo, zonas protegidas, cruces, etc]
+    - Calcular trazado óptimo mediante algoritmo de menor coste [insertar algoritmo: A* o Dijkstra]
+    - Generar un primer itinerario continuo entre origen y destino [insertar dirección de archivo]
+
 ### Plan para Semana 3
 - Detectar vacíos (hito 1) y comprobar que el AOI se ha realizado correctamente. Estamos a la espera de Claude Pro para ello.
 - Avanzar con hito 2 usando el prompt generado en semana 2
