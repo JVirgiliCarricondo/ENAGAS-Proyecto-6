@@ -65,8 +65,10 @@ Librerías: `rasterio` (raster, reproyección, remuestreo), `geopandas`/`shapely
 ### 2. Superficies de coste (`src/superficie/`)
 Convierte cada capa alineada en un **coste por celda** (p.ej. pendiente → coste creciente; suelo urbano → coste alto; Red Natura 2000 → coste muy alto o celda prohibida; proximidad a cruces → coste). Combina las capas con un **vector de pesos** en una única superficie de coste. Cada **perfil de prioridad** (definido en `data/config/perfiles.yaml`) produce una superficie distinta.
 
-### 3. Motor LCP (`src/trazados/`)
-Sobre cada superficie de coste calcula el **camino de mínimo coste** origen→destino (`skimage.graph.MCP_Geometric` / `route_through_array`; alternativa `networkx`). Para garantizar **rutas diferenciadas**, aplica **corridor masking**: tras generar una ruta, penaliza la proximidad a ella antes de generar la siguiente, y descarta rutas con solapamiento por encima de un umbral.
+> Diseño detallado de las funciones de coste por variable, umbrales y matriz de condicionantes en [`modelo_coste.md`](modelo_coste.md).
+
+### 3. Motor de camino de mínimo coste (`src/trazados/`)
+Sobre cada superficie de coste calcula el **camino de mínimo coste** origen→destino con **A\*** sobre el grafo de la rejilla (`networkx.astar_path` o implementación propia; cada celda = nodo, aristas a 8 vecinos). Se elige A\* sobre Dijkstra por ser más eficiente para un único par origen→destino con la misma garantía de óptimo. Detalle de la representación en grafo en [`modelo_coste.md`](modelo_coste.md) §8.1. Para garantizar **rutas diferenciadas**, aplica **corridor masking**: tras generar una ruta, penaliza la proximidad a ella antes de generar la siguiente, y descarta rutas con solapamiento por encima de un umbral.
 
 ### 4. Métricas (`src/metricas/`)
 Para cada ruta calcula: **longitud** (km), **coste relativo** (suma normalizada de celdas atravesadas), **cruces especiales** (nº y tipo: río, carretera, ferrocarril…), **km en zona protegida** (Red Natura 2000), **km en zona urbana/periurbana** (CLC/OSM) y **pendiente máxima y media** (del DEM a lo largo de la ruta).
@@ -143,7 +145,7 @@ destino:                            # conexión a red troncal
 | Geoespacial | rasterio + geopandas + shapely + pyproj | — |
 | CRS de trabajo | ETRS89 / UTM 30N (EPSG:25830) | según zona del trazado |
 | Descarga OSM | osmnx | Overpass directo |
-| LCP | scikit-image `MCP_Geometric` | networkx (Dijkstra sobre grafo) |
+| Camino mínimo coste | A\* sobre grafo (`networkx.astar_path`) | Dijkstra (respaldo); scikit-image `MCP_Geometric` |
 | Visualización | folium + contextily | matplotlib, kepler.gl |
 | UI | Streamlit con mapa | mapa estático + tabla |
 
