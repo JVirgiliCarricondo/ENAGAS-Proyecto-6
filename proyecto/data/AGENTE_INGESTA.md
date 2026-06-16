@@ -60,7 +60,7 @@ conservar antes de guardar.
 
 | Capa | Tipo | Fuente | CRS original típico |
 |------|------|--------|---------------------|
-| DEM Copernicus | Raster `.tif` | Copernicus | EPSG:4326 |
+| DEM Copernicus | Raster `.tif` | Copernicus GLO-30 AWS S3 | EPSG:25830 (reproyectado en descarga) |
 | Corine Land Cover | Vector `.gpkg` / `.shp` | Copernicus | EPSG:3035 |
 | Red Natura 2000 | Vector `.geojson` | MITECO | EPSG:4326 |
 | OSM | Vector `.gpkg` | OpenStreetMap | EPSG:4326 |
@@ -101,23 +101,66 @@ Las capas se guardan en dos subcarpetas según su tipo de salida:
 
 ---
 
-## Cómo ejecutarlo
+## Flujo de dos pasos (nuevo)
+
+La ingesta se divide en dos scripts independientes:
+
+### Paso 0 — Descarga automática (`src/ingesta/descargar_capas.py`)
+
+Nuevo script que descarga automáticamente la unidad mínima de cada fuente
+que contiene el AOI. Para todas las fuentes utiliza servicios WFS, WCS u
+Overpass que permiten consultas por bbox: la "unidad mínima" es el propio
+recorte del AOI (no hace falta descargar capas regionales).
 
 ```bash
-# Desde la raíz del proyecto
-python -m src.ingesta.alinear_capas
+python -m src.ingesta.descargar_capas              # ambos escenarios A y B
+python -m src.ingesta.descargar_capas --escenario A
+python -m src.ingesta.descargar_capas --escenario B
+```
+
+Archivos generados en `data/raw/` (sufijo `_A` o `_B`):
+
+| Archivo          | Fuente                          | Servicio       |
+|------------------|---------------------------------|----------------|
+| `DEM_{s}.tif`    | Copernicus GLO-30 (30 m)        | AWS S3 COG (`/vsicurl/`) |
+| `CLC_{s}.gpkg`   | Corine Land Cover IGN INSPIRE   | WFS            |
+| `RN2000_{s}.gpkg`| Red Natura 2000 IGN INSPIRE     | WFS            |
+| `OSM_{s}.gpkg`   | OpenStreetMap (carreteras)      | Overpass API   |
+| `HID_{s}.gpkg`   | Hidrografía IGN INSPIRE         | WFS            |
+| `IGME_{s}.gpkg`  | IGME MAGNA50                    | WFS / REST     |
+
+### Paso 1 — Alineación (`src/ingesta/alinear_capas.py`)
+
+```bash
+python -m src.ingesta.alinear_capas --escenario A
+python -m src.ingesta.alinear_capas --escenario B
+```
+
+Cuando se indica `--escenario`, el script busca primero los archivos con
+sufijo (`DEM_A.tif`, `CLC_A.gpkg`…) antes de recurrir a los patrones glob.
+Si la descarga automática no está disponible, puede funcionar igualmente con
+los archivos descargados manualmente con los nombres anteriores.
+
+---
+
+## Cómo ejecutarlo (flujo completo)
+
+```bash
+# Desde la raíz del proyecto (proyecto/)
+python -m src.ingesta.descargar_capas   # descarga ambos escenarios
+python -m src.ingesta.alinear_capas --escenario A
+python -m src.ingesta.alinear_capas --escenario B
 ```
 
 Si `data/processed/` ya contiene archivos, el script pregunta antes de
-sobreescribir.
+sobreescribir. Usar `-y` para omitir la pregunta.
 
 ---
 
 ## Requisitos previos
 
-1. `data/config/escenario.yaml` con `origen` y `destino` rellenos
-2. Las 6 capas descargadas en `data/raw/`
-3. Entorno Python con: `rasterio`, `geopandas`, `shapely`, `pyproj`, `numpy`
+1. `data/config/escenario.yaml` con `escenario_A` y `escenario_B` rellenos
+2. Entorno Python con: `rasterio`, `geopandas`, `shapely`, `pyproj`, `numpy`, `requests`
 
 ---
 

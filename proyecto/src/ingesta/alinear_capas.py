@@ -72,6 +72,19 @@ class LayerSpec(NamedTuple):
     multi_source: bool = False  # True → fusionar varias fuentes (p. ej. Catastro)
 
 
+# Nombres canónicos generados por descargar_capas.py (sufijo _A o _B).
+# _discover_layer_sources los comprueba ANTES de los glob_patterns cuando se
+# indica un escenario, de modo que los datos descargados tienen prioridad.
+_SCENARIO_FILES: dict[str, str] = {
+    "DEM Copernicus":    "DEM_{s}.tif",
+    "Corine Land Cover": "CLC_{s}.gpkg",
+    "OSM":               "OSM_{s}.gpkg",
+    "Hidrografía IGN":   "HID_{s}.gpkg",
+    "IGME geológico":    "IGME_{s}.gpkg",
+    # RN2000 no tiene sufijo de escenario: es una capa nacional única en data/raw/RN2000/.
+    # Se descubre por glob_patterns y se recorta al AOI de cada escenario.
+}
+
 LAYERS: list[LayerSpec] = [
     LayerSpec(
         label="DEM Copernicus",
@@ -229,22 +242,25 @@ def _load_escenario(path: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def _build_aoi(cfg: dict) -> tuple[float, float, float, float]:
-    """Devuelve (xmin, ymin, xmax, ymax) en el CRS de trabajo.
+def _build_aoi(cfg: dict):
+    """Devuelve un polígono Shapely orientado alineado con la línea origen-destino.
 
-    Usa el bounding box explícito de escenario.yaml si está definido;
-    si no, calcula un buffer rectangular de 1 km alrededor de la línea
-    recta origen→destino.
+    Si escenario.yaml define un bounding box explícito, devuelve ese rectángulo
+    axis-aligned. Si no, devuelve el rectángulo girado obtenido como buffer de
+    1 km a cada lado con tapas planas (cap_style=2): los lados del rectángulo
+    son paralelos a la línea origen→destino y ésta queda perfectamente centrada.
     """
     aoi = cfg.get("aoi", {})
     if aoi and all(aoi.get(k, 0) != 0 for k in ("xmin", "ymin", "xmax", "ymax")):
-        return aoi["xmin"], aoi["ymin"], aoi["xmax"], aoi["ymax"]
+        return box(aoi["xmin"], aoi["ymin"], aoi["xmax"], aoi["ymax"])
 
     ox, oy = cfg["origen"]["x"], cfg["origen"]["y"]
     dx, dy = cfg["destino"]["x"], cfg["destino"]["y"]
     line = LineString([(ox, oy), (dx, dy)])
-    buf = line.buffer(1000, cap_style=2)  # rectangular buffer 1 km a cada lado
-    return buf.bounds   # (minx, miny, maxx, maxy)
+    # cap_style=2 → tapas planas: rectángulo girado alineado con la línea,
+    # 1 km a cada lado perpendicular. NO se llama a .bounds para no perder
+    # la orientación (ese era el bug anterior que convertía a axis-aligned box).
+    return line.buffer(1000, cap_style=2)
 
 
 def _common_transform(xmin: float, ymin: float, xmax: float, ymax: float,
@@ -257,16 +273,33 @@ def _common_transform(xmin: float, ymin: float, xmax: float, ymax: float,
     return transform, width, height
 
 
-def _discover_layer(spec: LayerSpec, log: logging.Logger) -> Path | None:
+def _discover_layer(
+    spec: LayerSpec, log: logging.Logger, scenario: str | None = None
+) -> Path | None:
     """Busca el primer archivo que coincida con alguno de los patrones de la capa."""
-    sources = _discover_layer_sources(spec, log)
+    sources = _discover_layer_sources(spec, log, scenario=scenario)
     return sources[0] if sources else None
 
 
-def _discover_layer_sources(spec: LayerSpec, log: logging.Logger) -> list[Path]:
-    """Devuelve una o varias fuentes para la capa."""
+def _discover_layer_sources(
+    spec: LayerSpec,
+    log: logging.Logger,
+    scenario: str | None = None,
+) -> list[Path]:
+    """Devuelve una o varias fuentes para la capa.
+
+    Si se indica escenario ('A' o 'B'), busca primero el archivo generado por
+    descargar_capas.py (p. ej. DEM_A.tif) antes de recorrer glob_patterns.
+    """
     if spec.multi_source and spec.label.startswith("Catastro"):
         return _discover_catastro_sources(log)
+
+    # Prioridad: archivo descargado por descargar_capas.py con sufijo de escenario
+    if scenario and spec.label in _SCENARIO_FILES:
+        candidate = DATA_RAW / _SCENARIO_FILES[spec.label].replace("{s}", scenario)
+        if candidate.exists():
+            log.debug(f"  [{spec.label}] → {candidate.relative_to(PROJECT_ROOT)}")
+            return [candidate]
 
     for pattern in spec.glob_patterns:
         hits = sorted(DATA_RAW.glob(pattern))
@@ -556,7 +589,17 @@ def process_vector(
         gdf = gdf.to_crs(target_crs)
 
         aoi_gdf = gpd.GeoDataFrame({"geometry": [aoi_box]}, crs=target_crs)
-        gdf_clipped = gpd.clip(gdf, aoi_gdf)
+        try:
+            gdf_clipped = gpd.clip(gdf, aoi_gdf)
+        except Exception as clip_exc:
+            # buffer(0) repara auto-intersecciones en polígonos (WFS GML)
+            # No se aplica a LineStrings/Points: buffer(0) los vaciaría
+            log.warning(f"  Clip falló ({clip_exc}); reintentando con buffer(0) en polígonos")
+            gdf = gdf.copy()
+            mask_poly = gdf.geom_type.isin(["Polygon", "MultiPolygon"])
+            if mask_poly.any():
+                gdf.loc[mask_poly, "geometry"] = gdf.loc[mask_poly, "geometry"].buffer(0)
+            gdf_clipped = gpd.clip(gdf, aoi_gdf)
 
         # Descarta cualquier geometría vacía o no intersectante después del corte.
         if not gdf_clipped.empty:
@@ -652,6 +695,10 @@ def detect_duplicates(
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingesta y alineación de capas GIS al AOI.")
     parser.add_argument(
+        "--escenario", choices=["A", "B"], default="A",
+        help="Escenario a procesar (A o B, según escenario.yaml). Por defecto: A.",
+    )
+    parser.add_argument(
         "--only",
         metavar="CAPA",
         help="Procesar solo la capa indicada (nombre exacto del registro LAYERS).",
@@ -692,22 +739,36 @@ def main() -> None:
     cfg = _load_escenario(CONFIG_ESCENARIO)
     target_crs = cfg.get("crs_trabajo", "EPSG:25830")
     res_m = float(cfg.get("resolucion_m", 30))
+
+    # Seleccionar el sub-dict del escenario activo
+    scenario_key = f"escenario_{args.escenario}"
+    if scenario_key not in cfg:
+        available = [k for k in cfg if k.startswith("escenario_")]
+        log.error(
+            f"'{scenario_key}' no encontrado en escenario.yaml. "
+            f"Escenarios disponibles: {available}"
+        )
+        sys.exit(1)
+    cfg_s = cfg[scenario_key]
+
     log.info(f"CRS de trabajo : {target_crs}")
     log.info(f"Resolución     : {res_m} m")
-    log.info(f"Origen         : {cfg['origen'].get('nombre', '')}  "
-             f"({cfg['origen']['x']}, {cfg['origen']['y']})")
-    log.info(f"Destino        : {cfg['destino'].get('nombre', '')}  "
-             f"({cfg['destino']['x']}, {cfg['destino']['y']})")
+    log.info(f"Escenario      : {args.escenario}")
+    log.info(f"Origen         : {cfg_s['origen'].get('nombre', '')}  "
+             f"({cfg_s['origen']['x']}, {cfg_s['origen']['y']})")
+    log.info(f"Destino        : {cfg_s['destino'].get('nombre', '')}  "
+             f"({cfg_s['destino']['x']}, {cfg_s['destino']['y']})")
 
     # ── Paso 1: AOI ─────────────────────────────────────────────────────── #
     log.info("\n─── Paso 1: Área de Interés (AOI) ──────────────────────────────")
-    xmin, ymin, xmax, ymax = _build_aoi(cfg)
-    aoi_box = box(xmin, ymin, xmax, ymax)
+    aoi_box = _build_aoi(cfg_s)  # polígono orientado (rectángulo girado con la línea)
+    xmin, ymin, xmax, ymax = aoi_box.bounds  # bbox axis-aligned solo para la rejilla raster
     log.info(
-        f"AOI (EPSG:25830):\n"
-        f"  xmin={xmin:.0f}  ymin={ymin:.0f}\n"
-        f"  xmax={xmax:.0f}  ymax={ymax:.0f}\n"
-        f"  dimensión: {(xmax-xmin)/1000:.1f} km × {(ymax-ymin)/1000:.1f} km"
+        f"AOI (EPSG:25830) — rectángulo orientado con la línea origen-destino:\n"
+        f"  Bounding box: xmin={xmin:.0f}  ymin={ymin:.0f}\n"
+        f"                xmax={xmax:.0f}  ymax={ymax:.0f}\n"
+        f"  Ancho (bbox): {(xmax-xmin)/1000:.1f} km  Alto (bbox): {(ymax-ymin)/1000:.1f} km\n"
+        f"  Semiancho perpendicular a la línea: 1.0 km"
     )
 
     target_transform, grid_w, grid_h = _common_transform(xmin, ymin, xmax, ymax, res_m)
@@ -720,12 +781,7 @@ def main() -> None:
     DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
     DATA_RECORTE.mkdir(parents=True, exist_ok=True)
     DATA_RASTERS.mkdir(parents=True, exist_ok=True)
-    existing = []
-    for subdir in (DATA_RECORTE, DATA_RASTERS):
-        existing.extend([
-            f for f in subdir.iterdir()
-            if f.name != ".gitkeep" and f.suffix not in (".md", ".txt")
-        ])
+
     layers_to_run = LAYERS
     if args.only:
         layers_to_run = [s for s in LAYERS if s.label == args.only]
@@ -733,14 +789,25 @@ def main() -> None:
             valid = ", ".join(s.label for s in LAYERS)
             log.error(f"Capa desconocida: {args.only!r}. Opciones: {valid}")
             sys.exit(1)
-        existing = [
-            f for spec in layers_to_run
-            for subdir in (
-                (DATA_RASTERS,) if spec.layer_type == "raster" else (DATA_RECORTE,)
+
+    # Añadir sufijo de escenario a los nombres de salida (e.g. clc_aoi_A.gpkg)
+    layers_to_run = [
+        spec._replace(
+            output_name=(
+                Path(spec.output_name).stem
+                + f"_{args.escenario}"
+                + Path(spec.output_name).suffix
             )
-            for f in subdir.iterdir()
-            if f.name == spec.output_name
-        ]
+        )
+        for spec in layers_to_run
+    ]
+
+    existing = [
+        subdir / spec.output_name
+        for spec in layers_to_run
+        for subdir in ([DATA_RASTERS] if spec.layer_type == "raster" else [DATA_RECORTE])
+        if (subdir / spec.output_name).exists()
+    ]
 
     if existing and not args.yes:
         print(
@@ -764,7 +831,7 @@ def main() -> None:
 
     for spec in layers_to_run:
         log.info(f"\n[{spec.label}]")
-        src_paths = _discover_layer_sources(spec, log)
+        src_paths = _discover_layer_sources(spec, log, scenario=args.escenario)
 
         if not src_paths:
             log.warning(f"  ✗ no encontrado en data/raw/")
