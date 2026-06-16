@@ -1,27 +1,47 @@
 # Caso de estudio — Grupo 6 (Reto 6, Enagás)
-# Define el CRS y la rejilla de trabajo, el área de interés (AOI) y el par origen→destino.
+# Define el CRS y la rejilla de trabajo, el área de interés (AOI) y los pares origen→destino.
+# Hay dos escenarios independientes (A y B). El pipeline ejecuta uno a la vez.
+# El escenario activo se selecciona en src/app/ o por parámetro de línea de comandos.
 
 crs_trabajo: "EPSG:25830"     # ETRS89 / UTM 30N (península). CRS común de todas las capas.
-resolucion_m: 30               # tamaño de celda de la rejilla común, en metros
+resolucion_m: 30              # tamaño de celda de la rejilla común, en metros
 
-# Área de interés: bounding box en crs_trabajo (metros)
-# Buffer de 1 km a cada lado de la línea recta origen→destino (ancho total: 2 km)
-aoi:
-  xmin: 407725
-  ymin: 4281818
-  xmax: 411668
-  ymax: 4295981
-  # opción B — polígono: descomentar y apuntar a un fichero en esta carpeta
-  # geojson: "aoi.geojson"
+# ─── ESCENARIO A ────────────────────────────────────────────────────────────
+escenario_A:
 
-# Origen: planta de H₂ (coordenadas en EPSG:25830, metros)
-origen:
-  nombre: "Planta H2 Puertollano"
-  x: 410678
-  y: 4295841
+  # AOI: buffer de 1 km a cada lado de la línea A_inicial→A_final
+  aoi:
+    xmin: 738118
+    ymin: 4550067
+    xmax: 742433
+    ymax: 4562181
 
-# Destino: conexión a la red troncal (coordenadas en EPSG:25830, metros)
-destino:
-  nombre: "Conexion red troncal"
-  x: 408716
-  y: 4281958
+  origen:
+    nombre: "A_inicial"
+    x: 741453
+    y: 4561984
+
+  destino:
+    nombre: "A_final"
+    x: 739098
+    y: 4550264
+
+# ─── ESCENARIO B ────────────────────────────────────────────────────────────
+escenario_B:
+
+  # AOI: buffer de 1 km a cada lado de la línea B_inicial→B_final
+  aoi:
+    xmin: 691257
+    ymin: 4595680
+    xmax: 694773
+    ymax: 4600913
+
+  origen:
+    nombre: "B_inicial"
+    x: 692198
+    y: 4596017
+
+  destino:
+    nombre: "B_final"
+    x: 693832
+    y: 4600576
