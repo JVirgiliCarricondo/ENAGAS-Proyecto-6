@@ -20,14 +20,6 @@ data/raw/*
 !data/raw/openTopography/
 !data/raw/openTopography/**/
 !data/raw/openTopography/**/*.gitkeep
-data/processed/*
-!data/processed/.gitkeep
-!data/processed/README.md
-!data/processed/Recorte_AOI/
-!data/processed/Recorte_AOI/*.gpkg
-!data/processed/Rasters_AOI/
-!data/processed/Rasters_AOI/*.tif
-
 # Rasters / capas pesadas en cualquier ubicación
 *.tif
 *.tiff
@@ -43,6 +35,8 @@ data/processed/*
 *.geojson
 # excepción: ficheros de configuración del caso de estudio sí se versionan
 !data/config/**
+# excepción: los datos procesados SÍ se versionan (rasters/capas generados incluidos)
+!data/processed/**
 
 # Notebooks: checkpoints
 .ipynb_checkpoints/
