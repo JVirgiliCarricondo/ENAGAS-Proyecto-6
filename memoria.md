@@ -35,3 +35,4 @@ Mantener un historial sencillo y accesible de qué se ha hecho, cuándo y por qu
 - Avanzar con hito 2 usando el prompt generado en semana 2
 
 
+
