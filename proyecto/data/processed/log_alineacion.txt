@@ -1,109 +1,60 @@
-2026-06-17 10:40:25  INFO      ==============================================================
-2026-06-17 10:40:25  INFO      INGESTA Y ALINEACIÓN DE CAPAS  2026-06-17T10:40:25
-2026-06-17 10:40:25  INFO      ==============================================================
-2026-06-17 10:40:25  INFO      CRS de trabajo : EPSG:25830
-2026-06-17 10:40:25  INFO      Resolución     : 30.0 m
-2026-06-17 10:40:25  INFO      Escenario      : B
-2026-06-17 10:40:25  INFO      Origen         : B_inicial  (692198, 4596017)
-2026-06-17 10:40:25  INFO      Destino        : B_final  (693832, 4600576)
-2026-06-17 10:40:25  INFO      
+2026-06-17 13:19:21  INFO      ==============================================================
+2026-06-17 13:19:21  INFO      INGESTA Y ALINEACIÓN DE CAPAS  2026-06-17T13:19:21
+2026-06-17 13:19:21  INFO      ==============================================================
+2026-06-17 13:19:21  INFO      CRS de trabajo : EPSG:25830
+2026-06-17 13:19:21  INFO      Resolución     : 30.0 m
+2026-06-17 13:19:21  INFO      Escenario      : B
+2026-06-17 13:19:21  INFO      Origen         : B_inicial  (692198, 4596017)
+2026-06-17 13:19:21  INFO      Destino        : B_final  (693832, 4600576)
+2026-06-17 13:19:21  INFO      
 ─── Paso 1: Área de Interés (AOI) ──────────────────────────────
-2026-06-17 10:40:25  INFO      AOI (EPSG:25830) — rectángulo orientado con la línea origen-destino:
+2026-06-17 13:19:21  INFO      AOI (EPSG:25830) — rectángulo orientado con la línea origen-destino:
   Bounding box: xmin=691257  ymin=4595680
                 xmax=694773  ymax=4600913
   Ancho (bbox): 3.5 km  Alto (bbox): 5.2 km
   Semiancho perpendicular a la línea: 1.0 km
   Largo = distancia origen→destino; puntos en el punto medio del lado corto
-2026-06-17 10:40:25  INFO      AOI guardado   : data\processed\aoi_corredor_B.gpkg
-2026-06-17 10:40:25  INFO      Puntos guardados: data\processed\puntos_B.gpkg
-2026-06-17 10:40:25  INFO      Rejilla común  : 118 × 175 celdas @ 30.0 m
-2026-06-17 10:40:25  INFO      
+2026-06-17 13:19:21  INFO      AOI guardado   : data\processed\aoi_corredor_B.gpkg
+2026-06-17 13:19:21  INFO      Puntos guardados: data\processed\puntos_B.gpkg
+2026-06-17 13:19:21  INFO      Rejilla común  : 118 × 175 celdas @ 30.0 m
+2026-06-17 13:19:21  INFO      
 ─── Pasos 2-3: Reproyección y alineación ───────────────────────
-2026-06-17 10:40:25  INFO      
-[DEM Copernicus]
-2026-06-17 10:40:25  DEBUG       [DEM Copernicus] → data\raw\DEM_B.tif
-2026-06-17 10:40:25  INFO        Fuente : data\raw\DEM_B.tif
-2026-06-17 10:40:25  INFO        Tipo   : raster
-2026-06-17 10:40:25  INFO        CRS original : EPSG:25830
-2026-06-17 10:40:25  INFO        Resolución   : 27.4 × 27.4 m
-2026-06-17 10:40:25  INFO        Bandas       : 1
-2026-06-17 10:40:25  INFO        ✓ guardado: data\processed\Rasters_AOI\dem_aoi_B.tif
-2026-06-17 10:40:25  INFO      
-[Corine Land Cover]
-2026-06-17 10:40:25  DEBUG       [Corine Land Cover] → data\raw\CLC_B.gpkg
-2026-06-17 10:40:25  INFO        Fuente : data\raw\CLC_B.gpkg
-2026-06-17 10:40:25  INFO        Tipo   : vector
-2026-06-17 10:40:25  INFO        Fuente       : data\raw\CLC_B.gpkg (1953 filas en ventana AOI)
-2026-06-17 10:40:25  INFO        CRS original : EPSG:25830
-2026-06-17 10:40:25  INFO        Filas        : 1953
-2026-06-17 10:40:25  WARNING     Clip falló (TopologyException: side location conflict at 691785.87806840835 4597622.3131085681. This can occur if the input geometry is invalid.); reintentando con buffer(0) en polígonos
-2026-06-17 10:40:25  INFO        ✓ guardado: data\processed\Recorte_AOI\clc_aoi_B.gpkg (855 filas)
-2026-06-17 10:40:25  INFO      
-[Red Natura 2000]
-2026-06-17 10:40:25  DEBUG       [Red Natura 2000] → data\raw\RN2000\n2000_spatial_es_pibal_proy_end25.geojson
-2026-06-17 10:40:25  INFO        Fuente : data\raw\RN2000\n2000_spatial_es_pibal_proy_end25.geojson
-2026-06-17 10:40:25  INFO        Tipo   : vector
-2026-06-17 10:41:01  INFO        Fuente       : data\raw\RN2000\n2000_spatial_es_pibal_proy_end25.geojson (1639 filas en ventana AOI)
-2026-06-17 10:41:01  INFO        CRS original : EPSG:25830
-2026-06-17 10:41:01  INFO        Filas        : 1639
-2026-06-17 10:41:01  INFO        ✓ guardado: data\processed\Recorte_AOI\natura2000_aoi_B.gpkg (1 filas)
-2026-06-17 10:41:01  INFO      
-[OSM]
-2026-06-17 10:41:01  DEBUG       [OSM] → data\raw\OSM_B.gpkg
-2026-06-17 10:41:01  INFO        Fuente : data\raw\OSM_B.gpkg
-2026-06-17 10:41:01  INFO        Tipo   : vector
-2026-06-17 10:41:01  INFO        Fuente       : data\raw\OSM_B.gpkg (54 filas en ventana AOI)
-2026-06-17 10:41:01  INFO        CRS original : EPSG:25830
-2026-06-17 10:41:01  INFO        Filas        : 54
-2026-06-17 10:41:02  INFO        ✓ guardado: data\processed\Recorte_AOI\osm_aoi_B.gpkg (16 filas)
-2026-06-17 10:41:02  INFO      
-[Hidrografía IGN]
-2026-06-17 10:41:02  DEBUG       [Hidrografía IGN] → data\raw\HID_B.gpkg
-2026-06-17 10:41:02  INFO        Fuente : data\raw\HID_B.gpkg
-2026-06-17 10:41:02  INFO        Tipo   : vector
-2026-06-17 10:41:02  INFO        Fuente       : data\raw\HID_B.gpkg (4 filas en ventana AOI)
-2026-06-17 10:41:02  INFO        CRS original : EPSG:25830
-2026-06-17 10:41:02  INFO        Filas        : 4
-2026-06-17 10:41:02  INFO        ✓ guardado: data\processed\Recorte_AOI\hidrografia_aoi_B.gpkg (3 filas)
-2026-06-17 10:41:02  INFO      
-[IGME geológico]
-2026-06-17 10:41:02  DEBUG       [IGME geológico] → data\raw\IGME_B.gpkg
-2026-06-17 10:41:02  INFO        Fuente : data\raw\IGME_B.gpkg
-2026-06-17 10:41:02  INFO        Tipo   : vector
-2026-06-17 10:41:02  INFO        Fuente       : data\raw\IGME_B.gpkg (96 filas en ventana AOI)
-2026-06-17 10:41:02  INFO        CRS original : EPSG:25830
-2026-06-17 10:41:02  INFO        Filas        : 96
-2026-06-17 10:41:02  INFO        ✓ guardado: data\processed\Recorte_AOI\igme_aoi_B.gpkg (55 filas)
-2026-06-17 10:41:02  INFO      
+2026-06-17 13:19:21  INFO      
 [Catastro - Usos del Suelo Urbanística]
-2026-06-17 10:41:02  WARNING     ✗ no encontrado en data/raw/
-2026-06-17 10:41:02  INFO      
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\RURAL\2026061610140168574_PETICION_DESCARGA_SHA(RamalB)\50_UA_23012026_SHP\50_UA_23012026_SHP\50074uA 50533 CASPE\50074uA_50533_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\RURAL\2026061610140168574_PETICION_DESCARGA_SHA(RamalB)\50_UA_23012026_SHP\50_UA_23012026_SHP\50116uA 50072 FUENTES DE EBRO\50116uA_50072_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\RURAL\2026061610140168574_PETICION_DESCARGA_SHA(RamalB)\50_UA_23012026_SHP\50_UA_23012026_SHP\50165uA 50256 MEDIANA DE ARAGON\50165uA_50256_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\RURAL\2026061610140168574_PETICION_DESCARGA_SHA(RamalB)\50_UA_23012026_SHP\50_UA_23012026_SHP\50900uA 50370 ZARAGOZA\50900uA_50370_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\RURAL\2026061610225320379_PETICION_DESCARGA_SHA(RamalA)\44_UA_23012026_SHP\44_UA_23012026_SHP\44013uA 44414 ALCAÑIZ\44013uA_44414_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50074rA 50353 CASPE\50074rA_50353_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50116rA 50336 FUENTES DE EBRO\50116rA_50336_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50165rA 50431 MEDIANA DE ARAGON\50165rA_50431_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50900rA 50099 ZARAGOZA\50900rA_50099_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       [Catastro] → data\raw\CATASTRO\URBANO\2026061610240207173_PETICION_DESCARGA_SHA(RamalA)\44_RA_23012026_SHP\44013rA 44399 ALCAÑIZ\44013rA_44399_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  INFO        Fuentes: 10 archivos (fusión multi-municipio)
+2026-06-17 13:19:21  INFO        Tipo   : vector
+2026-06-17 13:19:21  DEBUG       Sin datos en AOI: data\raw\CATASTRO\RURAL\2026061610140168574_PETICION_DESCARGA_SHA(RamalB)\50_UA_23012026_SHP\50_UA_23012026_SHP\50074uA 50533 CASPE\50074uA_50533_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       Sin datos en AOI: data\raw\CATASTRO\RURAL\2026061610140168574_PETICION_DESCARGA_SHA(RamalB)\50_UA_23012026_SHP\50_UA_23012026_SHP\50116uA 50072 FUENTES DE EBRO\50116uA_50072_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       Sin datos en AOI: data\raw\CATASTRO\RURAL\2026061610140168574_PETICION_DESCARGA_SHA(RamalB)\50_UA_23012026_SHP\50_UA_23012026_SHP\50165uA 50256 MEDIANA DE ARAGON\50165uA_50256_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       Sin datos en AOI: data\raw\CATASTRO\RURAL\2026061610140168574_PETICION_DESCARGA_SHA(RamalB)\50_UA_23012026_SHP\50_UA_23012026_SHP\50900uA 50370 ZARAGOZA\50900uA_50370_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       Sin datos en AOI: data\raw\CATASTRO\RURAL\2026061610225320379_PETICION_DESCARGA_SHA(RamalA)\44_UA_23012026_SHP\44_UA_23012026_SHP\44013uA 44414 ALCAÑIZ\44013uA_44414_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  DEBUG       Sin datos en AOI: data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50074rA 50353 CASPE\50074rA_50353_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:21  INFO        Fuente       : data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50116rA 50336 FUENTES DE EBRO\50116rA_50336_23012026_PARCELA\PARCELA.shp (329 filas en ventana AOI)
+2026-06-17 13:19:21  INFO        Fuente       : data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50165rA 50431 MEDIANA DE ARAGON\50165rA_50431_23012026_PARCELA\PARCELA.shp (9 filas en ventana AOI)
+2026-06-17 13:19:22  INFO        Fuente       : data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50900rA 50099 ZARAGOZA\50900rA_50099_23012026_PARCELA\PARCELA.shp (26 filas en ventana AOI)
+2026-06-17 13:19:22  DEBUG       Sin datos en AOI: data\raw\CATASTRO\URBANO\2026061610240207173_PETICION_DESCARGA_SHA(RamalA)\44_RA_23012026_SHP\44013rA 44399 ALCAÑIZ\44013rA_44399_23012026_PARCELA\PARCELA.shp
+2026-06-17 13:19:22  INFO        CRS original : EPSG:25830
+2026-06-17 13:19:22  INFO        Filas        : 364
+2026-06-17 13:19:22  INFO        ✓ guardado: data\processed\Recorte_AOI\catastro_aoi_B.gpkg (160 filas)
+2026-06-17 13:19:22  INFO      
 ─── Paso 4: Detección de duplicados ────────────────────────────
-2026-06-17 10:41:02  WARNING   SOLAPAMIENTO ALTO (100%): Corine Land Cover ↔ Red Natura 2000
-  Pueden representar la misma información. Revisa FUENTES.md y considera descartar una de las dos.
-2026-06-17 10:41:02  INFO        Modo no interactivo — se conservan ambas capas.
-2026-06-17 10:41:02  WARNING   SOLAPAMIENTO ALTO (100%): Corine Land Cover ↔ IGME geológico
-  Pueden representar la misma información. Revisa FUENTES.md y considera descartar una de las dos.
-2026-06-17 10:41:02  INFO        Modo no interactivo — se conservan ambas capas.
-2026-06-17 10:41:02  WARNING   SOLAPAMIENTO ALTO (100%): Red Natura 2000 ↔ IGME geológico
-  Pueden representar la misma información. Revisa FUENTES.md y considera descartar una de las dos.
-2026-06-17 10:41:02  INFO        Modo no interactivo — se conservan ambas capas.
-2026-06-17 10:41:02  INFO      
+2026-06-17 13:19:22  INFO        Solo hay una capa vectorial procesada; no hay pares que comparar.
+2026-06-17 13:19:22  INFO      
 ==============================================================
-2026-06-17 10:41:02  INFO      RESUMEN
-2026-06-17 10:41:02  INFO      ==============================================================
-2026-06-17 10:41:02  INFO        Capas encontradas    : 6/7
-2026-06-17 10:41:02  INFO        Archivos comprimidos : 0 (requieren extracción manual)
-2026-06-17 10:41:02  WARNING     Capas NO encontradas :
-2026-06-17 10:41:02  WARNING       - Catastro - Usos del Suelo Urbanística
-2026-06-17 10:41:02  INFO      
+2026-06-17 13:19:22  INFO      RESUMEN
+2026-06-17 13:19:22  INFO      ==============================================================
+2026-06-17 13:19:22  INFO        Capas encontradas    : 1/1
+2026-06-17 13:19:22  INFO        Archivos comprimidos : 0 (requieren extracción manual)
+2026-06-17 13:19:22  INFO      
   Log → data\processed\log_alineacion.txt
-2026-06-17 10:41:02  INFO        Salida → data\processed/
-2026-06-17 10:41:02  INFO      
-──────────────────────────────────────────────────────────────
-2026-06-17 10:41:02  INFO      ACCIÓN REQUERIDA — coloca estos archivos en data/raw/:
-2026-06-17 10:41:02  INFO      
-  Catastro - Usos del Suelo Urbanística:
-  → Catastro Inmobiliario: https://www.catastro.minhap.gob.es/
-    Descarga por municipio y descomprime los ZIP.
-    Los archivos PARCELA.shp se procesan automáticamente desde data/raw/Catastro/
+2026-06-17 13:19:22  INFO        Salida → data\processed/
