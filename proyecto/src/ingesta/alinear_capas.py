@@ -33,6 +33,7 @@ try:
     import rasterio
     from rasterio.crs import CRS as RasterioCRS
     from rasterio.enums import Resampling
+    from rasterio.features import geometry_mask as rio_geometry_mask
     from rasterio.transform import from_origin
     from rasterio.warp import reproject as rio_reproject
 except ImportError:
@@ -40,7 +41,7 @@ except ImportError:
 
 try:
     import geopandas as gpd
-    from shapely.geometry import LineString, box
+    from shapely.geometry import LineString, box, mapping as shapely_mapping
     from shapely.ops import unary_union
 except ImportError:
     _MISSING.append("geopandas")
@@ -76,11 +77,10 @@ class LayerSpec(NamedTuple):
 # _discover_layer_sources los comprueba ANTES de los glob_patterns cuando se
 # indica un escenario, de modo que los datos descargados tienen prioridad.
 _SCENARIO_FILES: dict[str, str] = {
-    "DEM Copernicus":    "DEM_{s}.tif",
-    "Corine Land Cover": "CLC_{s}.gpkg",
-    "OSM":               "OSM_{s}.gpkg",
-    "Hidrografía IGN":   "HID_{s}.gpkg",
-    "IGME geológico":    "IGME_{s}.gpkg",
+    "DEM Copernicus":  "DEM_{s}.tif",
+    "OSM":             "OSM_{s}.gpkg",
+    "Hidrografía IGN": "HID_{s}.gpkg",
+    "IGME geológico":  "IGME_{s}.gpkg",
     # RN2000 no tiene sufijo de escenario: es una capa nacional única en data/raw/RN2000/.
     # Se descubre por glob_patterns y se recorta al AOI de cada escenario.
 }
@@ -98,17 +98,6 @@ LAYERS: list[LayerSpec] = [
             "**/dem*.tif", "**/elevation*.tif",
         ],
         output_name="dem_aoi.tif",
-    ),
-    LayerSpec(
-        label="Corine Land Cover",
-        layer_type="vector",
-        categorical=True,
-        glob_patterns=[
-            "CLC.gpkg", "CLC.shp", "CLC.geojson",
-            "**/CLC.gpkg", "**/CLC.shp", "**/CLC.geojson",
-            "**/*corine*.gpkg", "**/*CORINE*.gpkg",
-        ],
-        output_name="clc_aoi.gpkg",
     ),
     LayerSpec(
         label="Red Natura 2000",
@@ -180,10 +169,6 @@ _DOWNLOAD_HINTS: dict[str, str] = {
         "  → Copernicus DEM GLO-30: https://dataspace.copernicus.eu/\n"
         "    Extrae el .tif y guárdalo como: data/raw/DEM.tif\n"
         "    (si ya tienes rasters_COP30.tar.gz, extráelo primero)"
-    ),
-    "Corine Land Cover": (
-        "  → https://land.copernicus.eu/\n"
-        "    Guárdalo como: data/raw/CLC.gpkg  (o CLC.shp)"
     ),
     "Red Natura 2000": (
         "  → https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/biodiversidad/rn2000.html\n"
@@ -309,14 +294,13 @@ def _discover_layer_sources(
     return []
 
 
-def _catastro_municipality_name(shp: Path, catastro_dir: Path) -> str:
-    """Identifica la carpeta de municipio aunque esté anidada bajo un ZIP provincial."""
-    for parent in shp.parents:
-        if parent == catastro_dir:
-            break
-        if CATASTRO_MUNICIPALITY_RE.match(parent.name):
-            return parent.name
-    return shp.relative_to(catastro_dir).parts[0]
+def _find_catastro_dir() -> Path | None:
+    """Localiza data/raw/CATASTRO/ con independencia de mayúsculas."""
+    for name in ("CATASTRO", "Catastro", "catastro"):
+        candidate = DATA_RAW / name
+        if candidate.exists():
+            return candidate.resolve()
+    return None
 
 
 def _is_catastro_layer_zip(archive: Path) -> bool:
@@ -363,18 +347,13 @@ def _safe_extract_zip(archive: Path, target_dir: Path, log: logging.Logger) -> t
 
 
 def _has_extracted_municipalities(catastro_dir: Path) -> bool:
-    return any(
-        CATASTRO_MUNICIPALITY_RE.match(path.name)
-        and any(path.rglob("PARCELA.shp"))
-        for path in catastro_dir.iterdir()
-        if path.is_dir()
-    )
+    return any(catastro_dir.rglob("PARCELA.shp"))
 
 
 def _extract_catastro_archives(log: logging.Logger) -> int:
-    """Descomprime recursivamente los ZIP bajo data/raw/Catastro/."""
-    catastro_dir = DATA_RAW / "Catastro"
-    if not catastro_dir.exists():
+    """Descomprime recursivamente los ZIP bajo data/raw/CATASTRO/."""
+    catastro_dir = _find_catastro_dir()
+    if catastro_dir is None:
         return 0
 
     municipalities_ready = _has_extracted_municipalities(catastro_dir)
@@ -423,34 +402,43 @@ def _extract_catastro_archives(log: logging.Logger) -> int:
     return extracted
 
 
-def _discover_catastro_sources(log: logging.Logger) -> list[Path]:
-    """Un PARCELA.shp por municipio bajo data/raw/Catastro/ (exportación fechada si existe)."""
-    catastro_dir = DATA_RAW / "Catastro"
-    if not catastro_dir.exists():
+def _discover_catastro_sources(log: logging.Logger, scenario: str | None = None) -> list[Path]:
+    """Todos los PARCELA.SHP disponibles bajo data/raw/CATASTRO/.
+
+    Usa todos los archivos sin filtrar por escenario: el recorte espacial al AOI
+    determina qué parcelas caen dentro de cada corredor. Esto es necesario porque
+    un municipio descargado bajo la carpeta de un ramal puede cubrir geográficamente
+    el AOI de otro (p. ej. Caspe/Zaragoza cubre la zona norte del Escenario A aunque
+    esté en la carpeta RamalB).
+    """
+    catastro_dir = _find_catastro_dir()
+    if catastro_dir is None:
         return []
 
     _extract_catastro_archives(log)
 
-    by_municipality: dict[str, list[Path]] = {}
-    for shp in sorted(catastro_dir.rglob("PARCELA.shp")):
-        municipality = _catastro_municipality_name(shp, catastro_dir)
-        by_municipality.setdefault(municipality, []).append(shp)
+    all_parcelas = sorted(catastro_dir.rglob("PARCELA.shp"))
 
-    selected: list[Path] = []
-    for municipality, paths in sorted(by_municipality.items()):
-        dated_exports = [p for p in paths if p.parent.name.endswith("_PARCELA")]
-        chosen = dated_exports[0] if dated_exports else paths[0]
-        selected.append(chosen)
-        log.debug(
-            f"  [Catastro] {municipality} → {chosen.relative_to(PROJECT_ROOT)}"
-        )
+    # Deduplicar: si hay PARCELA.shp tanto en *_PARCELA/ como en la raíz del municipio,
+    # preferir el de la subcarpeta fechada (su parent termina en _PARCELA).
+    deduped: dict[Path, Path] = {}
+    for p in all_parcelas:
+        in_parcela_subdir = p.parent.name.endswith("_PARCELA")
+        muni_dir = p.parent.parent if in_parcela_subdir else p.parent
+        if muni_dir not in deduped or in_parcela_subdir:
+            deduped[muni_dir] = p
+
+    selected = sorted(deduped.values())
+    for p in selected:
+        log.debug(f"  [Catastro] → {p.relative_to(PROJECT_ROOT)}")
+
     return selected
 
 
 def _warn_archives(log: logging.Logger) -> list[Path]:
     """Detecta archivos comprimidos en data/raw/ e imprime instrucciones."""
-    catastro_dir = DATA_RAW / "Catastro"
-    if catastro_dir.exists():
+    catastro_dir = _find_catastro_dir()
+    if catastro_dir is not None:
         _extract_catastro_archives(log)
 
     archives = (
@@ -481,10 +469,11 @@ def process_raster(
     target_transform,
     grid_w: int,
     grid_h: int,
+    aoi_box,
     log: logging.Logger,
 ) -> Path | None:
-    """Reproyecta y remuestrea un raster a la rejilla común. Devuelve la ruta de salida."""
-    out_path = DATA_RASTERS / spec.output_name
+    """Reproyecta, remuestrea y recorta un raster al AOI orientado. Devuelve la ruta de salida."""
+    out_path = DATA_RECORTE / spec.output_name
     resampling = Resampling.nearest if spec.categorical else Resampling.bilinear
 
     try:
@@ -508,6 +497,17 @@ def process_raster(
                     resampling=resampling,
                     dst_nodata=nodata,
                 )
+
+        # Aplicar máscara del polígono AOI orientado: píxeles fuera del corredor → nodata
+        if aoi_box is not None:
+            outside = rio_geometry_mask(
+                [shapely_mapping(aoi_box)],
+                out_shape=(grid_h, grid_w),
+                transform=target_transform,
+                invert=False,  # True donde la geometría está AUSENTE
+            )
+            for band_idx in range(n_bands):
+                dst_data[band_idx][outside] = nodata
 
         profile = {
             "driver": "GTiff",
@@ -823,10 +823,9 @@ def main() -> None:
     ]
 
     existing = [
-        subdir / spec.output_name
+        DATA_RECORTE / spec.output_name
         for spec in layers_to_run
-        for subdir in ([DATA_RASTERS] if spec.layer_type == "raster" else [DATA_RECORTE])
-        if (subdir / spec.output_name).exists()
+        if (DATA_RECORTE / spec.output_name).exists()
     ]
 
     if existing and not args.yes:
@@ -868,7 +867,7 @@ def main() -> None:
         if spec.layer_type == "raster":
             process_raster(
                 src_paths[0], spec, target_crs,
-                target_transform, grid_w, grid_h, log,
+                target_transform, grid_w, grid_h, aoi_box, log,
             )
         else:
             _, gdf = process_vector(src_paths, spec, target_crs, aoi_box, log)
