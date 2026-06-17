@@ -13,13 +13,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Datos GIS: no versionar capas pesadas ni rasters generados (sí versionar FUENTES.md y data/config)
-data/raw/*
-!data/raw/FUENTES.md
-!data/raw/.gitkeep
-!data/raw/openTopography/
-!data/raw/openTopography/**/
-!data/raw/openTopography/**/*.gitkeep
+# Datos GIS: no versionar capas pesadas ni rasters generados fuera de data/
 # Rasters / capas pesadas en cualquier ubicación
 *.tif
 *.tiff
@@ -37,6 +31,8 @@ data/raw/*
 !data/config/**
 # excepción: los datos procesados SÍ se versionan (rasters/capas generados incluidos)
 !data/processed/**
+# excepción: raw/ se versiona completo
+!data/raw/**
 
 # Notebooks: checkpoints
 .ipynb_checkpoints/
