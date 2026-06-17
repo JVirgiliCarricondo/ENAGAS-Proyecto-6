@@ -242,13 +242,15 @@ def _load_escenario(path: Path) -> dict:
         return yaml.safe_load(f)
 
 
+_PERP_BUFFER_M = 1000.0  # semiancho perpendicular del corredor, en metros
+
+
 def _build_aoi(cfg: dict):
     """Devuelve un polígono Shapely orientado alineado con la línea origen-destino.
 
-    Si escenario.yaml define un bounding box explícito, devuelve ese rectángulo
-    axis-aligned. Si no, devuelve el rectángulo girado obtenido como buffer de
-    1 km a cada lado con tapas planas (cap_style=2): los lados del rectángulo
-    son paralelos a la línea origen→destino y ésta queda perfectamente centrada.
+    El rectángulo tiene como largo la distancia origen→destino y 1 km a cada
+    lado perpendicular. Los puntos origen y destino caen exactamente en el punto
+    medio del lado corto más próximo (cap_style=2 → tapas planas en los extremos).
     """
     aoi = cfg.get("aoi", {})
     if aoi and all(aoi.get(k, 0) != 0 for k in ("xmin", "ymin", "xmax", "ymax")):
@@ -257,10 +259,7 @@ def _build_aoi(cfg: dict):
     ox, oy = cfg["origen"]["x"], cfg["origen"]["y"]
     dx, dy = cfg["destino"]["x"], cfg["destino"]["y"]
     line = LineString([(ox, oy), (dx, dy)])
-    # cap_style=2 → tapas planas: rectángulo girado alineado con la línea,
-    # 1 km a cada lado perpendicular. NO se llama a .bounds para no perder
-    # la orientación (ese era el bug anterior que convertía a axis-aligned box).
-    return line.buffer(1000, cap_style=2)
+    return line.buffer(_PERP_BUFFER_M, cap_style=2)
 
 
 def _common_transform(xmin: float, ymin: float, xmax: float, ymax: float,
@@ -768,8 +767,29 @@ def main() -> None:
         f"  Bounding box: xmin={xmin:.0f}  ymin={ymin:.0f}\n"
         f"                xmax={xmax:.0f}  ymax={ymax:.0f}\n"
         f"  Ancho (bbox): {(xmax-xmin)/1000:.1f} km  Alto (bbox): {(ymax-ymin)/1000:.1f} km\n"
-        f"  Semiancho perpendicular a la línea: 1.0 km"
+        f"  Semiancho perpendicular a la línea: {_PERP_BUFFER_M/1000:.1f} km\n"
+        f"  Largo = distancia origen→destino; puntos en el punto medio del lado corto"
     )
+
+    DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
+    aoi_path = DATA_PROCESSED / f"aoi_corredor_{args.escenario}.gpkg"
+    gpd.GeoDataFrame({"geometry": [aoi_box]}, crs=target_crs).to_file(aoi_path, driver="GPKG")
+    log.info(f"AOI guardado   : {aoi_path.relative_to(PROJECT_ROOT)}")
+
+    from shapely.geometry import Point as ShapelyPoint
+    pts_path = DATA_PROCESSED / f"puntos_{args.escenario}.gpkg"
+    gpd.GeoDataFrame(
+        {
+            "nombre": [cfg_s["origen"].get("nombre", "origen"), cfg_s["destino"].get("nombre", "destino")],
+            "rol":    ["origen", "destino"],
+            "geometry": [
+                ShapelyPoint(cfg_s["origen"]["x"], cfg_s["origen"]["y"]),
+                ShapelyPoint(cfg_s["destino"]["x"], cfg_s["destino"]["y"]),
+            ],
+        },
+        crs=target_crs,
+    ).to_file(pts_path, driver="GPKG")
+    log.info(f"Puntos guardados: {pts_path.relative_to(PROJECT_ROOT)}")
 
     target_transform, grid_w, grid_h = _common_transform(xmin, ymin, xmax, ymax, res_m)
     log.info(f"Rejilla común  : {grid_w} × {grid_h} celdas @ {res_m} m")

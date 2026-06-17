@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import io
 import logging
+import math
 import os
 import sys
 import tempfile
@@ -133,7 +134,7 @@ def _scenario_aoi(cfg_s: dict) -> tuple[float, float, float, float]:
     if aoi and all(aoi.get(k, 0) != 0 for k in ("xmin", "ymin", "xmax", "ymax")):
         return aoi["xmin"], aoi["ymin"], aoi["xmax"], aoi["ymax"]
     line = LineString([
-        (cfg_s["origen"]["x"],  cfg_s["origen"]["y"]),
+        (cfg_s["origen"]["x"], cfg_s["origen"]["y"]),
         (cfg_s["destino"]["x"], cfg_s["destino"]["y"]),
     ])
     return line.buffer(1000, cap_style=2).bounds

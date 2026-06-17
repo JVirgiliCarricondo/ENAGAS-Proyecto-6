@@ -9,13 +9,6 @@ resolucion_m: 30              # tamaño de celda de la rejilla común, en metros
 # ─── ESCENARIO A ────────────────────────────────────────────────────────────
 escenario_A:
 
-  # AOI: buffer de 1 km a cada lado de la línea A_inicial→A_final
-  aoi:
-    xmin: 738118
-    ymin: 4550067
-    xmax: 742433
-    ymax: 4562181
-
   origen:
     nombre: "A_inicial"
     x: 741453
@@ -28,13 +21,6 @@ escenario_A:
 
 # ─── ESCENARIO B ────────────────────────────────────────────────────────────
 escenario_B:
-
-  # AOI: buffer de 1 km a cada lado de la línea B_inicial→B_final
-  aoi:
-    xmin: 691257
-    ymin: 4595680
-    xmax: 694773
-    ymax: 4600913
 
   origen:
     nombre: "B_inicial"
