@@ -14,9 +14,7 @@ __pycache__/
 .ruff_cache/
 
 # Datos GIS: no versionar capas pesadas ni rasters generados (sí versionar FUENTES.md y data/config)
-data/raw/*
-!data/raw/FUENTES.md
-!data/raw/.gitkeep
+data/raw/
 # Rasters / capas pesadas en cualquier ubicación
 *.tif
 *.tiff
