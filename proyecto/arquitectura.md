@@ -63,7 +63,7 @@ Librerías: `rasterio` (raster, reproyección, remuestreo), `geopandas`/`shapely
 > **Regla de oro:** una capa no avanza al paso 2 si no comparte CRS y rejilla con las demás. La celda (i, j) debe representar el mismo trozo de terreno en todas las capas.
 
 ### 2. Superficies de coste (`src/superficie/`)
-Convierte cada capa alineada en un **coste por celda** (p.ej. pendiente → coste creciente; suelo urbano → coste alto; Red Natura 2000 → coste muy alto o celda prohibida; proximidad a cruces → coste). Combina las capas con un **vector de pesos** en una única superficie de coste. Cada **perfil de prioridad** (definido en `data/config/perfiles.yaml`) produce una superficie distinta.
+Convierte cada capa alineada en un **coste por celda** (p.ej. pendiente → coste creciente; suelo urbano → coste alto; Red Natura 2000 → **variable binaria** dentro/fuera, con su penalización fijada por el peso; proximidad a cruces → coste). Combina las capas con un **vector de pesos** en una única superficie de coste. Cada **perfil de prioridad** (definido en `data/config/perfiles.yaml`) produce una superficie distinta.
 
 > Diseño detallado de las funciones de coste por variable, umbrales y matriz de condicionantes en [`modelo_coste.md`](modelo_coste.md).
 

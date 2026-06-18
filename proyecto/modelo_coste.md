@@ -187,12 +187,20 @@ Ambas capas entran en la combinación (§8) con pesos separados: `w_uso_construc
 
 ### 5.2 Red Natura 2000
 
-| Situación | Coste | Justificación | Tratamiento |
+**Variable binaria.** Una celda está dentro de Red Natura o no lo está; la capa no
+grada la intensidad. La magnitud de la penalización la pone el **peso** de la capa
+en la combinación (§8), que es independiente del resto. Por eso el valor es 1
+(dentro) o 0 (fuera), sin escalones intermedios.
+
+| Situación | Valor | Justificación | Tratamiento |
 |---|---|---|---|
-| Fuera de zona protegida | 0.0 | Sin restricción | finito |
-| Zona de amortiguamiento | 0.5 | Requiere estudio de impacto | finito |
-| Dentro ZEC / ZEPA | 0.9 | Muy restrictivo, casi prohibitivo | finito |
-| Zona núcleo protegida | 1.0 | Prohibido (legal) | **barrera dura** (`inf`) |
+| Fuera de zona protegida | 0 | Sin restricción | finito |
+| Dentro de Red Natura (ZEPA / LIC / ZEC) | 1 | Zona a evitar; transitable con autorización | finito |
+
+> No hay barrera dura (`inf`) en esta capa: es transitable y su km se reporta como
+> métrica (hito 4). La *zona núcleo* legalmente intransitable no viene en los datos
+> (solo hay `TIPO` a nivel de espacio completo); si llegara, se modelaría como una
+> capa de barrera aparte, no como un valor de esta.
 
 ---
 
@@ -200,14 +208,33 @@ Ambas capas entran en la combinación (§8) con pesos separados: `w_uso_construc
 
 ### 6.1 Coste puntual por tipo
 
-| Tipo de cruce | Coste | Justificación |
+**Viario — OSM, columna `highway`** (el ferrocarril va en su propia columna `railway`):
+
+| Tipo de cruce (`highway`) | Coste | Justificación |
 |---|---|---|
-| Camino rural | 0.2 | Cruce simple, poco tráfico |
-| Carretera secundaria | 0.5 | Requiere corte o perforación horizontal |
-| Carretera nacional / autovía | 0.8 | Perforación horizontal obligatoria, cara |
-| Ferrocarril | 0.9 | ADIF, permisos especiales |
-| Río < 10 m | 0.5 | Cruce subfluvial sencillo |
-| Río > 10 m | 0.8 | Cruce subfluvial complejo |
+| Camino / pista / senda (`path`, `track`, `footway`) | 0.2 | Cruce simple, poco tráfico |
+| Vía de servicio / sin clasificar (`service`, `unclassified`) | 0.3 | Cruce sencillo |
+| Calle urbana (`residential`) | 0.4 | Tráfico local, algún permiso |
+| Carretera local (`tertiary`) | 0.5 | Requiere corte o perforación horizontal |
+| Carretera comarcal (`secondary`) | 0.6 | Perforación horizontal probable |
+| Carretera nacional (`primary`) | 0.7 | Perforación horizontal, cara |
+| Autovía / autopista (`trunk`, `motorway`) | 0.8 | Perforación horizontal obligatoria |
+| Ferrocarril (columna `railway`, p.ej. `rail`) | 0.9 | ADIF, permisos especiales |
+| Vía en obra (`construction`) | 0.4 | Estado temporal, no clase; ~`residential` (dictamen geógrafo-SIG) |
+| Cualquier `highway` no listado | 0.3 | Default prudente (~`unclassified`) |
+
+**Hidrografía — IGN, columnas `text` (nombre) y `length` (longitud en m).** El dato IGN no
+trae anchura de cauce, así que se usa nombre + longitud como proxy de entidad del río:
+
+| Criterio | Coste | Justificación |
+|---|---|---|
+| Sin nombre (`text` nulo/vacío) | 0.3 | Rambla / val estacional, cruce sencillo |
+| Con nombre y `length` ≤ 2000 m | 0.5 | Río menor, cruce subfluvial sencillo |
+| Con nombre y `length` > 2000 m | 0.8 | Río principal, cruce subfluvial complejo |
+
+> **Fusión de las dos fuentes** en `cruces_{s}.tif`: **máximo por celda** (gana el cruce más
+> restrictivo). Líneas rasterizadas finas (`all_touched=True`, sin buffer). Rango [0.0, 0.9],
+> fondo 0.0. Implementado en `src/superficie/cruces_viario_rios.py`.
 
 ### 6.2 Cómo entra un cruce en la superficie de coste
 
@@ -329,7 +356,7 @@ de resolverlo. La superficie de coste de §8 se convierte en un **grafo de la re
 |---|---|
 | Pendiente (§4.1) | **Curva por tramos** (no lineal), con saturación; cortes 5°/15° calibrables. |
 | Barrera de pendiente (§4.1) | **30°**: por encima, celda intransitable (`inf`). |
-| Barreras duras (§5) | Solo **núcleo Red Natura** (prohibición legal) y **pendiente >30°**. Urbano consolidado = **coste 1.0 finito**, NO barrera (evita infactibilidad si origen/destino están cerca de zona urbana). |
+| Barreras duras (§5) | Única barrera dura implementada: **pendiente >30°**. Red Natura es **variable binaria transitable** (§5.2), NO barrera. Urbano consolidado = **coste 1.0 finito**, NO barrera (evita infactibilidad si origen/destino están cerca de zona urbana). La *zona núcleo* Red Natura sería barrera, pero no viene en los datos; se modelaría como capa aparte. |
 | Cruces (§6.2) | **Rasterización fina** (1 celda, `all_touched`) como coste de superficie **+ conteo en métricas**. |
 | Uso del suelo (§5.1) | **Dos capas separadas**: constructabilidad (CLC/SIOSE) + expropiación (Catastro), con pesos propios. |
 | Doble conteo urbano | En el MVP no hay: lo urbano lo lleva solo Catastro (`uso_expropiacion`); la proximidad a población es *reach*. A revisar si entra seguridad. |

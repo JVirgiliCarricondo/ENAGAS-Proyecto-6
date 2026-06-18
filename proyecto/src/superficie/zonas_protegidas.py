@@ -1,38 +1,44 @@
 """
 Script 06 - Capa de coste P4: zonas protegidas (Red Natura 2000).
 
-Convierte natura2000_aoi_{s}.gpkg en un raster de coste relativo [0, 1]
-alineado a la rejilla del DEM del AOI. Modelo de coste en modelo_coste.md (5.2)
-y resumen del reto en CLAUDE.md.
+Convierte natura2000_aoi_{s}.gpkg en un raster BINARIO {0, 1} alineado a la
+rejilla del DEM del AOI. Modelo de coste en modelo_coste.md (5.2) y resumen del
+reto en CLAUDE.md.
+
+La proteccion es una variable binaria: una celda esta dentro de Red Natura
+o no lo esta. La capa NO grada la intensidad de la penalizacion; eso lo hace
+el PESO de la capa en la combinacion multicriterio (§8), que es independiente
+del resto de capas. Por eso aqui el valor es 1 (dentro) o 0 (fuera), nada
+intermedio.
 
 Patron comun de las capas de coste (hito 2):
   Paso 1 - Leer la rejilla de referencia: copiar SIEMPRE transform/width/height/
            CRS del DEM (dem_aoi_{s}.tif). Nunca calcular la rejilla a mano: asi
            es imposible que las capas queden desalineadas.
-  Paso 2 - Asignar coste por atributo: columna 'cost' segun la tabla TIPO.
+  Paso 2 - Asignar el valor binario por atributo: columna 'cost' = 1 si la
+           geometria es Red Natura (cualquier TIPO).
   Paso 3 - Rasterizar sobre la rejilla. Poligonos -> all_touched=False.
-  Paso 4 - Rellenar fondo: celdas fuera de poligono = valor de fondo (0.0).
+  Paso 4 - Rellenar fondo: celdas fuera de poligono = 0 (sin proteccion).
   Paso 5 - Guardar con el mismo profile que el DEM (GTiff, float32,
            nodata=-9999.0, compress=lzw).
 
-Tabla de coste (modelo_coste.md 5.2 / 5.4):
+Tabla de valores (binaria, modelo_coste.md 5.2):
 
-  TIPO  Significado                       Coste  Tratamiento
-  A     ZEPA                              0.9    coste alto finito
-  B     LIC / ZEC                         0.9    coste alto finito
-  C     ZEPA + LIC                        0.9    coste alto finito
-  --    fuera de poligono (sin proteccion) 0.0   fondo
+  Situacion                          Valor
+  Dentro de Red Natura (ZEPA/LIC/ZEC)  1
+  Fuera de poligono (sin proteccion)   0
 
-Nota: modelo_coste.md define barrera dura (inf) solo para 'zona nucleo
-protegida'. Esta capa NO contiene ese campo, asi que todo el interior del
-poligono es coste alto finito (0.9), no barrera. Las columnas site_code,
-SITE_NAME, AC y HECTAREAS no intervienen en el coste (se reservan para las
-metricas del hito 4: nombre del espacio afectado).
+Nota: la capa es transitable (valor finito). No hay barrera dura (inf): la
+'zona nucleo protegida' que seria intransitable no viene en estos datos (solo
+hay TIPO a nivel de espacio completo) y se trataria, si llegara, como una capa
+de barrera aparte. Las columnas site_code, SITE_NAME, AC y HECTAREAS no
+intervienen en el valor (se reservan para las metricas del hito 4: nombre del
+espacio afectado).
 
 Salida: data/processed/Capas_Coste/protegida_{s}.tif  (uno por escenario).
 
 Uso:
-  python scripts/06_protegida.py
+  python src/superficie/zonas_protegidas.py
 """
 
 from pathlib import Path
@@ -43,7 +49,7 @@ import rasterio
 from rasterio.features import rasterize
 
 
-BASE = Path(__file__).resolve().parents[1] / "data" / "processed"
+BASE = Path(__file__).resolve().parents[2] / "data" / "processed"
 ENTRADA_DIR = BASE / "Recorte_AOI"
 SALIDA_DIR = BASE / "Capas_Coste"
 
@@ -51,21 +57,12 @@ ESCENARIOS = ["A", "B"]
 
 CRS_TRABAJO = "EPSG:25830"
 NODATA = -9999.0
-COSTE_FONDO = 0.0
 
-# Lookup fijo por categoria (modelo_coste.md 5.2). Tabla, no data-driven.
-COSTE_POR_TIPO = {
-    "A": 0.9,  # ZEPA
-    "B": 0.9,  # LIC / ZEC
-    "C": 0.9,  # ZEPA + LIC
-}
-COSTE_PROTEGIDA_DEFECTO = 0.9  # cualquier TIPO designado no previsto
-
-
-def coste_por_tipo(tipo) -> float:
-    """Devuelve el coste relativo de un poligono Red Natura segun su TIPO."""
-    clave = str(tipo).strip().upper()
-    return COSTE_POR_TIPO.get(clave, COSTE_PROTEGIDA_DEFECTO)
+# Variable binaria: dentro de Red Natura = 1, fuera = 0. La magnitud de la
+# penalizacion la decide el peso de la capa en la combinacion (§8), no este
+# valor. Por eso TODO TIPO designado (ZEPA/LIC/ZEC) vale 1, sin gradacion.
+VALOR_PROTEGIDA = 1.0
+VALOR_FONDO = 0.0
 
 
 def procesar_escenario(s: str) -> None:
@@ -93,25 +90,22 @@ def procesar_escenario(s: str) -> None:
 
     # --- Paso 3 + 4: rasterizar poligonos (all_touched=False) y rellenar fondo ---
     if natura.empty:
-        # Sin poligono protegido en el AOI: toda la rejilla es fondo (0.0).
-        cost_array = np.full((height, width), COSTE_FONDO, dtype="float32")
+        # Sin poligono protegido en el AOI: toda la rejilla es fondo (0).
+        cost_array = np.full((height, width), VALOR_FONDO, dtype="float32")
         n_poligonos = 0
     else:
-        natura["cost"] = natura["TIPO"].map(coste_por_tipo)
+        # Variable binaria: cualquier geometria Red Natura -> 1, sin gradacion.
+        natura["cost"] = VALOR_PROTEGIDA
         shapes = list(zip(natura.geometry, natura["cost"]))
         cost_array = rasterize(
             shapes,
             out_shape=(height, width),
             transform=transform,
-            fill=COSTE_FONDO,  # Paso 4: fondo = sin proteccion
+            fill=VALOR_FONDO,  # Paso 4: fondo = sin proteccion
             all_touched=False,  # poligonos: solo celdas cuyo centro cae dentro
             dtype="float32",
         )
         n_poligonos = len(natura)
-
-    # Esta capa no tiene barreras duras (inf); la linea se deja por consistencia
-    # con el esquema comun de las capas de coste.
-    cost_array[np.isinf(cost_array)] = NODATA
 
     # --- Paso 5: guardar con el mismo profile que el DEM ---
     SALIDA_DIR.mkdir(parents=True, exist_ok=True)
