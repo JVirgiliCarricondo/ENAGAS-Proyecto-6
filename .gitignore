@@ -45,3 +45,8 @@ proyecto/data/raw/*
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Sidecar de estadisticas GDAL/QGIS y locks temporales de Office (regenerables).
+# Va despues de la excepcion de processed/ para que tambien se ignoren ahi.
+*.aux.xml
+~$*

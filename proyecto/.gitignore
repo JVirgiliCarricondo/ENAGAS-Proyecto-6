@@ -32,6 +32,9 @@ data/raw/
 !data/config/**
 # excepción: los datos procesados SÍ se versionan (rasters/capas generados incluidos)
 !data/processed/**
+# ...pero NO los sidecar de estadísticas GDAL/QGIS ni locks temporales (regenerables)
+*.aux.xml
+~$*
 
 # Notebooks: checkpoints
 .ipynb_checkpoints/
