@@ -38,12 +38,12 @@ def cargar_coste_pendiente(
     corredor: str,
     ruta_capas: str | Path = "data/processed/Capas_Coste",
 ) -> np.ndarray:
-    """Carga la capa P1 pre-rasterizada (scripts/01_pendiente_opcion_B.py)."""
+    """Carga la capa P1 pre-rasterizada (src/superficie/pendiente.py)."""
     ruta_capa = Path(ruta_capas) / f"pendiente_{corredor}.tif"
     if not ruta_capa.exists():
         raise FileNotFoundError(
             f"Capa de pendiente no encontrada: {ruta_capa}\n"
-            "Ejecuta primero: python scripts/01_pendiente_opcion_B.py"
+            "Ejecuta primero: python src/superficie/pendiente.py"
         )
     data, _ = _cargar_raster_coste(ruta_capa)
     return data
@@ -53,12 +53,12 @@ def cargar_coste_protegida(
     corredor: str,
     ruta_capas: str | Path = "data/processed/Capas_Coste",
 ) -> np.ndarray:
-    """Carga la capa P4 pre-rasterizada (scripts/06_protegida.py)."""
+    """Carga la capa P4 pre-rasterizada (src/superficie/zonas_protegidas.py)."""
     ruta_capa = Path(ruta_capas) / f"protegida_{corredor}.tif"
     if not ruta_capa.exists():
         raise FileNotFoundError(
             f"Capa protegida no encontrada: {ruta_capa}\n"
-            "Ejecuta primero: python scripts/06_protegida.py"
+            "Ejecuta primero: python src/superficie/zonas_protegidas.py"
         )
     data, _ = _cargar_raster_coste(ruta_capa)
     return data
