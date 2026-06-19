@@ -45,3 +45,6 @@ proyecto/data/raw/*
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Estadísticas GDAL/QGIS (caché derivado, se regenera automáticamente)
+*.aux.xml
