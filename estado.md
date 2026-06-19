@@ -14,7 +14,7 @@
 
 **Sprint 4 (22–26 jun): Motor LCP → MVP 2-3.** Con los datos alineados y las superficies de coste listas, implementar el **camino de mínimo coste** (A\*) origen→destino: una ruta válida por perfil, con su geometría y coste asociado. Es el primer resultado tangible que se podrá enseñar sobre mapa.
 
-> **Revisión intermedia con Enagás (22 jun):** presentación ejecutiva en [`proyecto/presentacion.html`](proyecto/presentacion.html). Puntos abiertos para validación con el cliente: **coste por atributo de cada capa** y **pesos por capa** (perfiles de prioridad).
+> **Revisión intermedia con Enagás (22 jun):** presentación ejecutiva en [`proyecto/presentacion-intermedia-2026-06-22.html`](proyecto/presentacion-intermedia-2026-06-22.html). Puntos abiertos para validación con el cliente: **coste por atributo de cada capa** y **pesos por capa** (perfiles de prioridad).
 
 > El avance se sigue por dos ejes: los **sprints semanales** ([`coordinacion/plan_proyecto.md`](coordinacion/plan_proyecto.md)) y la **escalera de 8 hitos MVP** de Enagás ([`docs/hitos_mvp.md`](docs/hitos_mvp.md)). Núcleo comprometido del verano: **MVP 1-4**.
 
