@@ -46,7 +46,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import rasterio
-from rasterio.features import rasterize
+from rasterio.features import geometry_mask, rasterize
 
 
 BASE = Path(__file__).resolve().parents[2] / "data" / "processed"
@@ -69,11 +69,14 @@ def procesar_escenario(s: str) -> None:
     """Genera protegida_{s}.tif a partir de natura2000_aoi_{s}.gpkg."""
     dem_path = ENTRADA_DIR / f"dem_aoi_{s}.tif"
     natura_path = ENTRADA_DIR / f"natura2000_aoi_{s}.gpkg"
+    aoi_path = BASE / f"aoi_corredor_{s}.gpkg"
 
     if not dem_path.exists():
         raise FileNotFoundError(f"No existe el DEM de referencia: {dem_path}")
     if not natura_path.exists():
         raise FileNotFoundError(f"No existe la capa Red Natura: {natura_path}")
+    if not aoi_path.exists():
+        raise FileNotFoundError(f"No existe el AOI corredor: {aoi_path}")
 
     # --- Paso 1: rejilla de referencia (copiada del DEM, nunca recalculada) ---
     with rasterio.open(dem_path) as ref:
@@ -107,6 +110,22 @@ def procesar_escenario(s: str) -> None:
         )
         n_poligonos = len(natura)
 
+    # --- Paso 4b: recortar al AOI corredor. El raster solo es valido dentro del
+    # corredor (mismo poligono que aoi_corredor_{s}.gpkg). Fuera del AOI no hay
+    # transito posible: esas celdas son nodata, no fondo 0. Asi la capa tiene la
+    # forma del corredor y no el rectangulo completo del bounding box del DEM. ---
+    aoi = gpd.read_file(aoi_path)
+    if aoi.crs is None:
+        raise ValueError(f"El AOI corredor no tiene CRS definido: {aoi_path}")
+    aoi = aoi.to_crs(CRS_TRABAJO)
+    dentro_aoi = geometry_mask(
+        aoi.geometry,
+        out_shape=(height, width),
+        transform=transform,
+        invert=True,  # True = celda dentro del corredor
+    )
+    cost_array = np.where(dentro_aoi, cost_array, NODATA).astype("float32")
+
     # --- Paso 5: guardar con el mismo profile que el DEM ---
     SALIDA_DIR.mkdir(parents=True, exist_ok=True)
     profile.update(
@@ -121,12 +140,13 @@ def procesar_escenario(s: str) -> None:
         dst.write(cost_array.astype(np.float32), 1)
 
     celdas_protegidas = int(np.count_nonzero(cost_array > 0))
-    total = cost_array.size
+    celdas_aoi = int(np.count_nonzero(dentro_aoi))
     print(
         f"[{s}] {salida.name}: {width}x{height} celdas | "
         f"{n_poligonos} poligono(s) Red Natura | "
-        f"{celdas_protegidas}/{total} celdas protegidas "
-        f"({100 * celdas_protegidas / total:.1f}%)"
+        f"{celdas_aoi} celdas dentro del AOI | "
+        f"{celdas_protegidas}/{celdas_aoi} celdas protegidas "
+        f"({100 * celdas_protegidas / celdas_aoi:.1f}%)"
     )
 
 
