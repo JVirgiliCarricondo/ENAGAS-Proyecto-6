@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reto 6 · Enagás — Revisión intermedia · Grupo 6</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f8fc;
+    --bg-2:#eef2f9;
+    --panel:#ffffff;
+    --panel-2:#eef3fb;
+    --border:#dde4f1;
+    --border-2:#c6d2e6;
+    --txt:#102a57;
+    --txt-dim:#41527a;
+    --txt-faint:#7886a4;
+    --accent:#1f5fd6;
+    --accent-2:#5a3fd0;
+    --green:#0f9c63;
+    --amber:#b3820a;
+    --red:#d23d57;
+    --cyan:#0b91bd;
+    --grad:linear-gradient(120deg,#1f5fd6 0%,#5a3fd0 55%,#0b91bd 100%);
+    --radius:18px;
+    --font:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --font-title:'Lora','Poppins',Georgia,'Times New Roman',serif;
+    --mono:'SF Mono','JetBrains Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--txt);
+    font-family:var(--font);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ambient background */
+  .bg-orbs{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+  .orb{position:absolute;border-radius:50%;filter:blur(130px);opacity:.30}
+  .orb.a{width:560px;height:560px;background:#a7c4ff;top:-180px;left:-140px}
+  .orb.b{width:500px;height:500px;background:#c3b3ff;bottom:-200px;right:-140px}
+  .orb.c{width:380px;height:380px;background:#a6e6f4;top:40%;right:16%;opacity:.24}
+  .grid-overlay{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:linear-gradient(var(--border-2) 1px,transparent 1px),linear-gradient(90deg,var(--border-2) 1px,transparent 1px);
+    background-size:46px 46px;opacity:.5;
+    mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 30%,transparent 75%);
+    -webkit-mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 30%,transparent 75%);
+  }
+
+  /* deck */
+  .deck{position:relative;z-index:1;height:100vh;width:100vw}
+  .slide{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;justify-content:center;
+    padding:5.2vh 6.4vw;
+    opacity:0;visibility:hidden;
+    transform:translateY(22px) scale(.992);
+    transition:opacity .55s cubic-bezier(.22,.61,.36,1),transform .55s cubic-bezier(.22,.61,.36,1),visibility .55s;
+    overflow:hidden;
+  }
+  .slide.active{opacity:1;visibility:visible;transform:none}
+  .slide.prev{transform:translateY(-22px) scale(.992)}
+
+  /* shared atoms */
+  .kicker{
+    display:inline-flex;align-items:center;gap:.55em;
+    font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--txt-dim);margin-bottom:1.4rem;
+  }
+  .kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--grad)}
+  .kicker .num{font-family:var(--mono);color:var(--accent)}
+  h1{font-family:var(--font-title);font-size:clamp(2.2rem,5.4vw,4.3rem);font-weight:700;line-height:1.07;letter-spacing:-.015em}
+  h2{font-family:var(--font-title);font-size:clamp(1.7rem,3.4vw,2.7rem);font-weight:600;line-height:1.13;letter-spacing:-.01em;margin-bottom:.4rem}
+  .card h3,.rcard h4,.mchip .mt,.drow .what{font-family:var(--font-title);font-weight:600}
+  .lead{font-size:clamp(1rem,1.5vw,1.22rem);color:var(--txt-dim);line-height:1.55;max-width:54ch;font-weight:350}
+  .grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .slide-head{margin-bottom:1.9rem;max-width:60ch}
+  .slide-head .lead{margin-top:.6rem}
+
+  /* cards */
+  .card{
+    background:linear-gradient(160deg,var(--panel) 0%,var(--bg-2) 130%);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:1.5rem 1.6rem;
+    position:relative;overflow:hidden;
+  }
+  .card.glow::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+    background:var(--grad);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask-composite:exclude;opacity:.5}
+  .card h3{font-size:1.06rem;font-weight:680;margin-bottom:.5rem;letter-spacing:-.01em}
+  .card p{font-size:.92rem;color:var(--txt-dim);line-height:1.5}
+  .card .ico{font-size:1.5rem;margin-bottom:.7rem;display:block}
+
+  .grid{display:grid;gap:1.1rem}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+
+  .pill{display:inline-flex;align-items:center;gap:.45em;font-size:.74rem;font-weight:600;
+    padding:.32em .8em;border-radius:999px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--txt-dim)}
+  .pill .d{width:7px;height:7px;border-radius:50%}
+  .d.green{background:var(--green)}.d.amber{background:var(--amber)}.d.red{background:var(--red)}.d.blue{background:var(--accent)}.d.grey{background:var(--txt-faint)}
+  .tag-green{color:var(--green);border-color:rgba(15,156,99,.32);background:rgba(15,156,99,.10)}
+  .tag-amber{color:var(--amber);border-color:rgba(179,130,10,.32);background:rgba(179,130,10,.10)}
+  .tag-blue{color:var(--accent);border-color:rgba(31,95,214,.32);background:rgba(31,95,214,.09)}
+  .tag-grey{color:var(--txt-faint);border-color:var(--border-2);background:var(--panel-2)}
+
+  /* institutional logos */
+  .logo-bar{position:absolute;top:4.6vh;left:6.4vw;right:6.4vw;display:flex;align-items:center;gap:.9rem;z-index:5}
+  .logo-bar.right{justify-content:flex-end}
+  .logo-chip{background:#fff;border:1px solid var(--border);border-radius:11px;padding:.5rem .85rem;display:grid;place-items:center;
+    box-shadow:0 6px 18px rgba(16,42,87,.08);height:54px}
+  .logo-chip svg{display:block;height:38px;width:auto}
+  .logo-x{color:var(--txt-faint);font-size:1.1rem;font-weight:300}
+
+  /* cover */
+  #cover{justify-content:center;align-items:center;text-align:center}
+  .cover-hero{display:flex;flex-direction:column;align-items:center;max-width:64ch}
+  .logo-mark{width:52px;height:52px;border-radius:15px;background:var(--grad);display:grid;place-items:center;
+    box-shadow:0 10px 30px rgba(31,95,214,.30);font-weight:800;font-size:1.35rem;color:#fff;margin-bottom:1.8rem}
+  #cover h1{width:min(100%,22ch);text-align:justify;text-align-last:center}
+  .cover-sub{margin:1.5rem auto 0;font-size:clamp(1.05rem,1.8vw,1.4rem);color:var(--txt-dim);font-weight:400;max-width:52ch;line-height:1.5}
+  .cover-meta{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:2.6rem;justify-content:center}
+  .cover-foot{position:absolute;left:6.4vw;right:6.4vw;bottom:4.4vh;display:flex;justify-content:space-between;
+    align-items:flex-end;color:var(--txt-faint);font-size:.82rem;text-align:left}
+  .cover-foot .r{text-align:right}
+  .cover-tag{display:inline-flex;align-items:center;gap:.5rem;background:var(--grad);color:#fff;font-weight:700;
+    font-size:.92rem;letter-spacing:.01em;padding:.55rem 1.1rem;border-radius:13px;
+    box-shadow:0 10px 30px rgba(31,95,214,.30);margin-bottom:1.8rem}
+  .cover-tag .h2sub{font-size:.78rem;opacity:.85;font-weight:500}
+  .h2-mol{color:var(--cyan)}
+
+  /* timeline */
+  .timeline{position:relative;padding-left:0}
+  .tl-track{position:absolute;left:0;right:0;top:26px;height:2px;background:var(--border-2)}
+  .tl-track .fill{position:absolute;left:0;top:0;bottom:0;width:56%;background:var(--grad);border-radius:2px}
+  .tl-row{display:grid;grid-template-columns:repeat(8,1fr);gap:.6rem;position:relative}
+  .tl-item{text-align:center;position:relative;padding-top:46px}
+  .tl-node{position:absolute;top:18px;left:50%;transform:translateX(-50%);width:17px;height:17px;border-radius:50%;
+    background:var(--bg);border:2px solid var(--border-2);z-index:2}
+  .tl-item.done .tl-node{background:var(--green);border-color:var(--green);box-shadow:0 0 0 4px rgba(61,220,151,.16)}
+  .tl-item.now .tl-node{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 5px rgba(91,140,255,.22)}
+  .tl-item .lbl{font-family:var(--mono);font-size:.78rem;font-weight:700;color:var(--txt)}
+  .tl-item .dt{font-size:.68rem;color:var(--txt-faint);margin-top:.15rem}
+  .tl-item .dsc{font-size:.72rem;color:var(--txt-dim);margin-top:.4rem;line-height:1.35}
+  .tl-item.now .lbl{color:var(--accent)}
+
+  /* progress bars */
+  .prog-row{display:flex;align-items:center;gap:1rem;padding:.85rem 0;border-bottom:1px solid var(--border)}
+  .prog-row:last-child{border-bottom:none}
+  .prog-row .name{flex:0 0 31%;font-weight:600;font-size:.96rem}
+  .prog-row .name small{display:block;color:var(--txt-faint);font-weight:400;font-size:.75rem;margin-top:.12rem}
+  .prog-bar{flex:1;height:9px;border-radius:6px;background:var(--panel-2);overflow:hidden;position:relative}
+  .prog-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;display:block}
+  .prog-row .pct{flex:0 0 92px;text-align:right;font-family:var(--mono);font-size:.82rem;color:var(--txt-dim)}
+  .fill-green{background:linear-gradient(90deg,#2bb673,#3ddc97)}
+  .fill-amber{background:linear-gradient(90deg,#e0a93f,#ffcb6b)}
+  .fill-blue{background:linear-gradient(90deg,#4068d6,#5b8cff)}
+  .fill-grey{background:var(--border-2)}
+
+  /* decision list */
+  .dlist{display:flex;flex-direction:column;gap:.85rem}
+  .drow{display:grid;grid-template-columns:1.1fr 1.4fr;gap:1.2rem;align-items:start;
+    padding:1rem 1.2rem;background:var(--panel);border:1px solid var(--border);border-radius:14px}
+  .drow .what{font-weight:650;font-size:.98rem}
+  .drow .what .sub{display:block;color:var(--txt-faint);font-size:.78rem;font-weight:400;margin-top:.25rem;font-family:var(--mono)}
+  .drow .why{font-size:.86rem;color:var(--txt-dim);line-height:1.45}
+
+  /* validation items */
+  .vitem{display:flex;gap:1rem;padding:1rem 1.15rem;background:var(--panel);border:1px solid var(--border);
+    border-left:3px solid var(--accent);border-radius:12px}
+  .vitem .qn{font-family:var(--mono);font-size:.82rem;color:var(--accent);font-weight:700;flex:0 0 auto;padding-top:.1rem}
+  .vitem .b strong{display:block;font-size:.96rem;font-weight:650;margin-bottom:.25rem}
+  .vitem .b p{font-size:.84rem;color:var(--txt-dim);line-height:1.45}
+  .vitem.amber{border-left-color:var(--amber)}.vitem.amber .qn{color:var(--amber)}
+  .vitem.cyan{border-left-color:var(--cyan)}.vitem.cyan .qn{color:var(--cyan)}
+
+  /* metric chips */
+  .mchips{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem}
+  .mchip{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:.95rem 1rem}
+  .mchip .mt{font-weight:650;font-size:.94rem;display:flex;align-items:center;gap:.5rem}
+  .mchip .ms{font-size:.78rem;color:var(--txt-faint);margin-top:.3rem;line-height:1.4}
+  .mchip .ico-sq{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:.85rem;background:var(--panel-2)}
+
+  /* roadmap */
+  .road{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+  .rcard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:1.2rem 1.15rem;position:relative;overflow:hidden}
+  .rcard::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--border-2)}
+  .rcard.r1::before{background:var(--accent)}.rcard.r2::before{background:var(--accent-2)}
+  .rcard.r3::before{background:var(--cyan)}.rcard.r4::before{background:var(--green)}
+  .rcard .sp{font-family:var(--mono);font-size:.74rem;color:var(--txt-faint);font-weight:700}
+  .rcard h4{font-size:1.02rem;font-weight:700;margin:.35rem 0 .2rem}
+  .rcard .when{font-size:.74rem;color:var(--txt-dim);margin-bottom:.7rem}
+  .rcard ul{list-style:none;display:flex;flex-direction:column;gap:.4rem}
+  .rcard li{font-size:.8rem;color:var(--txt-dim);line-height:1.35;padding-left:1rem;position:relative}
+  .rcard li::before{content:"";position:absolute;left:0;top:.5em;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+  .rcard.r2 li::before{background:var(--accent-2)}.rcard.r3 li::before{background:var(--cyan)}.rcard.r4 li::before{background:var(--green)}
+
+  /* exec summary blocks */
+  .exec-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:1.4rem;align-items:stretch}
+  .exec-status{background:linear-gradient(155deg,rgba(91,140,255,.10),rgba(124,92,255,.04));border:1px solid var(--border-2);
+    border-radius:var(--radius);padding:1.25rem 1.5rem;display:flex;flex-direction:column;justify-content:center}
+  .exec-status .big{font-size:2.2rem;font-weight:820;letter-spacing:-.03em;line-height:1}
+  .exec-status .big small{font-size:.95rem;color:var(--txt-dim);font-weight:500;letter-spacing:0}
+  .exec-status .meta{display:flex;gap:1.4rem;margin-top:1rem}
+  .exec-status .meta .it .v{font-size:1.4rem;font-weight:750;font-family:var(--mono)}
+  .exec-status .meta .it .k{font-size:.7rem;color:var(--txt-faint);text-transform:uppercase;letter-spacing:.08em;margin-top:.2rem}
+  .exec-col{display:flex;flex-direction:column;gap:.7rem}
+  .exec-line{display:flex;align-items:center;gap:.8rem;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:.7rem 1rem}
+  .exec-line .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;font-size:.95rem}
+  .exec-line .tx{font-size:.9rem;line-height:1.35}
+  .exec-line .tx b{font-weight:650}
+  .exec-line .tx span{color:var(--txt-dim)}
+
+  /* misc helpers */
+  .note{font-size:.82rem;color:var(--txt-faint);margin-top:1.3rem;display:flex;align-items:center;gap:.5rem}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:center}
+  .bullets{list-style:none;display:flex;flex-direction:column;gap:.95rem}
+  .bullets li{display:flex;gap:.8rem;font-size:.98rem;line-height:1.45;color:var(--txt-dim)}
+  .bullets li b{color:var(--txt);font-weight:600}
+  .bullets .bi{flex:0 0 auto;width:24px;height:24px;border-radius:7px;background:var(--panel-2);display:grid;place-items:center;font-size:.8rem;margin-top:.05rem}
+
+  /* data table */
+  .dtable{width:100%;border-collapse:collapse;font-size:.88rem}
+  .dtable th{text-align:left;padding:.7rem 1.1rem;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--txt-faint);font-weight:700;border-bottom:1px solid var(--border-2);background:var(--panel-2)}
+  .dtable td{padding:.6rem 1.1rem;border-bottom:1px solid var(--border);color:var(--txt-dim);vertical-align:middle}
+  .dtable tr:last-child td{border-bottom:none}
+  .dtable td.cap{color:var(--txt);font-weight:600;font-family:var(--font-title)}
+  .dtable .src{color:var(--accent);font-weight:600}
+  a.src{text-decoration:none;border-bottom:1px dashed rgba(31,95,214,.45);transition:.15s;cursor:pointer}
+  a.src::after{content:"↗";font-size:.72em;margin-left:.25em;opacity:.7}
+  a.src:hover{color:var(--accent-2);border-bottom-color:var(--accent-2)}
+  .amb{font-size:.7rem;font-weight:600;padding:.12em .55em;border-radius:6px;white-space:nowrap}
+  .amb-nac{color:var(--accent-2);background:rgba(90,63,208,.10)}
+  .amb-zona{color:var(--cyan);background:rgba(11,145,189,.10)}
+
+  /* mini cost tables */
+  .minigrid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+  .mini{background:var(--panel-2);border:1px solid var(--border);border-radius:11px;padding:.6rem .75rem}
+  .mini h5{font-family:var(--font-title);font-size:.84rem;font-weight:600;color:var(--txt);margin-bottom:.35rem;
+    display:flex;align-items:center;gap:.4rem}
+  .mini h5 small{font-family:var(--font);font-weight:400;color:var(--txt-faint);font-size:.7rem}
+  .mini table{width:100%;border-collapse:collapse;font-size:.74rem}
+  .mini td{padding:.18rem 0;color:var(--txt-dim);border-top:1px solid var(--border)}
+  .mini tr:first-child td{border-top:none}
+  .mini td.c{text-align:right;font-family:var(--mono);color:var(--txt);white-space:nowrap;padding-left:.4rem}
+
+  /* architecture svg wrap */
+  .arch-wrap{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:1.6rem;overflow:hidden}
+  .arch-legend{display:flex;gap:1.4rem;flex-wrap:wrap;margin-top:1.1rem;font-size:.78rem;color:var(--txt-dim)}
+  .arch-legend span{display:inline-flex;align-items:center;gap:.45em}
+  .arch-legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  /* progress UI */
+  .topbar{position:fixed;top:0;left:0;right:0;height:3px;background:transparent;z-index:30}
+  .topbar i{display:block;height:100%;width:0;background:var(--grad);transition:width .5s cubic-bezier(.22,.61,.36,1);box-shadow:0 0 12px rgba(91,140,255,.6)}
+  .hud{position:fixed;bottom:1.5vh;right:2vw;z-index:30;display:flex;align-items:center;gap:1rem;
+    font-family:var(--mono);font-size:.78rem;color:var(--txt-faint)}
+  .dots{display:flex;gap:7px}
+  .dots b{width:8px;height:8px;border-radius:50%;background:var(--border-2);cursor:pointer;transition:.3s;border:none;padding:0}
+  .dots b.on{background:var(--grad);transform:scale(1.3)}
+  .hud .ctrls{display:flex;gap:.4rem}
+  .hud button.nav{background:var(--panel);border:1px solid var(--border-2);color:var(--txt-dim);width:30px;height:30px;
+    border-radius:9px;cursor:pointer;font-size:.9rem;display:grid;place-items:center;transition:.2s}
+  .hud button.nav:hover{background:var(--panel-2);color:var(--txt);border-color:var(--accent)}
+  .hud .count{min-width:46px;text-align:center}
+  .hint{position:fixed;bottom:1.7vh;left:2vw;z-index:30;font-size:.74rem;color:var(--txt-faint);font-family:var(--mono);
+    opacity:.7;transition:opacity .4s}
+  .hint.hide{opacity:0}
+  kbd{font-family:var(--mono);background:var(--panel-2);border:1px solid var(--border-2);border-bottom-width:2px;
+    border-radius:5px;padding:.05em .4em;font-size:.72rem;color:var(--txt-dim)}
+
+  @media (max-width:880px){
+    .slide{padding:6vh 7vw}
+    .g3,.g4,.road,.tl-row,.mchips{grid-template-columns:1fr 1fr}
+    .exec-grid,.two-col,.drow{grid-template-columns:1fr}
+    .prog-row .name{flex-basis:42%}
+    .tl-track{display:none}.timeline .tl-row{display:flex;flex-direction:column;gap:1rem}
+    .tl-item{text-align:left;padding-top:0;padding-left:30px}.tl-node{left:6px;top:4px}
+    .hint{display:none}
+    #cover h1{text-align:center;text-align-last:center;width:100%}
+    .minigrid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="bg-orbs"><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div></div>
+<div class="grid-overlay"></div>
+<div class="topbar"><i id="topbar-fill"></i></div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 · COVER -->
+  <section class="slide" id="cover">
+    <div class="logo-bar">
+      <div class="logo-chip">
+        <svg viewBox="0 0 184 70" aria-label="CICLAB Investigación — Comillas ICAI">
+          <path d="M16 13 H7 V49 H16" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <path d="M168 13 H177 V49 H168" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <text x="92" y="37" text-anchor="middle" font-family="Poppins,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5" fill="#16357c">CIC<tspan fill="#2e74c4">LAB</tspan></text>
+          <text x="92" y="51" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9" font-weight="700" letter-spacing="3" fill="#16357c">INVESTIGACIÓN</text>
+          <text x="92" y="64" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9.5" font-weight="500" letter-spacing="2" fill="#2e74c4">COMILLAS ICAI</text>
+        </svg>
+      </div>
+      <span class="logo-x">×</span>
+      <div class="logo-chip">
+        <svg viewBox="0 0 168 60" aria-label="Enagás">
+          <text x="6" y="42" font-family="Poppins,sans-serif" font-size="34" font-weight="700" letter-spacing="-1" fill="#0098d8">enagás</text>
+          <circle cx="142" cy="30" r="19" fill="none" stroke="#0098d8" stroke-width="6.5"/>
+          <path d="M127 17.5 A19 19 0 0 1 157 17.5" fill="none" stroke="#aac90a" stroke-width="6.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="cover-hero">
+      <div class="cover-tag">Reto 6 de Enagás <span class="h2sub">· ramales de H₂</span></div>
+      <h1>Generación automatizada de <span class="grad-text">trazados de ramales de H₂</span></h1>
+      <p class="cover-sub">Prototipo geoespacial que propone <b style="color:var(--txt)">3–5 trazados alternativos diferenciados</b> entre planta y red troncal, comparados por criterios objetivos sobre GIS público.</p>
+      <div class="cover-meta">
+        <span class="pill">Grupo 6</span>
+        <span class="pill tag-green"><span class="d green"></span>Revisión intermedia</span>
+      </div>
+    </div>
+    <div class="cover-foot">
+      <div>
+        <div style="color:var(--txt-dim);font-weight:600">Revisión intermedia de proyecto</div>
+        <div>Sprint 4 de 7 · Núcleo comprometido MVP 1–4</div>
+      </div>
+      <div class="r">
+        <div style="color:var(--txt-dim);font-weight:600">22 de junio de 2026</div>
+        <div>CI2 Lab</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 · RESUMEN EJECUTIVO -->
+  <section class="slide" id="s3">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">01</span><span class="dot"></span>Resumen ejecutivo</div>
+      <h2>MVP 1 completado: <span class="grad-text">datos públicos alineados</span></h2>
+      <p class="lead">Primer hito cerrado. Hemos reunido y alineado <b style="color:var(--txt)">seis capas GIS públicas</b> a un CRS y rejilla comunes (EPSG:25830 · ~30 m). Cada fuente es clicable y enlaza a su origen oficial.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:1.62fr 1fr;gap:1.4rem;align-items:start">
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="dtable">
+          <thead><tr><th>Capa · qué aporta</th><th>Fuente pública</th><th>Ámbito</th></tr></thead>
+          <tbody>
+            <tr><td class="cap">Elevación (DEM)<br><span style="font-weight:400;font-family:var(--font);color:var(--txt-faint);font-size:.82rem">pendiente del terreno</span></td><td><a class="src" href="https://portal.opentopography.org/" target="_blank" rel="noopener">OpenTopography</a><br><span style="font-size:.78rem;color:var(--txt-faint)">Copernicus GLO-30</span></td><td><span class="amb amb-zona">por zona</span></td></tr>
+            <tr><td class="cap">Viario y ferrocarril<br><span style="font-weight:400;font-family:var(--font);color:var(--txt-faint);font-size:.82rem">cruces e infraestructura</span></td><td><a class="src" href="https://www.openstreetmap.org/" target="_blank" rel="noopener">OpenStreetMap</a></td><td><span class="amb amb-zona">por zona</span></td></tr>
+            <tr><td class="cap">Hidrografía<br><span style="font-weight:400;font-family:var(--font);color:var(--txt-faint);font-size:.82rem">cruces de ríos</span></td><td><a class="src" href="https://centrodedescargas.cnig.es/CentroDescargas/" target="_blank" rel="noopener">IGN · CNIG</a></td><td><span class="amb amb-zona">por zona</span></td></tr>
+            <tr><td class="cap">Litología<br><span style="font-weight:400;font-family:var(--font);color:var(--txt-faint);font-size:.82rem">geotecnia del terreno</span></td><td><a class="src" href="https://info.igme.es/cartografiadigital/geologica/Magna50.aspx" target="_blank" rel="noopener">IGME · MAGNA 50</a></td><td><span class="amb amb-nac">nacional</span></td></tr>
+            <tr><td class="cap">Zonas protegidas<br><span style="font-weight:400;font-family:var(--font);color:var(--txt-faint);font-size:.82rem">Red Natura 2000</span></td><td><a class="src" href="https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/biodiversidad/rn2000.html" target="_blank" rel="noopener">MITECO</a></td><td><span class="amb amb-nac">nacional</span></td></tr>
+            <tr><td class="cap">Parcelas (usos del suelo)<br><span style="font-weight:400;font-family:var(--font);color:var(--txt-faint);font-size:.82rem">expropiación · rústica + urbana</span></td><td><a class="src" href="https://www.sedecatastro.gob.es/" target="_blank" rel="noopener">Catastro · DGC</a><br><span style="font-size:.78rem;color:var(--amber)">requiere firma electrónica</span></td><td><span class="amb amb-zona">por municipio</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="exec-col">
+        <div class="exec-status">
+          <div class="big" style="color:var(--green)">MVP&nbsp;1 ✓</div>
+          <div style="color:var(--txt-dim);margin-top:.5rem;font-size:.9rem;line-height:1.5">Datos y condicionantes — el mayor riesgo técnico del reto, ya resuelto.</div>
+          <div class="meta">
+            <div class="it"><div class="v" style="color:var(--accent)">6</div><div class="k">Capas alineadas</div></div>
+            <div class="it"><div class="v" style="color:var(--cyan)">~30 m</div><div class="k">Rejilla común</div></div>
+            <div class="it"><div class="v" style="color:var(--accent-2)">25830</div><div class="k">EPSG</div></div>
+          </div>
+        </div>
+        <div class="exec-line">
+          <div class="ic" style="background:rgba(15,156,99,.16)">🧹</div>
+          <div class="tx"><b>Depuración de datos.</b> <span>Eliminamos solapes entre capas y descartamos información catastral sobrante. Del Catastro se consultaron las carpetas <b style="color:var(--txt)">RURAL y URBANO</b> (ramales A y B) de Alcañiz, Caspe, Fuentes de Ebro, Mediana y Zaragoza.</span></div>
+        </div>
+        <div class="exec-line">
+          <div class="ic" style="background:rgba(179,130,10,.16)">★</div>
+          <div class="tx"><b>2 decisiones a validar hoy.</b> <span>Coste por valor de cada capa y pesos por capa para el mínimo coste.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · TRABAJO REALIZADO -->
+  <section class="slide" id="s5">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">02</span><span class="dot"></span>Trabajo realizado</div>
+      <h2>De los datos crudos a <span class="grad-text">cinco superficies de coste listas</span></h2>
+    </div>
+
+    <div class="timeline" style="margin-bottom:2rem">
+      <div class="tl-track"><div class="fill"></div></div>
+      <div class="tl-row">
+        <div class="tl-item done"><div class="tl-node"></div><div class="lbl">S0</div><div class="dt">25–29 may</div><div class="dsc">Formación intensiva</div></div>
+        <div class="tl-item done"><div class="tl-node"></div><div class="lbl">S1</div><div class="dt">1–5 jun</div><div class="dsc">Setup + AOI + escenarios</div></div>
+        <div class="tl-item done"><div class="tl-node"></div><div class="lbl">S2</div><div class="dt">8–12 jun</div><div class="dsc">Ingesta + alineación</div></div>
+        <div class="tl-item done"><div class="tl-node"></div><div class="lbl">S3</div><div class="dt">15–19 jun</div><div class="dsc">Superficies de coste</div></div>
+        <div class="tl-item now"><div class="tl-node"></div><div class="lbl">S4</div><div class="dt">22–26 jun</div><div class="dsc">Motor LCP · hoy</div></div>
+        <div class="tl-item"><div class="tl-node"></div><div class="lbl">S5</div><div class="dt">29 jun–3 jul</div><div class="dsc">Alternativas + métricas</div></div>
+        <div class="tl-item"><div class="tl-node"></div><div class="lbl">S6</div><div class="dt">6–10 jul</div><div class="dsc">Evaluación + backtesting</div></div>
+        <div class="tl-item"><div class="tl-node"></div><div class="lbl">S7</div><div class="dt">13–17 jul</div><div class="dsc">Pulido + presentación</div></div>
+      </div>
+    </div>
+
+    <div class="grid g4">
+      <div class="card">
+        <span class="pill tag-green" style="margin-bottom:.7rem"><span class="d green"></span>Hecho</span>
+        <h3>Descarga automática</h3>
+        <p>6 capas vía WFS / WCS / Overpass desde IGN, Copernicus e IGME. Reproducible por escenario.</p>
+      </div>
+      <div class="card">
+        <span class="pill tag-green" style="margin-bottom:.7rem"><span class="d green"></span>Hecho</span>
+        <h3>Alineación a rejilla</h3>
+        <p>Recorte al AOI, reproyección a EPSG:25830 y remuestreo a rejilla común de ~30 m. La celda (i,j) significa lo mismo en todas.</p>
+      </div>
+      <div class="card">
+        <span class="pill tag-green" style="margin-bottom:.7rem"><span class="d green"></span>Hecho</span>
+        <h3>5 capas de coste</h3>
+        <p>Pendiente, geotecnia (IGME), cruces (OSM + hidrografía), zonas protegidas y expropiación (catastro).</p>
+      </div>
+      <div class="card">
+        <span class="pill tag-green" style="margin-bottom:.7rem"><span class="d green"></span>Hecho</span>
+        <h3>Combinación ponderada</h3>
+        <p>Suma lineal de capas por perfil + propagación de coste prohibido (∞). Base lista para el motor de trazado.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · DECISIONES TÉCNICAS -->
+  <section class="slide" id="s7">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">03</span><span class="dot"></span>Decisiones técnicas adoptadas</div>
+      <h2>Cómo obtenemos <span class="grad-text">varias soluciones distintas</span></h2>
+      <p class="lead">No buscamos "la" ruta, sino un abanico de alternativas reales. La clave está en cambiar la importancia que damos a cada criterio y en forzar que cada ruta explore un corredor diferente.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:1fr 1fr;gap:1.5rem;align-items:stretch">
+      <div class="exec-col">
+        <div class="card glow" style="flex:1">
+          <span class="pill tag-blue" style="margin-bottom:.7rem"><span class="d blue" style="background:var(--accent)"></span>Paso 1 · Perfiles de prioridad</span>
+          <h3 style="margin-bottom:.5rem">Cada perfil pondera distinto → una ruta distinta</h3>
+          <p>El terreno se convierte en una <b style="color:var(--txt)">superficie de coste</b> (más coste = peor) y el algoritmo de mínimo coste (A*) busca la mejor ruta. Si cambiamos el <b style="color:var(--txt)">peso</b> de cada criterio, la superficie cambia y la ruta óptima también: así nacen las alternativas <b style="color:var(--txt)">corto</b>, <b style="color:var(--txt)">ambiental</b>, <b style="color:var(--txt)">pendiente</b> y <b style="color:var(--txt)">equilibrio</b>.</p>
+        </div>
+        <div class="card" style="flex:1">
+          <span class="pill tag-blue" style="margin-bottom:.7rem"><span class="d blue" style="background:var(--accent-2)"></span>Paso 2 · Corridor masking</span>
+          <h3 style="margin-bottom:.5rem">Forzar que las rutas no se solapen</h3>
+          <p>Al generar una ruta nueva, <b style="color:var(--txt)">penalizamos la cercanía</b> a las ya creadas (franja de 500 m). Solo se acepta una alternativa si su solapamiento con las demás es <b style="color:var(--txt)">&lt; 30%</b> — así son alternativas reales, no el mismo corredor repetido.</p>
+        </div>
+      </div>
+      <div class="card" style="display:flex;flex-direction:column;justify-content:center;background:linear-gradient(160deg,var(--panel),var(--bg-2))">
+        <h3 style="margin-bottom:1rem">El recorrido del dato</h3>
+        <div style="display:flex;flex-direction:column;gap:.7rem;font-size:.92rem">
+          <div style="display:flex;align-items:center;gap:.8rem"><span class="amb amb-zona">CAPAS</span><span style="color:var(--txt-dim)">6 capas alineadas (EPSG:25830 · ~30 m)</span></div>
+          <div style="text-align:center;color:var(--txt-faint);font-size:.9rem">↓ coste por celda</div>
+          <div style="display:flex;align-items:center;gap:.8rem"><span class="amb amb-nac">COSTE</span><span style="color:var(--txt-dim)">superficie ponderada por perfil</span></div>
+          <div style="text-align:center;color:var(--txt-faint);font-size:.9rem">↓ A* (mínimo coste)</div>
+          <div style="display:flex;align-items:center;gap:.8rem"><span class="amb" style="color:var(--green);background:rgba(15,156,99,.10)">RUTAS</span><span style="color:var(--txt-dim)">3–5 trazados diferenciados</span></div>
+        </div>
+        <div style="margin-top:1.3rem;padding-top:1rem;border-top:1px solid var(--border)">
+          <p style="font-size:.85rem;color:var(--txt-dim);line-height:1.5"><b style="color:var(--txt)">Base común alineada:</b> ninguna capa entra sin compartir CRS y rejilla. Es lo que permite sumar criterios distintos sobre la misma celda. <b style="color:var(--green)">Ya resuelto.</b></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · VALIDACIÓN -->
+  <section class="slide" id="s9">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">04</span><span class="dot"></span>Puntos para validación y alineación</div>
+      <h2>Necesitamos vuestro criterio sobre <span class="grad-text">costes y pesos</span></h2>
+      <p class="lead">Estos dos parámetros gobiernan el trazado de mínimo coste. Vuestra validación es la palanca que ajusta el modelo a la realidad de Enagás.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:1.15fr 1fr;gap:1.4rem;align-items:stretch">
+
+      <!-- Q1: coste por atributo dentro de cada capa -->
+      <div class="card" style="border-left:3px solid var(--accent)">
+        <div style="display:flex;align-items:baseline;gap:.6rem">
+          <span style="font-family:var(--mono);color:var(--accent);font-weight:700">Q1</span>
+          <h3 style="margin:0;font-size:1.05rem">¿Os encaja el coste de cada atributo?</h3>
+        </div>
+        <p style="font-size:.82rem;color:var(--txt-dim);margin:.3rem 0 .9rem">Una tabla por capa. Índice <b style="color:var(--txt)">0 = ideal → 1 = muy desfavorable</b>.</p>
+        <div class="minigrid">
+          <div class="mini">
+            <h5>Pendiente <small>grados</small></h5>
+            <table>
+              <tr><td>0 – 5° (llano)</td><td class="c">0.0</td></tr>
+              <tr><td>5 – 15°</td><td class="c">0.0→0.6</td></tr>
+              <tr><td>15 – 30°</td><td class="c">0.6→1.0</td></tr>
+              <tr><td>&gt; 30°</td><td class="c" style="color:var(--red)">∞</td></tr>
+            </table>
+          </div>
+          <div class="mini">
+            <h5>Usos del suelo <small>Catastro</small></h5>
+            <table>
+              <tr><td>Rúst. improductivo</td><td class="c">0.1</td></tr>
+              <tr><td>Rúst. secano</td><td class="c">0.2</td></tr>
+              <tr><td>Rúst. regadío</td><td class="c">0.5</td></tr>
+              <tr><td>Urbanizable</td><td class="c">0.9</td></tr>
+              <tr><td>Urbano consolidado</td><td class="c">1.0</td></tr>
+            </table>
+          </div>
+          <div class="mini">
+            <h5>Cruces <small>viario · FFCC · ríos</small></h5>
+            <table>
+              <tr><td>Camino / pista</td><td class="c">0.2</td></tr>
+              <tr><td>Carretera → autovía</td><td class="c">0.5→0.8</td></tr>
+              <tr><td>Ferrocarril</td><td class="c">0.9</td></tr>
+              <tr><td>Río menor / principal</td><td class="c">0.5 / 0.8</td></tr>
+            </table>
+          </div>
+          <div class="mini">
+            <h5>Zona protegida <small>Red Natura</small></h5>
+            <table>
+              <tr><td>Dentro</td><td class="c">1</td></tr>
+              <tr><td>Fuera</td><td class="c">0</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q2: propuesta de pesos por perfil -->
+      <div class="card" style="border-left:3px solid var(--accent-2);display:flex;flex-direction:column">
+        <div style="display:flex;align-items:baseline;gap:.6rem">
+          <span style="font-family:var(--mono);color:var(--accent-2);font-weight:700">Q2</span>
+          <h3 style="margin:0;font-size:1.05rem">Nuestra propuesta de pesos — ¿la validáis?</h3>
+        </div>
+        <p style="font-size:.82rem;color:var(--txt-dim);margin:.3rem 0 1rem">El peso de cada capa genera <b style="color:var(--txt)">una solución distinta</b>. Esta es la propuesta del equipo; cada perfil sube el peso del criterio que prioriza.</p>
+        <table class="dtable" style="font-size:.82rem;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+          <thead><tr><th>Perfil</th><th style="text-align:center">Long.</th><th style="text-align:center">Pend.</th><th style="text-align:center">Uso</th><th style="text-align:center">Prot.</th></tr></thead>
+          <tbody style="font-family:var(--mono)">
+            <tr><td style="font-family:var(--font)"><b style="color:var(--txt)">Más corto</b></td><td style="text-align:center;color:var(--accent);font-weight:700">1.0</td><td style="text-align:center">0.2</td><td style="text-align:center">0.2</td><td style="text-align:center">0.3</td></tr>
+            <tr><td style="font-family:var(--font)"><b style="color:var(--txt)">Menor impacto</b></td><td style="text-align:center">0.3</td><td style="text-align:center">0.2</td><td style="text-align:center">0.5</td><td style="text-align:center;color:var(--accent);font-weight:700">1.0</td></tr>
+            <tr><td style="font-family:var(--font)"><b style="color:var(--txt)">Menor pendiente</b></td><td style="text-align:center">0.3</td><td style="text-align:center;color:var(--accent);font-weight:700">1.0</td><td style="text-align:center">0.3</td><td style="text-align:center">0.4</td></tr>
+            <tr><td style="font-family:var(--font)"><b style="color:var(--txt)">Equilibrio</b> <span style="color:var(--green);font-family:var(--font);font-size:.72rem">★ rec.</span></td><td style="text-align:center">0.5</td><td style="text-align:center">0.5</td><td style="text-align:center">0.4</td><td style="text-align:center">0.6</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:.78rem;color:var(--txt-faint);margin-top:1rem;line-height:1.45">El valor resaltado es el criterio dominante de cada perfil. ¿Cambiaríais alguna prioridad o añadiríais un perfil (p. ej. "mínimos cruces")?</p>
+      </div>
+    </div>
+    <p class="note">💬 Coste y pesos son los dos parámetros que más condicionan el resultado: queremos calibrarlos con vuestro criterio antes del Sprint 5.</p>
+  </section>
+
+  <!-- 6 · PRÓXIMO PASO -->
+  <section class="slide" id="s10">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">05</span><span class="dot"></span>Próximo paso</div>
+      <h2>El siguiente hito: <span class="grad-text">el motor de trazado</span></h2>
+      <p class="lead">Con los datos y las superficies de coste listos, el próximo paso inmediato es generar el primer trazado automático origen→destino.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:1.3fr 1fr;gap:1.6rem;align-items:stretch">
+      <div class="card glow" style="display:flex;flex-direction:column;justify-content:center">
+        <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:1rem">
+          <span class="pill tag-blue"><span class="d blue" style="background:var(--accent)"></span>Sprint 4 · en curso</span>
+          <span class="pill tag-grey">22 – 26 jun · MVP 2–3</span>
+        </div>
+        <h3 style="font-size:1.5rem;margin-bottom:1rem">Motor de camino de mínimo coste (LCP)</h3>
+        <ul class="bullets">
+          <li><span class="bi">→</span><div><b>Trazado automático</b> origen→destino sobre la superficie de coste combinada.</div></li>
+          <li><span class="bi">→</span><div><b>Una ruta válida por perfil</b> de prioridad, con su geometría y coste asociado.</div></li>
+          <li><span class="bi">→</span><div><b>Base del comparador:</b> primer resultado tangible para enseñar sobre mapa.</div></li>
+        </ul>
+      </div>
+      <div class="card" style="display:flex;flex-direction:column;justify-content:center">
+        <h3 style="font-size:1.1rem;margin-bottom:.7rem">Entregable de la semana</h3>
+        <p style="font-size:.95rem;color:var(--txt-dim);line-height:1.55">Un primer trazado dibujado sobre el AOI, <b style="color:var(--txt)">reproducible</b> y trazable a las capas de coste validadas hoy.</p>
+        <div style="margin-top:1.2rem;display:flex;gap:.5rem;flex-wrap:wrap">
+          <span class="pill tag-green"><span class="d green"></span>Primer mapa con ruta</span>
+          <span class="pill tag-blue"><span class="d blue" style="background:var(--accent)"></span>Base del comparador</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 · CIERRE -->
+  <section class="slide" id="s11">
+    <div class="logo-bar right">
+      <div class="logo-chip">
+        <svg viewBox="0 0 184 70" aria-label="CICLAB Investigación — Comillas ICAI">
+          <path d="M16 13 H7 V49 H16" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <path d="M168 13 H177 V49 H168" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <text x="92" y="37" text-anchor="middle" font-family="Poppins,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5" fill="#16357c">CIC<tspan fill="#2e74c4">LAB</tspan></text>
+          <text x="92" y="51" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9" font-weight="700" letter-spacing="3" fill="#16357c">INVESTIGACIÓN</text>
+          <text x="92" y="64" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9.5" font-weight="500" letter-spacing="2" fill="#2e74c4">COMILLAS ICAI</text>
+        </svg>
+      </div>
+      <div class="logo-chip">
+        <svg viewBox="0 0 168 60" aria-label="Enagás">
+          <text x="6" y="42" font-family="Poppins,sans-serif" font-size="34" font-weight="700" letter-spacing="-1" fill="#0098d8">enagás</text>
+          <circle cx="142" cy="30" r="19" fill="none" stroke="#0098d8" stroke-width="6.5"/>
+          <path d="M127 17.5 A19 19 0 0 1 157 17.5" fill="none" stroke="#aac90a" stroke-width="6.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div style="max-width:60ch">
+      <div class="kicker"><span class="num">06</span><span class="dot"></span>Preguntas</div>
+      <h1 style="font-size:clamp(2.4rem,5.4vw,4.4rem)">¡Gracias! <span class="grad-text">¿Preguntas?</span></h1>
+      <p class="lead" style="margin-top:1.4rem">Nos llevamos vuestro criterio sobre los <b style="color:var(--txt)">costes por atributo</b> y los <b style="color:var(--txt)">pesos por capa</b> para calibrar el modelo antes del Sprint 5. Preguntas, dudas y comentarios, todos bienvenidos.</p>
+      <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-top:2.2rem">
+        <span class="pill tag-green"><span class="d green"></span>Datos resueltos</span>
+        <span class="pill tag-blue"><span class="d blue" style="background:var(--accent)"></span>Motor en marcha</span>
+        <span class="pill tag-amber"><span class="d amber"></span>Costes y pesos a validar</span>
+      </div>
+      <div style="margin-top:2.8rem;display:flex;gap:2.4rem;flex-wrap:wrap;color:var(--txt-faint);font-size:.85rem">
+        <div><div style="color:var(--txt-dim);font-weight:600;margin-bottom:.2rem">Grupo 6 · CI2 Lab 2026</div>Reto 6 — Enagás</div>
+        <div><div style="color:var(--txt-dim);font-weight:600;margin-bottom:.2rem">Cátedra de Industria Inteligente</div>ETSI ICAI · Comillas</div>
+        <div><div style="color:var(--txt-dim);font-weight:600;margin-bottom:.2rem">Revisión intermedia</div>22 jun 2026</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- HUD -->
+<div class="hint" id="hint"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>F</kbd> pantalla completa</div>
+<div class="hud">
+  <div class="dots" id="dots"></div>
+  <div class="ctrls">
+    <button class="nav" id="prevBtn" aria-label="Anterior">‹</button>
+    <span class="count" id="counter">1 / 7</span>
+    <button class="nav" id="nextBtn" aria-label="Siguiente">›</button>
+    <button class="nav" id="fsBtn" aria-label="Pantalla completa">⛶</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total = slides.length;
+  let idx = 0;
+  const topbar = document.getElementById('topbar-fill');
+  const counter = document.getElementById('counter');
+  const dotsWrap = document.getElementById('dots');
+  const hint = document.getElementById('hint');
+
+  // build dots
+  slides.forEach((_,i)=>{
+    const b=document.createElement('button');
+    b.addEventListener('click',()=>go(i));
+    dotsWrap.appendChild(b);
+  });
+  const dots = Array.from(dotsWrap.children);
+
+  function render(){
+    slides.forEach((s,i)=>{
+      s.classList.remove('active','prev');
+      if(i===idx) s.classList.add('active');
+      else if(i<idx) s.classList.add('prev');
+    });
+    dots.forEach((d,i)=>d.classList.toggle('on',i===idx));
+    topbar.style.width = ((idx)/(total-1))*100 + '%';
+    counter.textContent = (idx+1)+' / '+total;
+  }
+  function go(n){
+    idx = Math.max(0, Math.min(total-1, n));
+    render();
+    if(idx>0){hint.classList.add('hide');}
+  }
+  function next(){ go(idx+1); }
+  function prev(){ go(idx-1); }
+
+  document.getElementById('nextBtn').addEventListener('click',next);
+  document.getElementById('prevBtn').addEventListener('click',prev);
+  document.getElementById('fsBtn').addEventListener('click',toggleFs);
+
+  function toggleFs(){
+    if(!document.fullscreenElement){ document.documentElement.requestFullscreen?.(); }
+    else{ document.exitFullscreen?.(); }
+  }
+
+  document.addEventListener('keydown',e=>{
+    switch(e.key){
+      case 'ArrowRight': case 'PageDown': case ' ': e.preventDefault(); next(); break;
+      case 'ArrowLeft': case 'PageUp': prev(); break;
+      case 'Home': go(0); break;
+      case 'End': go(total-1); break;
+      case 'f': case 'F': toggleFs(); break;
+    }
+  });
+
+  // swipe (touch)
+  let tx=0;
+  document.addEventListener('touchstart',e=>{tx=e.changedTouches[0].clientX},{passive:true});
+  document.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-tx;
+    if(Math.abs(dx)>55){ dx<0?next():prev(); }
+  },{passive:true});
+
+  render();
+})();
+</script>
+</body>
+</html>
