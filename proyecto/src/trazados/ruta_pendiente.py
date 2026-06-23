@@ -55,12 +55,17 @@ _NODATA = -9999.0
 _BARRERA_DISCO = 999.0
 SLOPE_REF = 30.0  # grados; normaliza S a [0,1] (= barrera dura de pendiente.py)
 
-# Mapeo peso (perfiles.yaml) → fichero de capa en Capas_Coste/. 'longitud' es el
-# coste base por celda (no es una capa). 'cruces' no se pondera en perfiles.yaml.
+# Mapeo peso (perfiles.yaml) → fichero de capa escalar en Capas_Coste/.
+# Claves NO listadas y con tratamiento especial:
+#   'longitud'  → coste base por celda (no es una capa).
+#   'traversal' → en MI versión NO es una capa escalar; su peso por perfil escala
+#                 λ (fuerza de la penalización anisótropa). Ver run_perfiles().
+#   'aspecto'   → capa intermedia, no de coste.
 PESO_A_CAPA = {
     "pendiente": "pendiente",
-    "uso_suelo": "expropiacion",
     "protegida": "protegida",
+    "cruces": "cruces",
+    "expropiacion": "expropiacion",
     "geotecnia": "geotecnia",
 }
 
@@ -274,18 +279,20 @@ def run_perfiles(s: str, lam: float) -> None:
     perfiles = yaml.safe_load((CONFIG / "perfiles.yaml").read_text(encoding="utf-8"))["perfiles"]
     gx, gy, S = _cargar_direccion(s)
 
-    print(f"\n=== Escenario {s}: rutas por perfil (λ={lam}) ===")
+    print(f"\n=== Escenario {s}: rutas por perfil (λ_base={lam}) ===")
     for perfil in perfiles:
         pid, pesos = perfil["id"], perfil["pesos"]
+        # El peso 'traversal' del perfil escala λ (fuerza del cruce perpendicular).
+        lam_p = lam * float(pesos.get("traversal", 0.0))
         C, transform, crs = _superficie_perfil(s, pesos)
         origen = _snap_to_valid(*_utm_to_rowcol(*origen_utm, transform), C)
         destino = _snap_to_valid(*_utm_to_rowcol(*destino_utm, transform), C)
-        celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lam)
+        celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lam_p)
         expos = exposicion_transversal(celdas, gx, gy, S)
         out = PENDIENTE / f"ruta_{s}_{pid}.gpkg"
-        linea = _exportar(celdas, transform, crs, pid, lam, out, expos)
+        linea = _exportar(celdas, transform, crs, pid, lam_p, out, expos)
         print(f"  {pid:11s}: {out.name:24s} longitud={linea.length:7.0f} m  "
-              f"exposición_transversal={expos:.4f}")
+              f"λ={lam_p:.2f}  exposición_transversal={expos:.4f}")
 
 
 def run_escenario(s: str, lam: float) -> None:

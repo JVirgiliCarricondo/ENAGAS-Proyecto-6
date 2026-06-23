@@ -81,21 +81,34 @@ Cada `.gpkg` lleva `exposicion_transversal` = media de `S·sinθ` por la ruta
   Las rutas comparten solo ~21% de celdas: el corredor cambia para cruzar las
   laderas de frente, sin alargarse.
 
-### Rutas por perfil (`--modo perfiles`, rehechas con la nueva capa)
+### Rutas por perfil (`--modo perfiles`) — versión anisótropa para comparar
 
-Reemplazan a las de `data/processed/Rutas/` (que eran **idénticas entre sí**: la
-diferenciación por perfil estaba sin implementar). Una por perfil de `perfiles.yaml`,
-todas con la consideración de cruce perpendicular:
+> Contexto: `main` (commit c783166) ya resuelve este encargo de Enagás con OTRO
+> método (capa escalar `traversal_{s}.tif` = `pendiente·|sin(aspecto − azimut_OD)|`,
+> con el azimut **global** O→D, + LCP isótropo). Esta carpeta es la versión
+> **alternativa** para comparar: dirección **suavizada** + transversalidad por la
+> dirección **local** real (LCP anisótropo). El equipo / backtesting decidirá cuál.
 
-- `ruta_{s}_{corto,ambiental,pendiente,equilibrio}.gpkg`
+Para una comparación justa se adoptan los **mismos pesos por perfil que main**
+(`perfiles.yaml`). Única diferencia entre ambos métodos:
 
-Mapeo peso→capa usado: `pendiente→pendiente`, `uso_suelo→expropiacion`,
-`protegida→protegida`, `geotecnia→geotecnia`; `longitud` = coste base por celda.
+- **main**: `traversal` es una capa escalar (peso normal) + LCP isótropo.
+- **aquí**: NO hay capa `traversal`; su peso por perfil **escala λ** (fuerza del
+  cruce perpendicular en el LCP anisótropo). λ_perfil = λ_base(4.0) · peso_traversal.
 
-**Diferenciación modesta**: en el corredor A solo el perfil `pendiente` diverge
-(~50% distinto); el resto se parece mucho (88–100%) porque las capas no-pendiente
-están casi vacías en estos corredores. La diferenciación fuerte requiere el
-*corridor masking* (Sprint 5, pendiente en `src/trazados/lcp.py`).
+Capas escalares combinadas (1:1): `pendiente, protegida, cruces, expropiacion,
+geotecnia`; `longitud` = coste base por celda.
 
-`λ` es el parámetro de calibración (`--lambda`, def. 4.0); su valor final se fijará
-con el backtesting contra un ramal real.
+Ficheros: `ruta_{s}_{corto,ambiental,pendiente,equilibrio}.gpkg`.
+
+**Diferenciación** (solape de trazado, buffer 60 m; menor = más distintas):
+
+| | corto·ambiental | corto·pendiente | corto·equil. | amb·pend | amb·equil | pend·equil |
+|---|---|---|---|---|---|---|
+| A | 46% | 45% | 65% | 43% | 53% | 62% |
+| B | 35% | 34% | 91% | 81% | 40% | 38% |
+
+(Antes, con los pesos viejos de la rama, salían 88–100%: prácticamente iguales.)
+
+`λ_base` se ajusta con `--lambda` (def. 4.0); su valor final se fija con el
+backtesting contra un ramal real.
