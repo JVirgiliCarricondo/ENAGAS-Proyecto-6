@@ -19,40 +19,52 @@ perfiles:
     nombre: "Más corto"
     descripcion: "Minimiza la longitud; tolera más pendiente e impacto ambiental."
     pesos:
-      longitud: 1.0
-      pendiente: 0.2
-      uso_suelo: 0.2
-      protegida: 0.3
+      longitud:     1.5   # distancia muy importante
+      pendiente:    0.2
+      protegida:    0.2
+      cruces:       0.3
+      expropiacion: 0.2
+      geotecnia:    0.1
+      traversal:    0.1   # poca importancia: solo interesa la longitud
     nota: "Mejor velocidad de ejecución, pero pendientes/impacto mayores"
 
   - id: ambiental
     nombre: "Menor impacto ambiental"
-    descripcion: "Evita zonas protegidas (Red Natura 2000) y suelo urbano aunque alargue trazado."
+    descripcion: "Evita zonas protegidas (Red Natura 2000) y cruces; aunque alargue el trazado."
     pesos:
-      protegida: 1.0
-      uso_suelo: 0.5
-      pendiente: 0.2
-      longitud: 0.3
+      protegida:    1.5   # evitar zonas protegidas ante todo
+      cruces:       0.8   # evitar cruces con infraestructuras
+      expropiacion: 0.5
+      pendiente:    0.3
+      geotecnia:    0.3
+      longitud:     0.3
+      traversal:    0.3
     nota: "Prioriza viabilidad medioambiental"
 
   - id: pendiente
-    nombre: "Menor pendiente"
-    descripcion: "Busca terreno llano (constructivamente más económico y sencillo)."
+    nombre: "Menor pendiente y traversalidad"
+    descripcion: "Busca terreno llano y sigue la dirección del gradiente (mayor estabilidad geotécnica)."
     pesos:
-      pendiente: 1.0
-      longitud: 0.3
-      uso_suelo: 0.3
-      protegida: 0.4
-    nota: "Reduce coste de obra por excavación"
+      pendiente:    1.5   # evitar pendiente fuerte
+      traversal:    1.2   # seguir la dirección del gradiente
+      geotecnia:    0.8   # terreno estable
+      protegida:    0.4
+      cruces:       0.3
+      expropiacion: 0.3
+      longitud:     0.3
+    nota: "Reduce coste de obra por excavación y riesgo de movimientos de ladera"
 
   - id: equilibrio
     nombre: "Equilibrio (recomendado)"
-    descripcion: "Balance entre criterios: pendiente, impacto, longitud y viabilidad."
+    descripcion: "Balance entre criterios: pendiente, traversalidad, impacto, longitud y viabilidad."
     pesos:
-      pendiente: 0.5
-      protegida: 0.6
-      uso_suelo: 0.4
-      longitud: 0.5
+      pendiente:    0.6
+      traversal:    0.5
+      protegida:    0.6
+      cruces:       0.4
+      expropiacion: 0.4
+      geotecnia:    0.4
+      longitud:     0.5
     nota: "Perfil recomendado como punto de partida para MVP 1-3"
 
 # ============================================================================

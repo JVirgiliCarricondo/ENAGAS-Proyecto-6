@@ -98,24 +98,15 @@ def _superficie_para_perfil(
     escenario: str,
     pesos: dict[str, float],
 ) -> tuple[np.ndarray, rasterio.transform.Affine, str]:
-    """Devuelve (array_coste, transform, crs_wkt) para un perfil dado.
+    """Genera y devuelve (array_coste, transform, crs_wkt) para un perfil dado."""
+    from src.superficie import combinar
 
-    Placeholder: carga la superficie de pesos iguales ya generada en Trazados/.
-    TODO(S4): sustituir por combinar.run(escenario, pesos=pesos) cuando combinar
-              acepte un dict de pesos por capa.
-    """
-    tif = TRAZADOS / f"superficie_{escenario.upper()}.tif"
-    if not tif.exists():
-        raise FileNotFoundError(
-            f"Superficie no encontrada: {tif}\n"
-            f"Ejecuta primero: python -m src.superficie.combinar --escenario {escenario}"
-        )
+    tif = combinar.run(escenario, pesos=pesos)
     with rasterio.open(tif) as src:
         arr = src.read(1).astype("float64")
         transform = src.transform
         crs_wkt = src.crs.wkt
 
-    # Restaurar semántica interna: valores de disco → nan / inf
     arr = np.where(arr == _NODATA, np.nan, arr)
     arr = np.where(arr == _BARRERA_DISCO, np.inf, arr)
     return arr, transform, crs_wkt

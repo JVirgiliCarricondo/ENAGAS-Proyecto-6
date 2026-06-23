@@ -34,15 +34,24 @@ def _layer_paths(scenario: str) -> list[Path]:
     return sorted([
         p for p in CAPAS_COSTE.glob(f"*_{s}.tif")
         if not p.stem.startswith("superficie_")
+        and not p.stem.startswith("aspecto_")   # capa intermedia, no de coste
     ])
 
 
-def run(scenario: str, peso: float | None = None) -> Path:
-    """Genera la superficie combinada con pesos iguales.
+def _layer_name(path: Path, scenario: str) -> str:
+    """pendiente_A.tif → 'pendiente'"""
+    suffix = f"_{scenario.upper()}"
+    return path.stem[: -len(suffix)] if path.stem.endswith(suffix) else path.stem
+
+
+def run(scenario: str, pesos: dict[str, float] | None = None) -> Path:
+    """Genera la superficie de coste combinada.
 
     Args:
         scenario: 'A' o 'B'.
-        peso: peso de cada capa (None → 1/n, es decir media simple).
+        pesos:    dict nombre_capa → peso. La clave especial 'longitud' escala
+                  BASE_LONG. Capas no listadas reciben peso 0 (ignoradas).
+                  None → peso igual 1/n para todas las capas encontradas.
     """
     s = scenario.upper()
     paths = _layer_paths(s)
@@ -51,11 +60,17 @@ def run(scenario: str, peso: float | None = None) -> Path:
             f"No hay capas de coste para escenario {s} en {CAPAS_COSTE}"
         )
 
-    n = len(paths)
-    w = peso if peso is not None else 1.0 / n
-    log.info("[combinar_%s] %d capas con peso %.4f cada una:", s, n, w)
+    if pesos is None:
+        n = len(paths)
+        weights = {_layer_name(p, s): 1.0 / n for p in paths}
+        base = BASE_LONG
+    else:
+        weights = {_layer_name(p, s): float(pesos.get(_layer_name(p, s), 0.0)) for p in paths}
+        base = BASE_LONG * float(pesos.get("longitud", 1.0))
+
+    log.info("[combinar_%s] base=%.2f | capas:", s, base)
     for p in paths:
-        log.info("[combinar_%s]   %s", s, p.name)
+        log.info("[combinar_%s]   %-22s  w=%.3f", s, p.name, weights[_layer_name(p, s)])
 
     TRAZADOS.mkdir(parents=True, exist_ok=True)
     out_path = TRAZADOS / f"superficie_{s}.tif"
@@ -67,13 +82,16 @@ def run(scenario: str, peso: float | None = None) -> Path:
 
     # ── Apilar capas ─────────────────────────────────────────────────────────
     arrays: list[np.ndarray] = []
+    layer_weights: list[float] = []
     for p in paths:
         with rasterio.open(p) as src:
             arr = src.read(1).astype("float64")
         arr = np.where(arr == NODATA, np.nan, arr)   # fuera del AOI → nan
         arrays.append(arr)
+        layer_weights.append(weights[_layer_name(p, s)])
 
-    stack = np.stack(arrays, axis=0)  # (n, height, width)
+    stack = np.stack(arrays, axis=0)                          # (n, H, W)
+    wvec = np.array(layer_weights, dtype="float64")[:, None, None]  # broadcast
 
     # Máscara: celda fuera del AOI si cualquier capa es nan
     outside_aoi = np.any(np.isnan(stack), axis=0)
@@ -83,10 +101,10 @@ def run(scenario: str, peso: float | None = None) -> Path:
 
     # Suma ponderada (inf → nan para el cálculo, barreras se re-aplican después)
     stack_calc = np.where(np.isposinf(stack), np.nan, stack)
-    weighted_sum = np.nansum(stack_calc * w, axis=0)
+    weighted_sum = np.nansum(stack_calc * wvec, axis=0)
 
-    # Superficie: BASE_LONG + suma ponderada
-    superficie = BASE_LONG + weighted_sum
+    # Superficie: base + suma ponderada
+    superficie = base + weighted_sum
     superficie = np.where(is_barrier, np.inf, superficie)
     superficie = np.where(outside_aoi, np.nan, superficie)
 
@@ -176,7 +194,7 @@ if __name__ == "__main__":
     for sc in scenarios:
         print(f"\n{'='*60}\n  Escenario {sc}\n{'='*60}")
         try:
-            out = run(sc)
+            out = run(sc)   # pesos=None → pesos iguales
             print(f"\n  Verificación:")
             _verify(out)
         except FileNotFoundError as e:
