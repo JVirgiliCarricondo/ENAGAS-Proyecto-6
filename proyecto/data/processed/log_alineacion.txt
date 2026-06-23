@@ -40,21 +40,27 @@
 2026-06-17 13:19:21  DEBUG       Sin datos en AOI: data\raw\CATASTRO\RURAL\2026061610225320379_PETICION_DESCARGA_SHA(RamalA)\44_UA_23012026_SHP\44_UA_23012026_SHP\44013uA 44414 ALCAÑIZ\44013uA_44414_23012026_PARCELA\PARCELA.shp
 2026-06-17 13:19:21  DEBUG       Sin datos en AOI: data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50074rA 50353 CASPE\50074rA_50353_23012026_PARCELA\PARCELA.shp
 2026-06-17 13:19:21  INFO        Fuente       : data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50116rA 50336 FUENTES DE EBRO\50116rA_50336_23012026_PARCELA\PARCELA.shp (329 filas en ventana AOI)
-2026-06-17 13:19:21  INFO        Fuente       : data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50165rA 50431 MEDIANA DE ARAGON\50165rA_50431_23012026_PARCELA\PARCELA.shp (9 filas en ventana AOI)
-2026-06-17 13:19:22  INFO        Fuente       : data\raw\CATASTRO\URBANO\2026061610183402957_PETICION_DESCARGA_SHA(RamalB)\50_RA_23012026_SHP\50900rA 50099 ZARAGOZA\50900rA_50099_23012026_PARCELA\PARCELA.shp (26 filas en ventana AOI)
-2026-06-17 13:19:22  DEBUG       Sin datos en AOI: data\raw\CATASTRO\URBANO\2026061610240207173_PETICION_DESCARGA_SHA(RamalA)\44_RA_23012026_SHP\44013rA 44399 ALCAÑIZ\44013rA_44399_23012026_PARCELA\PARCELA.shp
-2026-06-17 13:19:22  INFO        CRS original : EPSG:25830
-2026-06-17 13:19:22  INFO        Filas        : 364
-2026-06-17 13:19:22  INFO        ✓ guardado: data\processed\Recorte_AOI\catastro_aoi_B.gpkg (160 filas)
-2026-06-17 13:19:22  INFO      
-─── Paso 4: Detección de duplicados ────────────────────────────
-2026-06-17 13:19:22  INFO        Solo hay una capa vectorial procesada; no hay pares que comparar.
-2026-06-17 13:19:22  INFO      
+2026-06-17 13:19:21  INFO        Fuente       : data\raw\CATASTRO\URBANO2026-06-19 12:59:21  INFO        Modo no interactivo — se conservan ambas capas.
+2026-06-19 12:59:21  WARNING   SOLAPAMIENTO ALTO (100%): Red Natura 2000 ↔ IGME geológico
+  Pueden representar la misma información. Revisa FUENTES.md y considera descartar una de las dos.
+2026-06-19 12:59:21  INFO        Modo no interactivo — se conservan ambas capas.
+2026-06-19 12:59:22  INFO      
 ==============================================================
-2026-06-17 13:19:22  INFO      RESUMEN
-2026-06-17 13:19:22  INFO      ==============================================================
-2026-06-17 13:19:22  INFO        Capas encontradas    : 1/1
-2026-06-17 13:19:22  INFO        Archivos comprimidos : 0 (requieren extracción manual)
-2026-06-17 13:19:22  INFO      
+2026-06-19 12:59:22  INFO      RESUMEN
+2026-06-19 12:59:22  INFO      ==============================================================
+2026-06-19 12:59:22  INFO        Capas encontradas    : 6/7
+2026-06-19 12:59:22  INFO        Archivos comprimidos : 0 (requieren extracción manual)
+2026-06-19 12:59:22  WARNING     Capas NO encontradas :
+2026-06-19 12:59:22  WARNING       - Catastro - Usos del Suelo Urbanística
+2026-06-19 12:59:22  INFO      
   Log → data\processed\log_alineacion.txt
-2026-06-17 13:19:22  INFO        Salida → data\processed/
+2026-06-19 12:59:22  INFO        Salida → data\processed/
+2026-06-19 12:59:22  INFO      
+──────────────────────────────────────────────────────────────
+2026-06-19 12:59:22  INFO      ACCIÓN REQUERIDA — coloca estos archivos en data/raw/:
+2026-06-19 12:59:22  INFO      
+  Catastro - Usos del Suelo Urbanística:
+  → Catastro Inmobiliario: https://www.catastro.minhap.gob.es/
+    Descarga por municipio y descomprime los ZIP.
+    Los archivos PARCELA.shp se procesan automáticamente desde data/raw/Catastro/
+ta\processed/
