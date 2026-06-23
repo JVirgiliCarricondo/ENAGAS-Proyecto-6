@@ -269,8 +269,43 @@ def _superficie_perfil(
     return acc, transform, crs
 
 
+def _write_qml(tif_path: Path, vmin: float, vmax: float) -> None:
+    """Leyenda verde→amarillo→rojo para QGIS (mismo esquema que combinar.py / main)."""
+    mid = (vmin + vmax) / 2
+    qml = f"""<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
+<qgis version="3.0" styleCategories="AllStyleCategories">
+  <pipe>
+    <provider>
+      <resampling enabled="false" maxOversampling="2"
+        zoomedInResamplingMethod="nearestNeighbour"
+        zoomedOutResamplingMethod="nearestNeighbour"/>
+    </provider>
+    <rasterrenderer opacity="1" alphaBand="-1" band="1" type="singlebandpseudocolor"
+      classificationMin="{vmin:.4f}" classificationMax="{vmax:.4f}" nodataColor="">
+      <rasterTransparency/>
+      <rastershader>
+        <colorrampshader colorRampType="INTERPOLATED" clip="0"
+          minimumValue="{vmin:.4f}" maximumValue="{vmax:.4f}"
+          classificationMode="1" labelPrecision="3">
+          <item value="{vmin:.4f}" color="#1a9850" label="Coste bajo"  alpha="255"/>
+          <item value="{mid:.4f}" color="#ffffbf" label="Coste medio" alpha="255"/>
+          <item value="{vmax:.4f}" color="#d73027" label="Coste alto"  alpha="255"/>
+        </colorrampshader>
+      </rastershader>
+    </rasterrenderer>
+    <brightnesscontrast gamma="1" brightness="0" contrast="0"/>
+    <huesaturation colorizeOn="0" grayscaleMode="0" saturation="0"/>
+    <rasterresampler maxOversampling="2"/>
+  </pipe>
+</qgis>"""
+    tif_path.with_suffix(".qml").write_text(qml, encoding="utf-8")
+
+
 def _guardar_superficie(C: np.ndarray, transform, crs, path: Path) -> None:
-    """Guarda la superficie escalar de un perfil (nan→-9999, inf→999, como combinar.py)."""
+    """Guarda la superficie escalar de un perfil + su leyenda de color (.qml).
+
+    nan→-9999, inf→999 (convenio de combinar.py).
+    """
     out = np.where(np.isposinf(C), _BARRERA_DISCO, C)
     out = np.where(np.isnan(out), _NODATA, out).astype("float32")
     profile = dict(driver="GTiff", dtype="float32", count=1,
@@ -279,6 +314,10 @@ def _guardar_superficie(C: np.ndarray, transform, crs, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(out, 1)
+
+    valido = out[(out != _NODATA) & (out != _BARRERA_DISCO)]
+    if valido.size:
+        _write_qml(path, float(valido.min()), float(valido.max()))
 
 
 def run_perfiles(s: str, lam: float) -> None:
