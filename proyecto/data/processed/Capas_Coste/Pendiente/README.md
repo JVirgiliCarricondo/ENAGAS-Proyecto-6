@@ -51,9 +51,32 @@ final de la flecha (sobre la superficie suavizada, a 1.5 celdas) es menor que al
 inicio → la flecha apunta cuesta abajo. Comprobado: **100%** de las flechas con
 `dz < 0` en A y B, en los tres sigmas.
 
-## Pendiente (Fase 2, aún no hecho)
+## Fase 2 — Ruta con LCP anisótropo (hecho)
 
-Esta capa todavía **no** entra en el motor LCP. El siguiente paso es el LCP
-anisótropo: coste de transición `base · long · (1 + λ · S · sinθ)`, con θ = ángulo
-del paso respecto a la línea de máxima pendiente. Eso penaliza cruzar en transversal.
-Requiere cambiar `src/trazados/lcp.py` (no se puede prehornear en `combinar.py`).
+Generada por [`src/trazados/ruta_pendiente.py`](../../../../src/trazados/ruta_pendiente.py).
+La capa de dirección entra ahora en un LCP anisótropo (Dijkstra 8-conexo) cuyo coste
+de transición penaliza cruzar la pendiente en transversal:
+
+```
+coste(p→q) = d · C_celda · (1 + λ · S · sinθ)
+```
+- `C_celda` = superficie escalar combinada (Trazados/superficie_{s}.tif, que ya
+  incluye la pendiente-MAGNITUD y el resto de capas: geotecnia, cruces, protegida…)
+- `S` = pendiente normalizada [0,1] (capa de dirección) · `θ` = ángulo del paso
+  respecto a la línea de máxima pendiente · `λ` = peso (def. 4.0, calibrable).
+
+**Ficheros** (por escenario `s ∈ {A, B}`):
+- `ruta_{s}_anisotropa.gpkg` — la propuesta, con la consideración de Enagás.
+- `ruta_{s}_isotropa.gpkg`   — baseline sin anisotropía, para comparar.
+
+Cada `.gpkg` lleva `exposicion_transversal` = media de `S·sinθ` por la ruta
+(0 = siempre de frente a la ladera). Resultado (λ=4):
+
+| Escenario | exposición isótropa | exposición anisótropa | mejora |
+|---|---|---|---|
+| A | 0.0377 | 0.0233 | −38% |
+| B | 0.0352 | 0.0185 | −47% |
+
+Las rutas comparten solo ~21% de celdas con la isótropa: el corredor cambia para
+cruzar las laderas de frente, sin alargarse. `λ` es el parámetro de calibración
+(`--lambda`); su valor final se fijará con el backtesting contra un ramal real.
