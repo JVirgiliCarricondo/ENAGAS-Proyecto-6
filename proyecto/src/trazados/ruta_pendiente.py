@@ -269,6 +269,18 @@ def _superficie_perfil(
     return acc, transform, crs
 
 
+def _guardar_superficie(C: np.ndarray, transform, crs, path: Path) -> None:
+    """Guarda la superficie escalar de un perfil (nan→-9999, inf→999, como combinar.py)."""
+    out = np.where(np.isposinf(C), _BARRERA_DISCO, C)
+    out = np.where(np.isnan(out), _NODATA, out).astype("float32")
+    profile = dict(driver="GTiff", dtype="float32", count=1,
+                   height=C.shape[0], width=C.shape[1],
+                   transform=transform, crs=crs, nodata=_NODATA, compress="lzw")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(path, "w", **profile) as dst:
+        dst.write(out, 1)
+
+
 def run_perfiles(s: str, lam: float) -> None:
     """Rehace las rutas por perfil (perfiles.yaml) con el motor anisótropo."""
     cfg = yaml.safe_load((CONFIG / "escenario.yaml").read_text(encoding="utf-8"))
@@ -285,6 +297,7 @@ def run_perfiles(s: str, lam: float) -> None:
         # El peso 'traversal' del perfil escala λ (fuerza del cruce perpendicular).
         lam_p = lam * float(pesos.get("traversal", 0.0))
         C, transform, crs = _superficie_perfil(s, pesos)
+        _guardar_superficie(C, transform, crs, PENDIENTE / f"superficie_{s}_{pid}.tif")
         origen = _snap_to_valid(*_utm_to_rowcol(*origen_utm, transform), C)
         destino = _snap_to_valid(*_utm_to_rowcol(*destino_utm, transform), C)
         celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lam_p)

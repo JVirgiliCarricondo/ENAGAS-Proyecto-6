@@ -112,3 +112,16 @@ Ficheros: `ruta_{s}_{corto,ambiental,pendiente,equilibrio}.gpkg`.
 
 `λ_base` se ajusta con `--lambda` (def. 4.0); su valor final se fija con el
 backtesting contra un ramal real.
+
+### Superficies de coste que originan cada ruta
+
+- `superficie_{s}_{corto,ambiental,pendiente,equilibrio}.tif` — superficie escalar
+  ponderada de cada perfil (la que entra en el LCP). Alineadas al DEM, nodata=-9999.
+- `superficie_{s}_demo.tif` — superficie de pesos iguales que origina el par
+  iso/aniso (copia de `Trazados/superficie_{s}.tif`).
+
+**Ojo:** en esta versión anisótropa, cada ruta NO sale solo de su raster escalar.
+La ruta = **`superficie_{s}_{perfil}.tif` (coste escalar) + `gradiente_{s}_sig150m.tif`
+(dirección) + λ_perfil**. El término direccional `λ·S·sinθ` se aplica en las
+transiciones del LCP, no se puede prehornear en el raster escalar. El raster escalar
+es, por tanto, una parte de lo que origina la ruta; la dirección es la otra.
