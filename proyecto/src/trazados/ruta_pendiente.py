@@ -48,11 +48,21 @@ _ROOT = Path(__file__).resolve().parents[2]
 DATA = _ROOT / "data"
 CONFIG = DATA / "config"
 TRAZADOS = DATA / "processed" / "Trazados"
-PENDIENTE = DATA / "processed" / "Capas_Coste" / "Pendiente"
+CAPAS = DATA / "processed" / "Capas_Coste"
+PENDIENTE = CAPAS / "Pendiente"
 
 _NODATA = -9999.0
 _BARRERA_DISCO = 999.0
 SLOPE_REF = 30.0  # grados; normaliza S a [0,1] (= barrera dura de pendiente.py)
+
+# Mapeo peso (perfiles.yaml) → fichero de capa en Capas_Coste/. 'longitud' es el
+# coste base por celda (no es una capa). 'cruces' no se pondera en perfiles.yaml.
+PESO_A_CAPA = {
+    "pendiente": "pendiente",
+    "uso_suelo": "expropiacion",
+    "protegida": "protegida",
+    "geotecnia": "geotecnia",
+}
 
 _VECINOS = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
             (0, 1), (1, -1), (1, 0), (1, 1)]
@@ -220,6 +230,64 @@ def _exportar(celdas, transform, crs, tipo: str, lam: float, path: Path,
     return linea
 
 
+def _superficie_perfil(
+    s: str, pesos: dict[str, float]
+) -> tuple[np.ndarray, rasterio.Affine, object]:
+    """Superficie escalar PONDERADA por los pesos de un perfil (perfiles.yaml).
+
+    coste = peso_longitud (base por celda) + Σ peso_capa · capa
+    Sigue el convenio de combinar.py: -9999 → nan (celda impasable: fuera de AOI
+    o barrera dura). Una celda es impasable si cualquier capa usada lo es.
+    """
+    base = float(pesos.get("longitud", 1.0))
+
+    transform = crs = None
+    acc = None
+    for key, w in pesos.items():
+        cap = PESO_A_CAPA.get(key)
+        if cap is None:
+            continue  # 'longitud' u otra clave sin capa raster
+        path = CAPAS / f"{cap}_{s}.tif"
+        if not path.exists():
+            log.warning("[%s] capa ausente para peso '%s': %s", s, key, path.name)
+            continue
+        with rasterio.open(path) as src:
+            arr = src.read(1).astype("float64")
+            if transform is None:
+                transform, crs = src.transform, src.crs
+                acc = np.full(arr.shape, base, dtype="float64")
+        arr = np.where(arr == _NODATA, np.nan, arr)
+        acc = acc + float(w) * arr  # nan se propaga → celda impasable
+
+    if acc is None:
+        raise RuntimeError(f"[{s}] perfil sin capas ponderables: {pesos}")
+    return acc, transform, crs
+
+
+def run_perfiles(s: str, lam: float) -> None:
+    """Rehace las rutas por perfil (perfiles.yaml) con el motor anisótropo."""
+    cfg = yaml.safe_load((CONFIG / "escenario.yaml").read_text(encoding="utf-8"))
+    esc = cfg[f"escenario_{s}"]
+    origen_utm = (esc["origen"]["x"], esc["origen"]["y"])
+    destino_utm = (esc["destino"]["x"], esc["destino"]["y"])
+
+    perfiles = yaml.safe_load((CONFIG / "perfiles.yaml").read_text(encoding="utf-8"))["perfiles"]
+    gx, gy, S = _cargar_direccion(s)
+
+    print(f"\n=== Escenario {s}: rutas por perfil (λ={lam}) ===")
+    for perfil in perfiles:
+        pid, pesos = perfil["id"], perfil["pesos"]
+        C, transform, crs = _superficie_perfil(s, pesos)
+        origen = _snap_to_valid(*_utm_to_rowcol(*origen_utm, transform), C)
+        destino = _snap_to_valid(*_utm_to_rowcol(*destino_utm, transform), C)
+        celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lam)
+        expos = exposicion_transversal(celdas, gx, gy, S)
+        out = PENDIENTE / f"ruta_{s}_{pid}.gpkg"
+        linea = _exportar(celdas, transform, crs, pid, lam, out, expos)
+        print(f"  {pid:11s}: {out.name:24s} longitud={linea.length:7.0f} m  "
+              f"exposición_transversal={expos:.4f}")
+
+
 def run_escenario(s: str, lam: float) -> None:
     cfg = yaml.safe_load((CONFIG / "escenario.yaml").read_text(encoding="utf-8"))
     esc = cfg[f"escenario_{s}"]
@@ -250,11 +318,16 @@ def main() -> None:
     parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
     parser.add_argument("--lambda", dest="lam", type=float, default=4.0,
                         help="peso de penalización por transversalidad (def: 4.0)")
+    parser.add_argument("--modo", choices=["perfiles", "demo"], default="perfiles",
+                        help="'perfiles' = 4 rutas de perfiles.yaml; 'demo' = iso vs aniso (pesos iguales)")
     args = parser.parse_args()
 
     escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
     for s in escenarios:
-        run_escenario(s, args.lam)
+        if args.modo == "perfiles":
+            run_perfiles(s, args.lam)
+        else:
+            run_escenario(s, args.lam)
     print(f"\nRutas guardadas en: {PENDIENTE}")
 
 

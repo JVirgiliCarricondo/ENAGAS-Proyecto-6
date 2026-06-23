@@ -65,18 +65,37 @@ coste(p→q) = d · C_celda · (1 + λ · S · sinθ)
 - `S` = pendiente normalizada [0,1] (capa de dirección) · `θ` = ángulo del paso
   respecto a la línea de máxima pendiente · `λ` = peso (def. 4.0, calibrable).
 
-**Ficheros** (por escenario `s ∈ {A, B}`):
-- `ruta_{s}_anisotropa.gpkg` — la propuesta, con la consideración de Enagás.
-- `ruta_{s}_isotropa.gpkg`   — baseline sin anisotropía, para comparar.
-
 Cada `.gpkg` lleva `exposicion_transversal` = media de `S·sinθ` por la ruta
-(0 = siempre de frente a la ladera). Resultado (λ=4):
+(0 = siempre de frente a la ladera).
 
-| Escenario | exposición isótropa | exposición anisótropa | mejora |
-|---|---|---|---|
-| A | 0.0377 | 0.0233 | −38% |
-| B | 0.0352 | 0.0185 | −47% |
+### Demo del efecto (pesos iguales, `--modo demo`)
 
-Las rutas comparten solo ~21% de celdas con la isótropa: el corredor cambia para
-cruzar las laderas de frente, sin alargarse. `λ` es el parámetro de calibración
-(`--lambda`); su valor final se fijará con el backtesting contra un ramal real.
+- `ruta_{s}_anisotropa.gpkg` y `ruta_{s}_isotropa.gpkg` — misma superficie, λ=4 vs λ=0.
+  Aísla el efecto de la anisotropía:
+
+  | Escenario | exposición isótropa | exposición anisótropa | mejora |
+  |---|---|---|---|
+  | A | 0.0377 | 0.0233 | −38% |
+  | B | 0.0352 | 0.0185 | −47% |
+
+  Las rutas comparten solo ~21% de celdas: el corredor cambia para cruzar las
+  laderas de frente, sin alargarse.
+
+### Rutas por perfil (`--modo perfiles`, rehechas con la nueva capa)
+
+Reemplazan a las de `data/processed/Rutas/` (que eran **idénticas entre sí**: la
+diferenciación por perfil estaba sin implementar). Una por perfil de `perfiles.yaml`,
+todas con la consideración de cruce perpendicular:
+
+- `ruta_{s}_{corto,ambiental,pendiente,equilibrio}.gpkg`
+
+Mapeo peso→capa usado: `pendiente→pendiente`, `uso_suelo→expropiacion`,
+`protegida→protegida`, `geotecnia→geotecnia`; `longitud` = coste base por celda.
+
+**Diferenciación modesta**: en el corredor A solo el perfil `pendiente` diverge
+(~50% distinto); el resto se parece mucho (88–100%) porque las capas no-pendiente
+están casi vacías en estos corredores. La diferenciación fuerte requiere el
+*corridor masking* (Sprint 5, pendiente en `src/trazados/lcp.py`).
+
+`λ` es el parámetro de calibración (`--lambda`, def. 4.0); su valor final se fijará
+con el backtesting contra un ramal real.
