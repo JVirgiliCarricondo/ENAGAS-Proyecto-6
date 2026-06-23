@@ -1,8 +1,7 @@
-"""Camino de mínimo coste y diferenciación de rutas.
+"""Camino de mínimo coste (LCP) y diferenciación de rutas.
 
-Esqueleto de partida — completar en los Sprints 4-5.
-LCP por defecto con `skimage.graph` (MCP_Geometric / route_through_array);
-alternativa con `networkx` (Dijkstra sobre la rejilla como grafo).
+Sprint 4: camino_minimo_coste() + Ruta.como_linea() implementados.
+Sprint 5: aplicar_corridor_masking(), generar_rutas_diferenciadas(), solapamiento().
 """
 
 from __future__ import annotations
@@ -10,20 +9,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from shapely.geometry import LineString
+from skimage.graph import route_through_array
+
+_BIG = 1e9  # sustituto de nan/inf para skimage (que no acepta esos valores)
 
 
 @dataclass
 class Ruta:
     perfil: str
-    celdas: list[tuple[int, int]]   # secuencia (fila, columna) sobre la rejilla
-    coste_relativo: float           # índice normalizado 0-1, NUNCA €
+    celdas: list[tuple[int, int]]  # secuencia (fila, columna) sobre la rejilla
+    coste_relativo: float          # índice normalizado 0-1, NUNCA €
 
-    def como_linea(self, rejilla):
-        """Convierte la secuencia de celdas en una geometría (LineString) en el CRS de trabajo.
+    def como_linea(self, transform) -> LineString:
+        """Convierte la secuencia de celdas en un LineString georreferenciado.
 
-        TODO(S5): mapear (fila, col) -> (x, y) con el transform de la rejilla.
+        transform: rasterio Affine del raster de referencia (EPSG:25830).
         """
-        raise NotImplementedError("Pasar celdas a geometría — Sprint 5")
+        import rasterio.transform as rt
+        coords = [rt.xy(transform, r, c, offset="center") for r, c in self.celdas]
+        return LineString(coords)
 
 
 def camino_minimo_coste(
@@ -32,12 +37,47 @@ def camino_minimo_coste(
     destino: tuple[int, int],
     perfil: str,
 ) -> Ruta:
-    """Calcula el LCP origen->destino sobre una superficie de coste.
+    """Calcula el LCP origen→destino sobre una superficie de coste 2D.
 
-    TODO(S4): usar skimage.graph.route_through_array (o MCP_Geometric) y devolver la
-    secuencia de celdas y el coste acumulado normalizado.
+    Algoritmo: skimage.graph.route_through_array (MCP_Geometric).
+    - Movimiento en 8 direcciones; desplazamiento diagonal = √2 × coste_celda.
+    - nan → celda fuera del AOI (coste _BIG, evitada).
+    - inf → barrera dura (coste _BIG, evitada salvo que no haya otra salida).
+
+    coste_relativo: coste medio por celda normalizado al máximo de la superficie (0-1).
     """
-    raise NotImplementedError("Implementar LCP — Sprint 4")
+    height, width = superficie_coste.shape
+    for nombre, rc in [("origen", origen), ("destino", destino)]:
+        r, c = rc
+        if not (0 <= r < height and 0 <= c < width):
+            raise ValueError(
+                f"{nombre} {rc} fuera de la rejilla ({height}×{width})"
+            )
+
+    # Preparar array: skimage no admite nan ni inf
+    arr = np.where(np.isnan(superficie_coste), _BIG, superficie_coste)
+    arr = np.where(np.isposinf(arr), _BIG, arr)
+    arr = np.clip(arr, 0, _BIG)
+
+    indices, total_cost = route_through_array(
+        arr, origen, destino, fully_connected=True, geometric=True
+    )
+    celdas = [(int(r), int(c)) for r, c in indices]
+
+    # Normalización: total_cost / (n_transiciones × vmax × √2)
+    # √2 es el factor geométrico máximo por paso (diagonal); garantiza rango [0, 1].
+    transitable = arr[arr < _BIG]
+    vmax = float(transitable.max()) if transitable.size else 1.0
+    n_transiciones = max(len(celdas) - 1, 1)
+    coste_relativo = float(np.clip(
+        total_cost / (n_transiciones * vmax * np.sqrt(2)),
+        0.0, 1.0,
+    ))
+
+    return Ruta(perfil=perfil, celdas=celdas, coste_relativo=coste_relativo)
+
+
+# ── Sprint 5 ──────────────────────────────────────────────────────────────────
 
 
 def aplicar_corridor_masking(
@@ -48,8 +88,8 @@ def aplicar_corridor_masking(
 ) -> np.ndarray:
     """Penaliza la proximidad a rutas ya generadas para forzar corredores distintos.
 
-    TODO(S5): dilatar las celdas de `rutas_previas` (radio_celdas) y multiplicar su coste
-    por `penalizacion`. Devuelve una superficie de coste modificada.
+    TODO(S5): dilatar las celdas de rutas_previas (radio_celdas) y multiplicar
+              su coste por penalizacion. Devuelve superficie modificada.
     """
     raise NotImplementedError("Implementar corridor masking — Sprint 5")
 
@@ -64,9 +104,9 @@ def generar_rutas_diferenciadas(
     """Genera n rutas demostrablemente distintas (perfiles + corridor masking).
 
     TODO(S5):
-      1. Para cada perfil, calcular el LCP (con corridor masking respecto a las anteriores).
-      2. Medir el solapamiento con las rutas ya aceptadas.
-      3. Aceptar solo si solapamiento <= max_solapamiento; si no, reintentar penalizando más.
+      1. Para cada perfil, calcular el LCP con corridor masking respecto a las anteriores.
+      2. Medir solapamiento con las rutas ya aceptadas.
+      3. Aceptar solo si solapamiento <= max_solapamiento.
     """
     raise NotImplementedError("Generar rutas diferenciadas — Sprint 5")
 
@@ -74,6 +114,6 @@ def generar_rutas_diferenciadas(
 def solapamiento(ruta_a: Ruta, ruta_b: Ruta) -> float:
     """Fracción de celdas compartidas entre dos rutas (0 = disjuntas, 1 = idénticas).
 
-    TODO(S5): comparar conjuntos de celdas (o con un buffer) y devolver la fracción.
+    TODO(S5): comparar conjuntos de celdas y devolver la fracción de solapamiento.
     """
     raise NotImplementedError("Medir solapamiento — Sprint 5")

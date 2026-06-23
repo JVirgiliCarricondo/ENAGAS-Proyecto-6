@@ -32,6 +32,8 @@ data/raw/
 !data/config/**
 # excepción: los datos procesados SÍ se versionan (rasters/capas generados incluidos)
 !data/processed/**
+# re-ignorar caché GDAL/QGIS aunque estén en processed/ (se regeneran automáticamente)
+data/processed/**/*.aux.xml
 
 # Notebooks: checkpoints
 .ipynb_checkpoints/

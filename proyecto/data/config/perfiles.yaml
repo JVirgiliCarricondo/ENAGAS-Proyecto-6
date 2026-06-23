@@ -3,43 +3,100 @@
 # Pesos distintos -> superficies de coste distintas -> rutas DIFERENCIADAS.
 # Estos valores son orientativos: calibrarlos con el caso real (ver seguimiento.md).
 #
-# Capas de coste esperadas (ver src/superficie/):
-#   pendiente  -> coste por inclinación (del DEM)
-#   uso_suelo  -> coste por tipo de suelo (CLC/OSM; urbano caro)
-#   protegida  -> coste por estar en Red Natura 2000 (muy alto o prohibido)
-#   longitud   -> coste base por distancia recorrida
+# Capas de coste esperadas (ver src/superficie/, CAPAS_COSTE_P*.md):
+#   pendiente      -> coste por inclinación (P1: script 01_pendiente_opcion_B.py)
+#   uso_suelo      -> coste por tipo de suelo (P3: Catastro expropiación)
+#   protegida      -> coste por estar en Red Natura 2000 (P4: MITECO/Copernicus)
+#   geotecnia      -> coste por estabilidad del terreno (P2: IGME litología) [OPCIONAL]
+#   longitud       -> coste base por distancia recorrida (multiplicador)
+
+# ============================================================================
+# PERFILES DE PRIORIDAD (4 alternativas diferenciadas)
+# ============================================================================
 
 perfiles:
   - id: corto
     nombre: "Más corto"
-    descripcion: "Minimiza la longitud; tolera más pendiente e impacto."
+    descripcion: "Minimiza la longitud; tolera más pendiente e impacto ambiental."
     pesos:
+      longitud: 1.0
       pendiente: 0.2
       uso_suelo: 0.2
       protegida: 0.3
-      longitud: 1.0
+    nota: "Mejor velocidad de ejecución, pero pendientes/impacto mayores"
 
   - id: ambiental
     nombre: "Menor impacto ambiental"
-    descripcion: "Evita zonas protegidas y suelo urbano aunque alargue el trazado."
+    descripcion: "Evita zonas protegidas (Red Natura 2000) y suelo urbano aunque alargue trazado."
     pesos:
-      pendiente: 0.2
-      uso_suelo: 0.5
       protegida: 1.0
+      uso_suelo: 0.5
+      pendiente: 0.2
       longitud: 0.3
+    nota: "Prioriza viabilidad medioambiental"
 
   - id: pendiente
     nombre: "Menor pendiente"
-    descripcion: "Busca terreno llano (constructivamente más sencillo)."
+    descripcion: "Busca terreno llano (constructivamente más económico y sencillo)."
     pesos:
       pendiente: 1.0
+      longitud: 0.3
       uso_suelo: 0.3
       protegida: 0.4
-      longitud: 0.3
+    nota: "Reduce coste de obra por excavación"
 
-# Parámetros de diferenciación de rutas (corridor masking)
+  - id: equilibrio
+    nombre: "Equilibrio (recomendado)"
+    descripcion: "Balance entre criterios: pendiente, impacto, longitud y viabilidad."
+    pesos:
+      pendiente: 0.5
+      protegida: 0.6
+      uso_suelo: 0.4
+      longitud: 0.5
+    nota: "Perfil recomendado como punto de partida para MVP 1-3"
+
+# ============================================================================
+# PARÁMETROS NORMATIVOS DE CAPAS (fijos, no calibrables)
+# ============================================================================
+
+# P1 — Pendiente (ver CAPAS_COSTE_P1_Pendiente.md)
+parametros_pendiente:
+  # Curva por tramos (normativa, FIJA)
+  rango_0_5_grados:
+    coste: 0.0
+    descripcion: "Terreno llano — zanja normal, constructivamente trivial"
+
+  rango_5_15_grados:
+    coste_inicio: 0.0
+    coste_fin: 0.6
+    tipo: "rampa_lineal"
+    descripcion: "Terreno inclinado — rampa de coste"
+
+  rango_15_30_grados:
+    coste_inicio: 0.6
+    coste_fin: 1.0
+    tipo: "rampa_lineal"
+    descripcion: "Terreno muy inclinado — rampa saturation"
+
+  barrera_dura_grados: 30
+  coste_barrera: "infinito"
+  descripcion_barrera: "Constructivamente prohibitivo — celda intransitable"
+
+  # Método de cálculo
+  algoritmo: "np.gradient"  # o "richdem" (Horn) para MVP 5-6
+  resolucion_referencia_m: 30  # DEM Copernicus GLO-30
+
+  # Reproducibilidad
+  normalizacion: "absoluta (umbrales fijos)"
+  reproductibilidad: "garantizada (misma pendiente = mismo coste siempre)"
+
+# ============================================================================
+# PARÁMETROS DE DIFERENCIACIÓN (corridor masking para alternativas)
+# ============================================================================
+
 diferenciacion:
   penalizacion_proximidad: 5.0   # factor de coste extra cerca de rutas ya generadas
   radio_corredor_m: 500          # ancho del corredor penalizado a cada lado, en metros
   max_solapamiento: 0.3          # solapamiento máximo admitido entre dos rutas (0-1)
   n_rutas: 3                     # nº de alternativas a generar (3-5)
+  metodo: "corridor_masking"     # penalizar proximidad a rutas previas
