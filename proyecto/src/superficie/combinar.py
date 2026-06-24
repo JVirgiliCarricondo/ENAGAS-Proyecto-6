@@ -34,7 +34,6 @@ def _layer_paths(scenario: str) -> list[Path]:
     return sorted([
         p for p in CAPAS_COSTE.glob(f"*_{s}.tif")
         if not p.stem.startswith("superficie_")
-        and not p.stem.startswith("aspecto_")   # capa intermedia, no de coste
     ])
 
 
