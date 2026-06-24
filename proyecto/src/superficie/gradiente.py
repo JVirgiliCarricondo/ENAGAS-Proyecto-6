@@ -23,17 +23,18 @@ Convenio de signos (coordenadas de mapa Este/Norte, EPSG:25830):
   descenso (línea de caída) ∝ (-dz/dx,  dz/dy)   ← la que sigue el agua / la tubería
   azimut_descenso = atan2(Este, Norte) en grados [0=N, 90=E, 180=S, 270=O]
 
-Salida (NUEVA carpeta, no pisa nada existente):
-  data/processed/Capas_Coste/Pendiente/
-    gradiente_{s}_sig{N}m.tif          (4 bandas: dz/dx, dz/dy, pendiente°, azimut_descenso°)
-    gradiente_{s}_sig{N}m_flechas.gpkg (flechas cuesta abajo para validar el sentido en QGIS)
+Salida (capa de coste, junto a la pendiente-MAGNITUD pendiente_{s}.tif):
+  data/processed/Capas_Coste/
+    pendiente_direccion_{s}.tif          (4 bandas: dz/dx, dz/dy, pendiente°, azimut_descenso°)
+    pendiente_direccion_{s}_flechas.gpkg (flechas cuesta abajo para validar el sentido en QGIS)
 
-Se generan 3 variantes de suavizado (sigma = 90 / 150 / 250 m) para que el equipo
-y Enagás elijan la escala a la que "se ve la ladera real".
+La escala de suavizado elegida es sigma = 150 m (la capa final NO lleva sufijo).
+Otras escalas de comparación (p.ej. 90 / 250 m) se generan con --sigmas y SÍ llevan
+sufijo `_sig{N}m` para no pisar la capa canónica.
 
 Uso (desde proyecto/):
   python -m src.superficie.gradiente
-  python -m src.superficie.gradiente --escenario A --sigmas 150
+  python -m src.superficie.gradiente --escenario A --sigmas 90 150 250  # comparar escalas
 """
 
 from __future__ import annotations
@@ -48,10 +49,21 @@ from shapely.geometry import LineString
 
 BASE = Path(__file__).resolve().parents[2] / "data" / "processed"
 ENTRADA_DIR = BASE / "Recorte_AOI"
-SALIDA_DIR = BASE / "Capas_Coste" / "Pendiente"
+SALIDA_DIR = BASE / "Capas_Coste"  # junto a pendiente_{s}.tif (magnitud)
 
 ESCENARIOS = ["A", "B"]
-SIGMAS_M = [90.0, 150.0, 250.0]  # escalas de suavizado a comparar
+SIGMA_CANONICO_M = 150.0          # escala elegida; su salida es la capa de coste final (sin sufijo)
+SIGMAS_M = [SIGMA_CANONICO_M]     # por defecto solo la escala elegida; pásale más para comparar
+
+
+def _nombre_salida(s: str, sigma_m: float, sufijo: str = "") -> str:
+    """Nombre de fichero de salida. El sigma canónico (150 m) es la capa de coste
+    final y NO lleva sufijo de sigma; cualquier otra escala lo lleva (`_sig{N}m`)
+    para no pisar la capa canónica."""
+    base = f"pendiente_direccion_{s}"
+    if abs(sigma_m - SIGMA_CANONICO_M) > 1e-6:
+        base += f"_sig{int(round(sigma_m))}m"
+    return base + sufijo
 NODATA = -9999.0
 RESOLUCION_M = 30.0
 
@@ -155,7 +167,7 @@ def procesar(s: str, sigma_m: float) -> tuple[Path, Path]:
     n = int(round(sigma_m))
     profile.update(driver="GTiff", dtype="float32", count=4,
                    nodata=NODATA, compress="lzw")
-    tif = SALIDA_DIR / f"gradiente_{s}_sig{n}m.tif"
+    tif = SALIDA_DIR / f"{_nombre_salida(s, sigma_m)}.tif"
     with rasterio.open(tif, "w", **profile) as dst:
         dst.write(dzdx.astype(np.float32), 1)
         dst.write(dzdy.astype(np.float32), 2)
@@ -166,7 +178,7 @@ def procesar(s: str, sigma_m: float) -> tuple[Path, Path]:
         dst.set_band_description(3, "pendiente suavizada (grados)")
         dst.set_band_description(4, "azimut linea max pendiente, descenso (grados)")
 
-    gpkg = _flechas(s, n, z_suave, transform, crs, valido, dzdx, dzdy, pendiente_deg)
+    gpkg = _flechas(s, sigma_m, z_suave, transform, crs, valido, dzdx, dzdy, pendiente_deg)
 
     n_dir = int(np.sum((pendiente_deg != NODATA) & (pendiente_deg >= PENDIENTE_MIN_FLECHA)))
     print(f"[{s} sig={n}m] {tif.name}: pendiente_max={np.nanmax(np.where(pendiente_deg==NODATA,np.nan,pendiente_deg)):.1f}° | "
@@ -175,7 +187,7 @@ def procesar(s: str, sigma_m: float) -> tuple[Path, Path]:
 
 
 def _flechas(
-    s: str, n: int, z_suave: np.ndarray, transform, crs,
+    s: str, sigma_m: float, z_suave: np.ndarray, transform, crs,
     valido: np.ndarray, dzdx: np.ndarray, dzdy: np.ndarray, pendiente_deg: np.ndarray,
 ) -> Path:
     """Flechas cuesta abajo (línea de máxima pendiente) para validar el sentido.
@@ -231,7 +243,7 @@ def _flechas(
             })
 
     gdf = gpd.GeoDataFrame(attrs, geometry=geoms, crs=crs)
-    gpkg = SALIDA_DIR / f"gradiente_{s}_sig{n}m_flechas.gpkg"
+    gpkg = SALIDA_DIR / f"{_nombre_salida(s, sigma_m)}_flechas.gpkg"
     gdf.to_file(gpkg, driver="GPKG")
 
     if len(gdf):
@@ -244,7 +256,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Capa de DIRECCIÓN de pendiente (gradiente).")
     parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
     parser.add_argument("--sigmas", type=float, nargs="+", default=SIGMAS_M,
-                        help="sigmas de suavizado en metros (def: 90 150 250)")
+                        help="sigmas de suavizado en metros (def: 150, la escala elegida; "
+                             "pásale p.ej. 90 150 250 para comparar escalas)")
     args = parser.parse_args()
 
     escenarios = ESCENARIOS if args.escenario == "ambos" else [args.escenario]

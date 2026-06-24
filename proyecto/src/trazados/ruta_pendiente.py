@@ -2,7 +2,7 @@
 Fase 2 — Ruta con LCP ANISÓTROPO (consideración de Enagás 2026-06-22).
 
 La superficie escalar combinada (Trazados/superficie_{s}.tif) decide DÓNDE hay
-coste; la capa de DIRECCIÓN (Capas_Coste/Pendiente/gradiente_{s}_sig150m.tif)
+coste; la capa de DIRECCIÓN (Capas_Coste/pendiente_direccion_{s}.tif)
 decide CÓMO se cruza la pendiente que no se puede evitar: de frente (perpendicular
 a las curvas de nivel), nunca en transversal.
 
@@ -118,10 +118,10 @@ def _cargar_superficie(s: str) -> tuple[np.ndarray, rasterio.Affine, object]:
 
 def _cargar_direccion(s: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Capa de dirección: dz/dx, dz/dy, pendiente normalizada S∈[0,1]."""
-    tif = PENDIENTE / f"gradiente_{s}_sig150m.tif"
+    tif = CAPAS / f"pendiente_direccion_{s}.tif"
     if not tif.exists():
         raise FileNotFoundError(
-            f"Falta {tif}. Ejecuta primero: python -m src.superficie.gradiente --escenario {s} --sigmas 150"
+            f"Falta {tif}. Ejecuta primero: python -m src.superficie.gradiente --escenario {s}"
         )
     with rasterio.open(tif) as src:
         gx = src.read(1).astype("float64")
