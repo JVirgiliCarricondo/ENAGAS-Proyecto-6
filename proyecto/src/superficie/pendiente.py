@@ -130,37 +130,6 @@ def calcular_pendiente_horn(
         return _pendiente_horn_numpy(dem, cellsize, nodata)
 
 
-def calcular_aspecto_horn(
-    dem: np.ndarray,
-    nodata: float = NODATA,
-    cellsize: float = RESOLUCION_M,
-) -> np.ndarray:
-    """Aspecto en radianes [-π, π]: dirección del gradiente de máxima subida.
-
-    Convención matemática: 0 = Este, positivo = antihorario.
-    Calculado con el kernel Horn 3×3 (mismo que la pendiente).
-    nodata / bordes → np.nan.
-    """
-    z = dem.astype(np.float64)
-    valid = np.isfinite(z) & (z != nodata)
-    z_work = z.copy()
-    z_work[~valid] = np.nan
-
-    zpad = np.pad(z_work, 1, mode="edge")
-    z1 = zpad[:-2, :-2]; z2 = zpad[:-2, 1:-1]; z3 = zpad[:-2, 2:]
-    z4 = zpad[1:-1, :-2]
-    z6 = zpad[1:-1, 2:]
-    z7 = zpad[2:, :-2];  z8 = zpad[2:, 1:-1]; z9 = zpad[2:, 2:]
-
-    dzdx = ((z3 + 2 * z6 + z9) - (z1 + 2 * z4 + z7)) / (8.0 * cellsize)
-    dzdy = ((z7 + 2 * z8 + z9) - (z1 + 2 * z2 + z3)) / (8.0 * cellsize)
-    # dzdy positivo = sube hacia el Sur (índice de fila crece hacia el Sur).
-    # Gradiente geográfico (Norte↑): (dzdx, −dzdy).
-    aspect = np.arctan2(-dzdy, dzdx).astype(np.float32)
-    aspect[~valid] = np.nan
-    return aspect
-
-
 def validar_contrato_salida(raster_path: Path, dem_path: Path) -> None:
     """Valida el contrato de salida obligatorio frente al DEM de referencia."""
     with rasterio.open(dem_path) as dem:
@@ -242,19 +211,6 @@ def procesar_escenario(s: str) -> Path:
         f"pendiente media={np.nanmean(pendiente_grados):.1f}° | "
         f"coste [{validos.min():.3f}, {validos.max():.3f}] | "
         f"barreras={barreras} ({100 * barreras / cost_array.size:.1f}%)"
-    )
-
-    # ── Aspecto (dirección del gradiente de elevación) ────────────────────────
-    aspecto = calcular_aspecto_horn(dem_data, nodata=dem_nodata)
-    aspecto[mascara_dem_invalido] = np.nan
-
-    aspecto_arr = np.where(np.isnan(aspecto), NODATA, aspecto).astype("float32")
-    aspecto_salida = SALIDA_DIR / f"aspecto_{s}.tif"
-    with rasterio.open(aspecto_salida, "w", **profile) as dst:
-        dst.write(aspecto_arr, 1)
-    print(
-        f"[{s}] {aspecto_salida.name}: guardado  "
-        f"rango=[{np.nanmin(aspecto):.3f}, {np.nanmax(aspecto):.3f}] rad"
     )
 
     return salida
