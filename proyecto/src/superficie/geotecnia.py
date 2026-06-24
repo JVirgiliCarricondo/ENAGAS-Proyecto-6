@@ -22,6 +22,10 @@ import numpy as np
 import rasterio
 from rasterio.features import rasterize
 
+try:
+    from .config import params_geotecnia as _params_geotecnia
+except ImportError:
+    from config import params_geotecnia as _params_geotecnia
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 RECORTE_DIR = BASE_DIR / "data" / "processed" / "Recorte_AOI"
@@ -29,50 +33,11 @@ CAPAS_COSTE_DIR = BASE_DIR / "data" / "processed" / "Capas_Coste"
 
 SCENARIOS = ["A", "B"]
 NODATA: float = -9999.0
-DEFAULT_COST: float = 0.3
 
-# Índice de coste geotécnico por litología (DLO del IGME).
-# Cualquier DLO no listado recibe DEFAULT_COST (0.3).
-COST_TABLE: dict[str, float] = {
-    # Aluviales y fondos de valle — excavación muy fácil
-    "Gravas, arenas, limos y arcillas. Aluviales y fondos de valle": 0.1,
-    "CANTOS, ARENAS Y LIMOS. CONOS DE DEYECCIÓN": 0.1,
-    "Cantos y gravas polimácticas redondeadas. Terrazas": 0.1,
-    # Misma entrada con á almacenada como í (U+00ED) por corrupción en el GPKG fuente
-    "Cantos y gravas polim\xedcticas redondeadas. Terrazas": 0.1,
-    "GRAVAS POLIGENICAS, ARENAS Y LIMOS. TERRAZAS": 0.1,
-    # Sedimentos finos / coluviales — fácil
-    "Limo-arcillas y arenas con algun canto. Rellenos de Val": 0.2,
-    "Limo-arcillas y arenas con algún canto. Rellenos de Val": 0.2,
-    "CANTOS, LIMOS Y ARCILLAS. COLUVIAL": 0.2,
-    # Arcillas blandas / paleocanales aislados — moderado
-    "Arcillas y paleocanales de arenisca. Unidad de Mequinenza-Ballobar": 0.3,
-    "Paleocanal individual": 0.3,
-    # Arenisca compacta / paleocanales exhumados
-    "Paleocanales de arenisca exhumados (ambas unidades)": 0.4,
-    "Paleocanales de arenisca exhumados. Unidad de Mequinenza-Ballobar": 0.4,
-    "Paleocanales de arenisca exhumados. Unidad de Torrente de Cinca-Alcolea de Cinca": 0.4,
-    "Paleocanales amalgamados": 0.4,
-    # Conglomerados / mezcla duro-blando
-    "Areniscas, conglomerados y arcillas": 0.5,
-    "Areniscas, conglomerados y arcillas. Unidad de Torrente de Cinca-Alcolea de Cinca": 0.5,
-    "Arcillas rojas, capas de calizas y areniscas": 0.5,
-    # Caliza presente — más duro
-    "Arcillas, paleocanales de arenisca y capas de calizas": 0.6,
-    "Arcillas rojas con niveles edafizados, capas de caliza...": 0.6,
-    "Arcillas rojas con niveles edafizados, capas de caliza y paleocanal. de arenisca. Un. de Fayón-Fraga": 0.6,
-    # Misma entrada con ó almacenada como ¢ (U+00A2) por corrupción en el GPKG fuente
-    "Arcillas rojas con niveles edafizados, capas de caliza y paleocanal. de arenisca. Un. de Fay\xa2n-Fraga": 0.6,
-    # Yeso — problemático para infraestructuras (corrosivo, expansivo)
-    "Arcillas rojas con yeso nodular y areniscas": 0.7,
-    "Arcillas rojas con yeso nodular y areniscas. Unidad de Mequinenza-Ballobar": 0.7,
-    "ARCILLAS ROJAS CON NIVELES CENTIMETRICOS DE YESOS Y CALIZAS": 0.7,
-    "CANTOS, LIMOS YESIFEROS Y ARCILLAS. FONDOS DE VALLE PLANOS": 0.7,
-    "YESOS TABULARES Y NODULARES CON ARCILLAS GRISES": 0.7,
-    "YESOS TABULARES Y NODULARES CON ARCILLAS ROJAS Y GRISES": 0.7,
-    "YESOS TABULARES Y NODULARES CON MARGAS Y ARCILLAS": 0.7,
-    "Yesos masivos. U.BUJARALOZ-SARIÑENA": 0.7,
-}
+# Parámetros cargados de perfiles.yaml (parametros_capas.geotecnia)
+_gcfg = _params_geotecnia()
+COST_TABLE: dict[str, float] = {str(k): float(v) for k, v in _gcfg["tabla_costes"].items()}
+DEFAULT_COST: float = float(_gcfg["default_cost"])
 
 # ColorBrewer RdYlGn invertido: verde (fácil) → rojo oscuro (problemático)
 _COLORS: dict[float, str] = {

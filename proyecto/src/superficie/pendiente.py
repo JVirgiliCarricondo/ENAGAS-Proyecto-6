@@ -37,6 +37,16 @@ from pathlib import Path
 import numpy as np
 import rasterio
 
+try:
+    from .config import params_pendiente as _params_pendiente
+except ImportError:
+    from config import params_pendiente as _params_pendiente
+
+_pcfg = _params_pendiente()
+_UMBRAL_LLANO = float(_pcfg["umbral_llano_deg"])
+_UMBRAL_INCLINADO = float(_pcfg["umbral_inclinado_deg"])
+_COSTE_MAX_INCLINADO = float(_pcfg["coste_max_inclinado"])
+_UMBRAL_BARRERA = float(_pcfg["umbral_barrera_deg"])
 
 BASE = Path(__file__).resolve().parents[2] / "data" / "processed"
 ENTRADA_DIR = BASE / "Recorte_AOI"
@@ -49,16 +59,16 @@ RESOLUCION_M = 30.0
 
 
 def mapeo_coste_pendiente(pendiente_grados: np.ndarray) -> np.ndarray:
-    """Curva por tramos normativa: [0, 1] en memoria; >30° -> np.inf."""
+    """Curva por tramos [0, 1]; >umbral_barrera_deg -> np.inf. Umbrales en perfiles.yaml."""
     coste = np.zeros_like(pendiente_grados, dtype=np.float32)
 
-    mask2 = (pendiente_grados > 5) & (pendiente_grados <= 15)
-    coste[mask2] = 0.6 * (pendiente_grados[mask2] - 5) / 10
+    mask2 = (pendiente_grados > _UMBRAL_LLANO) & (pendiente_grados <= _UMBRAL_INCLINADO)
+    coste[mask2] = _COSTE_MAX_INCLINADO * (pendiente_grados[mask2] - _UMBRAL_LLANO) / (_UMBRAL_INCLINADO - _UMBRAL_LLANO)
 
-    mask3 = (pendiente_grados > 15) & (pendiente_grados <= 30)
-    coste[mask3] = 0.6 + 0.4 * (pendiente_grados[mask3] - 15) / 15
+    mask3 = (pendiente_grados > _UMBRAL_INCLINADO) & (pendiente_grados <= _UMBRAL_BARRERA)
+    coste[mask3] = _COSTE_MAX_INCLINADO + (1.0 - _COSTE_MAX_INCLINADO) * (pendiente_grados[mask3] - _UMBRAL_INCLINADO) / (_UMBRAL_BARRERA - _UMBRAL_INCLINADO)
 
-    mask4 = pendiente_grados > 30
+    mask4 = pendiente_grados > _UMBRAL_BARRERA
     coste[mask4] = np.inf
 
     return coste

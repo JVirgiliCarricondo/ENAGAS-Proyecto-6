@@ -17,6 +17,11 @@ from pathlib import Path
 import numpy as np
 import rasterio
 
+try:
+    from .config import get_perfil as _get_perfil
+except ImportError:
+    from config import get_perfil as _get_perfil
+
 log = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -185,15 +190,25 @@ if __name__ == "__main__":
         format="%(asctime)s  %(levelname)-8s  %(message)s",
         datefmt="%H:%M:%S",
     )
-    parser = argparse.ArgumentParser(description="Superficie de coste combinada (pesos iguales)")
+    parser = argparse.ArgumentParser(description="Superficie de coste combinada")
     parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
+    parser.add_argument(
+        "--perfil",
+        default=None,
+        help="ID del perfil de perfiles.yaml (p.ej. 'equilibrio'). "
+             "Sin este argumento: pesos iguales para todas las capas.",
+    )
     args = parser.parse_args()
+
+    pesos = _get_perfil(args.perfil)["pesos"] if args.perfil else None
+    if pesos:
+        print(f"  Perfil: {args.perfil}  |  pesos: {pesos}")
 
     scenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
     for sc in scenarios:
         print(f"\n{'='*60}\n  Escenario {sc}\n{'='*60}")
         try:
-            out = run(sc)   # pesos=None → pesos iguales
+            out = run(sc, pesos=pesos)
             print(f"\n  Verificación:")
             _verify(out)
         except FileNotFoundError as e:

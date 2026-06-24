@@ -2,13 +2,6 @@
 # Cada perfil es un vector de PESOS (adimensionales) sobre las capas de coste.
 # Pesos distintos -> superficies de coste distintas -> rutas DIFERENCIADAS.
 # Estos valores son orientativos: calibrarlos con el caso real (ver seguimiento.md).
-#
-# Capas de coste esperadas (ver src/superficie/, CAPAS_COSTE_P*.md):
-#   pendiente      -> coste por inclinación (P1: script 01_pendiente_opcion_B.py)
-#   uso_suelo      -> coste por tipo de suelo (P3: Catastro expropiación)
-#   protegida      -> coste por estar en Red Natura 2000 (P4: MITECO/Copernicus)
-#   geotecnia      -> coste por estabilidad del terreno (P2: IGME litología) [OPCIONAL]
-#   longitud       -> coste base por distancia recorrida (multiplicador)
 
 # ============================================================================
 # PERFILES DE PRIORIDAD (4 alternativas diferenciadas)
@@ -68,39 +61,131 @@ perfiles:
     nota: "Perfil recomendado como punto de partida para MVP 1-3"
 
 # ============================================================================
-# PARÁMETROS NORMATIVOS DE CAPAS (fijos, no calibrables)
+# PARÁMETROS DE COSTE INTRA-CAPA (calibrables)
+# Todos los valores numéricos de cada capa de coste se definen aquí.
+# Los módulos Python leen este bloque al importarse; editar el YAML y
+# volver a ejecutar el pipeline es suficiente para recalibrar cualquier peso.
 # ============================================================================
 
-# P1 — Pendiente (ver CAPAS_COSTE_P1_Pendiente.md)
-parametros_pendiente:
-  # Curva por tramos (normativa, FIJA)
-  rango_0_5_grados:
-    coste: 0.0
-    descripcion: "Terreno llano — zanja normal, constructivamente trivial"
+parametros_capas:
 
-  rango_5_15_grados:
-    coste_inicio: 0.0
-    coste_fin: 0.6
-    tipo: "rampa_lineal"
-    descripcion: "Terreno inclinado — rampa de coste"
+  # --------------------------------------------------------------------------
+  # P1 — Pendiente (src/superficie/pendiente.py)
+  # Curva de coste por tramos sobre la pendiente en grados (algoritmo Horn).
+  #   [0, umbral_llano_deg]               → coste 0.0  (terreno trivial)
+  #   [umbral_llano_deg, umbral_inclinado_deg] → rampa lineal 0.0 → coste_max_inclinado
+  #   [umbral_inclinado_deg, umbral_barrera_deg] → rampa lineal coste_max_inclinado → 1.0
+  #   > umbral_barrera_deg                → np.inf (celda intransitable)
+  # --------------------------------------------------------------------------
+  pendiente:
+    umbral_llano_deg: 5          # por debajo: coste 0.0
+    umbral_inclinado_deg: 15     # inicio de segunda rampa
+    coste_max_inclinado: 0.6     # coste al llegar a umbral_inclinado_deg
+    umbral_barrera_deg: 30       # por encima: barrera dura (np.inf)
 
-  rango_15_30_grados:
-    coste_inicio: 0.6
-    coste_fin: 1.0
-    tipo: "rampa_lineal"
-    descripcion: "Terreno muy inclinado — rampa saturation"
+  # --------------------------------------------------------------------------
+  # P2 — Geotecnia (src/superficie/geotecnia.py)
+  # Índice de coste geotécnico por litología (campo DLO del IGME).
+  # Cualquier DLO no listado recibe default_cost.
+  # Valores [0.1, 0.7]: 0.1 = excavación fácil, 0.7 = material problemático.
+  # Nota: las dos entradas marcadas "corrupción GPKG" son variantes del mismo
+  # DLO con caracteres mal codificados en la fuente; no modificarlas.
+  # --------------------------------------------------------------------------
+  geotecnia:
+    default_cost: 0.3
+    tabla_costes:
+      # ── Coste 0.1: Aluviales y fondos de valle (excavación muy fácil) ──────
+      "Gravas, arenas, limos y arcillas. Aluviales y fondos de valle": 0.1
+      "CANTOS, ARENAS Y LIMOS. CONOS DE DEYECCIÓN": 0.1
+      "Cantos y gravas polimácticas redondeadas. Terrazas": 0.1
+      "Cantos y gravas polimícticas redondeadas. Terrazas": 0.1    # corrupción GPKG: á→í
+      "GRAVAS POLIGENICAS, ARENAS Y LIMOS. TERRAZAS": 0.1
+      # ── Coste 0.2: Sedimentos finos / coluviales ───────────────────────────
+      "Limo-arcillas y arenas con algun canto. Rellenos de Val": 0.2
+      "Limo-arcillas y arenas con algún canto. Rellenos de Val": 0.2
+      "CANTOS, LIMOS Y ARCILLAS. COLUVIAL": 0.2
+      # ── Coste 0.3: Arcillas blandas / paleocanales aislados ────────────────
+      "Arcillas y paleocanales de arenisca. Unidad de Mequinenza-Ballobar": 0.3
+      "Paleocanal individual": 0.3
+      # ── Coste 0.4: Arenisca compacta / paleocanales exhumados ──────────────
+      "Paleocanales de arenisca exhumados (ambas unidades)": 0.4
+      "Paleocanales de arenisca exhumados. Unidad de Mequinenza-Ballobar": 0.4
+      "Paleocanales de arenisca exhumados. Unidad de Torrente de Cinca-Alcolea de Cinca": 0.4
+      "Paleocanales amalgamados": 0.4
+      # ── Coste 0.5: Conglomerados / mezcla duro-blando ──────────────────────
+      "Areniscas, conglomerados y arcillas": 0.5
+      "Areniscas, conglomerados y arcillas. Unidad de Torrente de Cinca-Alcolea de Cinca": 0.5
+      "Arcillas rojas, capas de calizas y areniscas": 0.5
+      # ── Coste 0.6: Caliza presente (más duro) ──────────────────────────────
+      "Arcillas, paleocanales de arenisca y capas de calizas": 0.6
+      "Arcillas rojas con niveles edafizados, capas de caliza...": 0.6
+      "Arcillas rojas con niveles edafizados, capas de caliza y paleocanal. de arenisca. Un. de Fayón-Fraga": 0.6
+      "Arcillas rojas con niveles edafizados, capas de caliza y paleocanal. de arenisca. Un. de Fay¢n-Fraga": 0.6  # corrupción GPKG: ó→¢
+      # ── Coste 0.7: Yeso (corrosivo y expansivo: problemático) ──────────────
+      "Arcillas rojas con yeso nodular y areniscas": 0.7
+      "Arcillas rojas con yeso nodular y areniscas. Unidad de Mequinenza-Ballobar": 0.7
+      "ARCILLAS ROJAS CON NIVELES CENTIMETRICOS DE YESOS Y CALIZAS": 0.7
+      "CANTOS, LIMOS YESIFEROS Y ARCILLAS. FONDOS DE VALLE PLANOS": 0.7
+      "YESOS TABULARES Y NODULARES CON ARCILLAS GRISES": 0.7
+      "YESOS TABULARES Y NODULARES CON ARCILLAS ROJAS Y GRISES": 0.7
+      "YESOS TABULARES Y NODULARES CON MARGAS Y ARCILLAS": 0.7
+      "Yesos masivos. U.BUJARALOZ-SARIÑENA": 0.7
 
-  barrera_dura_grados: 30
-  coste_barrera: "infinito"
-  descripcion_barrera: "Constructivamente prohibitivo — celda intransitable"
+  # --------------------------------------------------------------------------
+  # P3 — Expropiación (src/superficie/expropiacion.py)
+  # Coste por tipo catastral (campo TIPO). Escala [0, 1]: 0 = dominio público
+  # (sin expropiación), 1 = urbano consolidado (expropiación muy costosa).
+  # fondo_cost: celdas sin parcela catastral (zona no catastrada).
+  # Parcelas rústicas (R) con área < area_periurbano_m2 se tratan como periurbano.
+  # --------------------------------------------------------------------------
+  expropiacion:
+    fondo_cost: 0.20          # celda sin parcela catastral
+    default_cost: 0.40        # TIPO no listado en la tabla
+    area_periurbano_m2: 500.0 # parcelas R menores que este umbral → periurbano
+    cost_periurbano: 0.50
+    tipos:
+      D: 0.05   # dominio público (vía, río, camino)
+      R: 0.20   # rústico
+      X: 0.40   # sin clasificar
+      U: 0.90   # urbano
 
-  # Método de cálculo
-  algoritmo: "np.gradient"  # o "richdem" (Horn) para MVP 5-6
-  resolucion_referencia_m: 30  # DEM Copernicus GLO-30
+  # --------------------------------------------------------------------------
+  # P4 — Zonas protegidas (src/superficie/zonas_protegidas.py)
+  # Variable binaria: dentro de Red Natura 2000 = valor_protegida, fuera = valor_fondo.
+  # La magnitud de la penalización la decide el peso de la capa en la
+  # combinación (perfiles[*].pesos.protegida), no el valor aquí.
+  # --------------------------------------------------------------------------
+  zonas_protegidas:
+    valor_protegida: 1.0   # cualquier tipo Red Natura (ZEPA / LIC / ZEC)
+    valor_fondo: 0.0       # fuera de zona protegida
 
-  # Reproducibilidad
-  normalizacion: "absoluta (umbrales fijos)"
-  reproductibilidad: "garantizada (misma pendiente = mismo coste siempre)"
+  # --------------------------------------------------------------------------
+  # P5 — Cruces viario + ríos (src/superficie/cruces_viario_rios.py)
+  # Coste de cruce puntual (se paga UNA VEZ al atravesar la línea).
+  # Fuente OSM: campo 'highway' (y 'railway' para ferrocarril).
+  # Fuente hidrografía IGN: campos 'text' (nombre) y 'length' (metros).
+  # --------------------------------------------------------------------------
+  cruces:
+    fondo: 0.0              # celda sin ningún cruce
+    ferrocarril: 0.9        # fila con columna 'railway' no nula
+    highway_default: 0.3    # tipo 'highway' no listado (~unclassified)
+    highway:
+      path: 0.2
+      track: 0.2
+      footway: 0.2
+      service: 0.3
+      unclassified: 0.3
+      residential: 0.4
+      tertiary: 0.5
+      secondary: 0.6
+      primary: 0.7
+      trunk: 0.8
+      motorway: 0.8
+      construction: 0.4     # vía en obra (~residential)
+    rio_sin_nombre: 0.3     # sin nombre en 'text' (rambla / val estacional)
+    rio_menor: 0.5          # con nombre y longitud ≤ umbral_rio_m
+    rio_principal: 0.8      # con nombre y longitud > umbral_rio_m
+    umbral_rio_m: 2000.0    # umbral de longitud para clasificar ríos (metros)
 
 # ============================================================================
 # PARÁMETROS DE DIFERENCIACIÓN (corridor masking para alternativas)

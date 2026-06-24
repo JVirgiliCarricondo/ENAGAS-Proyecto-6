@@ -67,6 +67,10 @@ import numpy as np
 import rasterio
 from rasterio.features import rasterize
 
+try:
+    from .config import params_cruces as _params_cruces
+except ImportError:
+    from config import params_cruces as _params_cruces
 
 BASE = Path(__file__).resolve().parents[2] / "data" / "processed"
 ENTRADA_DIR = BASE / "Recorte_AOI"
@@ -76,31 +80,17 @@ ESCENARIOS = ["A", "B"]
 
 CRS_TRABAJO = "EPSG:25830"
 NODATA = -9999.0
-COSTE_FONDO = 0.0
 
-# --- Lookup viario (columna 'highway'). Tabla fija, no data-driven. ---
-COSTE_HIGHWAY = {
-    "path": 0.2,
-    "track": 0.2,
-    "footway": 0.2,
-    "service": 0.3,
-    "unclassified": 0.3,
-    "residential": 0.4,
-    "tertiary": 0.5,
-    "secondary": 0.6,
-    "primary": 0.7,
-    "trunk": 0.8,
-    "motorway": 0.8,
-    "construction": 0.4,  # via en obra (~residential), dictamen geografo-SIG
-}
-COSTE_HIGHWAY_DEFECTO = 0.3  # highway no listado (~unclassified), prudente
-COSTE_FERROCARRIL = 0.9  # filas con columna 'railway' no nula (p.ej. 'rail')
-
-# --- Criterios hidrografia (columnas 'text' y 'length' en metros). ---
-COSTE_RIO_SIN_NOMBRE = 0.3  # rambla / val estacional
-COSTE_RIO_MENOR = 0.5  # con nombre y length <= UMBRAL_RIO_M
-COSTE_RIO_PRINCIPAL = 0.8  # con nombre y length >  UMBRAL_RIO_M
-UMBRAL_RIO_M = 2000.0
+# --- Parámetros cargados de perfiles.yaml (parametros_capas.cruces) ----------
+_ccfg = _params_cruces()
+COSTE_FONDO: float = float(_ccfg["fondo"])
+COSTE_FERROCARRIL: float = float(_ccfg["ferrocarril"])
+COSTE_HIGHWAY_DEFECTO: float = float(_ccfg["highway_default"])
+COSTE_HIGHWAY: dict[str, float] = {str(k): float(v) for k, v in _ccfg["highway"].items()}
+COSTE_RIO_SIN_NOMBRE: float = float(_ccfg["rio_sin_nombre"])
+COSTE_RIO_MENOR: float = float(_ccfg["rio_menor"])
+COSTE_RIO_PRINCIPAL: float = float(_ccfg["rio_principal"])
+UMBRAL_RIO_M: float = float(_ccfg["umbral_rio_m"])
 
 
 def coste_highway(valor) -> float:

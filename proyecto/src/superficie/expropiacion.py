@@ -17,6 +17,11 @@ import rasterio
 from rasterio.features import rasterize
 from shapely.geometry import mapping
 
+try:
+    from .config import params_expropiacion as _params_expropiacion
+except ImportError:
+    from config import params_expropiacion as _params_expropiacion
+
 log = logging.getLogger(__name__)
 
 # ── Rutas ────────────────────────────────────────────────────────────────────
@@ -25,17 +30,13 @@ DATA = _ROOT / "data"
 RECORTE = DATA / "processed" / "Recorte_AOI"
 CAPAS_COSTE = DATA / "processed" / "Capas_Coste"
 
-# ── Lookup TIPO → coste ───────────────────────────────────────────────────────
-TIPO_COST: dict[str, float] = {
-    "D": 0.05,  # dominio público
-    "R": 0.20,  # rústico
-    "X": 0.40,  # sin clasificar
-    "U": 0.90,  # urbano
-}
-TIPO_DEFAULT = 0.40   # cualquier TIPO no listado
-FONDO_COST = 0.20     # celda sin parcela catastral
-AREA_PERIURBANO_M2 = 500.0  # parcelas R pequeñas → periurbano
-COST_PERIURBANO = 0.50
+# ── Parámetros cargados de perfiles.yaml (parametros_capas.expropiacion) ─────
+_ecfg = _params_expropiacion()
+TIPO_COST: dict[str, float] = {str(k): float(v) for k, v in _ecfg["tipos"].items()}
+TIPO_DEFAULT: float = float(_ecfg["default_cost"])
+FONDO_COST: float = float(_ecfg["fondo_cost"])
+AREA_PERIURBANO_M2: float = float(_ecfg["area_periurbano_m2"])
+COST_PERIURBANO: float = float(_ecfg["cost_periurbano"])
 
 NODATA = -9999.0
 

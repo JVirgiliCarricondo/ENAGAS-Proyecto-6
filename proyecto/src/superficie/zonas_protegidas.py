@@ -48,6 +48,10 @@ import numpy as np
 import rasterio
 from rasterio.features import rasterize
 
+try:
+    from .config import params_zonas_protegidas as _params_zonas_protegidas
+except ImportError:
+    from config import params_zonas_protegidas as _params_zonas_protegidas
 
 BASE = Path(__file__).resolve().parents[2] / "data" / "processed"
 ENTRADA_DIR = BASE / "Recorte_AOI"
@@ -58,11 +62,10 @@ ESCENARIOS = ["A", "B"]
 CRS_TRABAJO = "EPSG:25830"
 NODATA = -9999.0
 
-# Variable binaria: dentro de Red Natura = 1, fuera = 0. La magnitud de la
-# penalizacion la decide el peso de la capa en la combinacion (§8), no este
-# valor. Por eso TODO TIPO designado (ZEPA/LIC/ZEC) vale 1, sin gradacion.
-VALOR_PROTEGIDA = 1.0
-VALOR_FONDO = 0.0
+# Parámetros cargados de perfiles.yaml (parametros_capas.zonas_protegidas)
+_zcfg = _params_zonas_protegidas()
+VALOR_PROTEGIDA: float = float(_zcfg["valor_protegida"])
+VALOR_FONDO: float = float(_zcfg["valor_fondo"])
 
 
 def procesar_escenario(s: str) -> None:
