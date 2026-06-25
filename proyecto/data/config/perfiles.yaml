@@ -186,14 +186,3 @@ parametros_capas:
     rio_menor: 0.5          # con nombre y longitud ≤ umbral_rio_m
     rio_principal: 0.8      # con nombre y longitud > umbral_rio_m
     umbral_rio_m: 2000.0    # umbral de longitud para clasificar ríos (metros)
-
-# ============================================================================
-# PARÁMETROS DE DIFERENCIACIÓN (corridor masking para alternativas)
-# ============================================================================
-
-diferenciacion:
-  penalizacion_proximidad: 5.0   # factor de coste extra cerca de rutas ya generadas
-  radio_corredor_m: 500          # ancho del corredor penalizado a cada lado, en metros
-  max_solapamiento: 0.3          # solapamiento máximo admitido entre dos rutas (0-1)
-  n_rutas: 3                     # nº de alternativas a generar (3-5)
-  metodo: "corridor_masking"     # penalizar proximidad a rutas previas

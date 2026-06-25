@@ -46,7 +46,3 @@ def get_perfil(perfil_id: str) -> dict:
         if p["id"] == perfil_id:
             return p
     raise KeyError(f"Perfil '{perfil_id}' no encontrado en perfiles.yaml")
-
-
-def get_diferenciacion() -> dict:
-    return _load()["diferenciacion"]
