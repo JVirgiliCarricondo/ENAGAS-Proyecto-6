@@ -10,13 +10,13 @@ Calcula, para una ruta ya generada (LineString sobre la rejilla común):
 
 Entradas (según el reparto del equipo, Persona 1):
   · geometría de la ruta  → data/processed/Rutas/ruta_{s}_{perfil}.gpkg
-  · superficie de coste   → data/processed/Trazados/superficie_{s}_{perfil}.tif
+  · superficie de coste   → data/processed/Trazados/superficie_{s}.tif
 
-La superficie combinada vive en el rango [BASE_LONG, BASE_LONG + n] (ver
-Modelo_Coste.md §8); por eso el coste crudo no es comparable entre sí. El
-`coste_relativo` lo lleva a [0, 1] = posición del coste medio del trazado
-dentro del rango de la superficie sobre la que se trazó (0 = se mantuvo en el
-terreno más barato; 1 = cruzó solo el más caro).
+La superficie de referencia es SIEMPRE la de pesos iguales del escenario
+(superficie_{s}.tif), NO la del perfil. Esto garantiza que el coste_relativo
+sea comparable entre rutas: todas se miden sobre la misma escala neutral.
+El índice [0, 1] indica la posición del coste medio del trazado dentro del
+rango válido de esa superficie (0 = terreno más barato; 1 = más caro).
 
 Convenios heredados del pipeline (Modelo_Coste.md §9):
   · CRS común EPSG:25830 (metros) → la longitud sale directa de la geometría.
@@ -160,9 +160,9 @@ def coste_relativo(geom: LineString, superficie_path: str | Path) -> float:
     0 → la ruta se mantuvo en el terreno más barato de su superficie;
     1 → la ruta recorrió únicamente el terreno más caro.
 
-    Es self-contained por ruta. Si el orquestador (calculo.py) prefiere comparar
-    todas las rutas sobre una superficie común, basta con pasar esa misma
-    `superficie_path` para todas (p. ej. Trazados/superficie_{s}.tif).
+    Referencia: superficie_{s}.tif (pesos iguales). Todas las rutas del mismo
+    escenario se normalizan contra el mismo rango, por lo que los valores son
+    directamente comparables entre perfiles.
     """
     costes, pasos, c_min, c_max = _muestrear_coste(geom, superficie_path)
     coste_seg = 0.5 * (costes[:-1] + costes[1:])
@@ -175,7 +175,7 @@ def coste_relativo(geom: LineString, superficie_path: str | Path) -> float:
 # ── Orquestación por escenario + perfil ───────────────────────────────────────
 def _resolver_paths(s: str, perfil: str) -> tuple[Path, Path]:
     ruta = RUTAS / f"ruta_{s}_{perfil}.gpkg"
-    superficie = TRAZADOS / f"superficie_{s}_{perfil}.tif"
+    superficie = TRAZADOS / f"superficie_{s}.tif"   # superficie común del escenario
     if not ruta.exists():
         raise FileNotFoundError(f"Falta la ruta: {ruta}")
     if not superficie.exists():
