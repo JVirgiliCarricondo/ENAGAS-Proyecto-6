@@ -49,7 +49,8 @@ DATA = _ROOT / "data"
 CONFIG = DATA / "config"
 TRAZADOS = DATA / "processed" / "Trazados"
 CAPAS = DATA / "processed" / "Capas_Coste"
-PENDIENTE = CAPAS / "Pendiente"
+PENDIENTE = CAPAS / "Pendiente"   # superficies intermedias por perfil
+RUTAS_DIR = DATA / "processed" / "Rutas"  # destino de rutas .gpkg (métricas leen aquí)
 
 _NODATA = -9999.0
 _BARRERA_DISCO = 999.0
@@ -330,7 +331,7 @@ def run_perfiles(s: str, lam: float) -> None:
     perfiles = yaml.safe_load((CONFIG / "perfiles.yaml").read_text(encoding="utf-8"))["perfiles"]
     gx, gy, S = _cargar_direccion(s)
 
-    print(f"\n=== Escenario {s}: rutas por perfil (λ_base={lam}) ===")
+    print(f"\n=== Escenario {s}: rutas por perfil (lam_base={lam}) ===")
     for perfil in perfiles:
         pid, pesos = perfil["id"], perfil["pesos"]
         # El peso 'traversal' del perfil escala λ (fuerza del cruce perpendicular).
@@ -341,10 +342,11 @@ def run_perfiles(s: str, lam: float) -> None:
         destino = _snap_to_valid(*_utm_to_rowcol(*destino_utm, transform), C)
         celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lam_p)
         expos = exposicion_transversal(celdas, gx, gy, S)
-        out = PENDIENTE / f"ruta_{s}_{pid}.gpkg"
+        RUTAS_DIR.mkdir(parents=True, exist_ok=True)
+        out = RUTAS_DIR / f"ruta_{s}_{pid}.gpkg"
         linea = _exportar(celdas, transform, crs, pid, lam_p, out, expos)
         print(f"  {pid:11s}: {out.name:24s} longitud={linea.length:7.0f} m  "
-              f"λ={lam_p:.2f}  exposición_transversal={expos:.4f}")
+              f"lam={lam_p:.2f}  exposicion_transversal={expos:.4f}")
 
 
 def run_escenario(s: str, lam: float) -> None:
@@ -360,7 +362,7 @@ def run_escenario(s: str, lam: float) -> None:
     destino = _snap_to_valid(*_utm_to_rowcol(*destino_utm, transform), C)
     log.info("[%s] origen=%s destino=%s", s, origen, destino)
 
-    print(f"\n=== Escenario {s} (λ={lam}) ===")
+    print(f"\n=== Escenario {s} (lam={lam}) ===")
     for tipo, lval in [("isotropa", 0.0), ("anisotropa", lam)]:
         celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lval)
         expos = exposicion_transversal(celdas, gx, gy, S)
@@ -387,7 +389,7 @@ def main() -> None:
             run_perfiles(s, args.lam)
         else:
             run_escenario(s, args.lam)
-    print(f"\nRutas guardadas en: {PENDIENTE}")
+    print(f"\nRutas guardadas en: {RUTAS_DIR}")
 
 
 if __name__ == "__main__":

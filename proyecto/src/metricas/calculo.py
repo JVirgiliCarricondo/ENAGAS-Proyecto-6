@@ -319,10 +319,10 @@ def _imprimir_diversidad(div: dict) -> None:
         print("  (diversidad no calculada)")
         return
     veredicto = "DIFERENCIADAS [OK]" if div.get("diferenciadas") else "REDUNDANTES [!]"
-    print(f"  Solapamiento máximo entre pares: {div.get('solap_max_par', 0):.1f}%  →  {veredicto}")
+    print(f"  Solapamiento maximo entre pares: {div.get('solap_max_par', 0):.1f}%  ->  {veredicto}")
     if "pares" in div:
         for pi, pj, s in sorted(div["pares"], key=lambda x: -x[2]):
-            marca = " ← redundante" if s >= div.get("umbral_pct", 50) else ""
+            marca = " [redundante]" if s >= div.get("umbral_pct", 50) else ""
             print(f"    {pi:12s} <-> {pj:12s}:  {s:5.1f}%{marca}")
 
 
