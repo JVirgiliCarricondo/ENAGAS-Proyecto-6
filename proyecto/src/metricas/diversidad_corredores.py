@@ -113,7 +113,7 @@ def calcular(escenario: str, buffer_m: float = BUFFER_M,
           pares           [(p_i, p_j, solap_par_%), ...] solapamiento simétrico por par
           distancias      [(p_i, p_j, dist_media_m, dist_max_m), ...] por par
           solap_max_par   solapamiento del par más redundante (%)
-          diferenciadas   True si ningún par supera umbral_pct
+          diferenciadas   True si ningún par supera umbral_pct; None (n/a) si <2 rutas
           buffer_m, umbral_pct, paso_muestreo
     """
     rutas = _cargar_rutas(escenario)
@@ -137,13 +137,17 @@ def calcular(escenario: str, buffer_m: float = BUFFER_M,
 
     solap_max_par = max((s for _, _, s in pares), default=0.0)
 
+    # La diferenciación solo tiene sentido si hay al menos 2 rutas que comparar:
+    # con 0 o 1 ruta no existe ningún par (pares=[]) y el veredicto es n/a (None).
+    diferenciadas = (solap_max_par < umbral_pct) if pares else None
+
     return {
         "perfiles": perfiles,
         "matriz": matriz,
         "pares": pares,
         "distancias": distancias,
         "solap_max_par": solap_max_par,
-        "diferenciadas": solap_max_par < umbral_pct,
+        "diferenciadas": diferenciadas,
         "buffer_m": buffer_m,
         "umbral_pct": umbral_pct,
         "paso_muestreo": paso_muestreo,
@@ -172,8 +176,11 @@ def _imprimir(escenario: str, res: dict) -> None:
         marca = "  <-- redundante" if s >= res["umbral_pct"] else ""
         print(f"    {pi:12s} <-> {pj:12s}: {s:5.1f}%{marca}")
 
-    veredicto = "DIFERENCIADAS [OK]" if res["diferenciadas"] else "REDUNDANTES [NO]"
-    print(f"\n  Par mas solapado: {res['solap_max_par']:.1f}%  ->  {veredicto}")
+    if res["diferenciadas"] is None:
+        print("\n  Diferenciacion: n/a (hace falta >=2 rutas para comparar)")
+    else:
+        veredicto = "DIFERENCIADAS [OK]" if res["diferenciadas"] else "REDUNDANTES [NO]"
+        print(f"\n  Par mas solapado: {res['solap_max_par']:.1f}%  ->  {veredicto}")
 
     # Distancia entre ramales (separación geométrica del corredor)
     print(f"\n  Distancia entre ramales (m)  [muestreo {res['paso_muestreo']:.0f} m]:")

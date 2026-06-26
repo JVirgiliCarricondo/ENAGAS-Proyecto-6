@@ -318,7 +318,11 @@ def _imprimir_diversidad(div: dict) -> None:
     if not div:
         print("  (diversidad no calculada)")
         return
-    veredicto = "DIFERENCIADAS [OK]" if div.get("diferenciadas") else "REDUNDANTES [!]"
+    dif = div.get("diferenciadas")
+    if dif is None:
+        print("  Diversidad: n/a (hace falta >=2 rutas para comparar)")
+        return
+    veredicto = "DIFERENCIADAS [OK]" if dif else "REDUNDANTES [!]"
     print(f"  Solapamiento maximo entre pares: {div.get('solap_max_par', 0):.1f}%  ->  {veredicto}")
     if "pares" in div:
         for pi, pj, s in sorted(div["pares"], key=lambda x: -x[2]):
