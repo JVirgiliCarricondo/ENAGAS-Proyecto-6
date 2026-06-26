@@ -95,7 +95,8 @@ class MetricasRuta:
     # Cruces especiales (cruces.py)
     n_cruces_rios: int = 0
     n_cruces_carreteras: int = 0
-    n_cruces_ferrocarril: int = 0
+    # None = no comprobable (capa OSM sin columna 'railway'); distinto de 0 = "comprobado, no cruza".
+    n_cruces_ferrocarril: int | None = 0
 
     # Módulos que fallaron por falta de datos u otro error
     errores: dict[str, str] = field(default_factory=dict)
@@ -228,6 +229,10 @@ def calcular_metricas_ruta(escenario: str, perfil: str) -> MetricasRuta:
         m.n_cruces_rios = cruces["n_cruces_rios"]
         m.n_cruces_carreteras = cruces["n_cruces_carreteras"]
         m.n_cruces_ferrocarril = cruces["n_cruces_ferrocarril"]
+        if m.n_cruces_ferrocarril is None:
+            # No comprobable: la capa OSM no trae 'railway'. Se deja constancia para
+            # que la tabla no presente un 0 que en realidad es "sin dato".
+            m.errores["cruces_ferrocarril"] = "capa OSM sin columna 'railway' (no comprobable)"
     except Exception as exc:
         m.errores["cruces"] = str(exc)
 
@@ -305,11 +310,12 @@ def _imprimir_tabla(rutas: list[MetricasRuta]) -> None:
     print("  " + "-" * (len(cab) - 2))
     for m in rutas:
         err_tag = f"  [err: {','.join(m.errores.keys())}]" if m.errores else ""
+        ffcc = f"{m.n_cruces_ferrocarril:5d}" if m.n_cruces_ferrocarril is not None else f"{'s/d':>5s}"
         print(
             f"  {m.perfil:12s} {m.longitud_km:7.2f} {m.coste_relativo:6.3f} "
             f"{m.pendiente_max_pct:9.1f} {m.pendiente_media_pct:9.2f} "
             f"{m.km_protegida:8.3f} {m.km_suelo_urbano:7.3f} "
-            f"{m.n_cruces_rios:5d} {m.n_cruces_carreteras:5d} {m.n_cruces_ferrocarril:5d}"
+            f"{m.n_cruces_rios:5d} {m.n_cruces_carreteras:5d} {ffcc}"
             f"{err_tag}"
         )
 

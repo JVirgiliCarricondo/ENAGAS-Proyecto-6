@@ -20,10 +20,10 @@ Uso como librería (desde calculo.py u otros módulos):
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import geopandas as gpd
-import pandas as pd
 from shapely.geometry.base import BaseGeometry
 
 CRS_TRABAJO = "EPSG:25830"
@@ -66,7 +66,7 @@ def contar_cruces(
     ruta_geom: BaseGeometry,
     osm_gdf: gpd.GeoDataFrame,
     hidro_gdf: gpd.GeoDataFrame,
-) -> dict[str, int]:
+) -> dict[str, int | None]:
     """Cuenta cruces transversales de una ruta con ríos, carreteras y ferrocarril.
 
     Parámetros
@@ -78,22 +78,38 @@ def contar_cruces(
     Devuelve
     --------
     Dict con las claves n_cruces_rios, n_cruces_carreteras, n_cruces_ferrocarril.
-    """
-    tiene_railway = "railway" in osm_gdf.columns
 
-    if tiene_railway:
+    Contrato de n_cruces_ferrocarril
+    --------------------------------
+    - ``int``  → medición real: la capa OSM trae la columna 'railway' y se contaron
+      los cruces transversales (puede ser 0: "comprobado, no cruza ninguna vía").
+    - ``None`` → NO comprobable: la capa OSM no incluye la columna 'railway', así que
+      no hay datos de ferrocarril sobre los que medir. NO se devuelve 0, porque un 0
+      callado se confundiría con "comprobado = 0 cruces". Se emite además un warning.
+    """
+    if "railway" in osm_gdf.columns:
         ferrocarril_mask = osm_gdf["railway"].notna() & (osm_gdf["railway"].str.strip() != "")
         carretera_mask = ~ferrocarril_mask & osm_gdf["highway"].notna()
+        ferrocarril = osm_gdf[ferrocarril_mask]
+        n_ferrocarril: int | None = sum(
+            _puntos_interseccion(ruta_geom, g) for g in ferrocarril.geometry
+        )
     else:
-        ferrocarril_mask = pd.Series(False, index=osm_gdf.index)
+        # Sin columna 'railway' no se puede medir: marcar como no comprobable (None),
+        # nunca como 0. Avisar para que el hueco de dato sea visible aguas arriba.
+        warnings.warn(
+            "La capa OSM no tiene columna 'railway'; n_cruces_ferrocarril es no "
+            "comprobable (None), no 0. (Sin vías férreas en el AOI, la columna no se "
+            "crea al armar el GeoDataFrame.)",
+            stacklevel=2,
+        )
         carretera_mask = osm_gdf["highway"].notna()
+        n_ferrocarril = None
 
     carreteras = osm_gdf[carretera_mask]
-    ferrocarril = osm_gdf[ferrocarril_mask]
 
     n_rios = sum(_puntos_interseccion(ruta_geom, g) for g in hidro_gdf.geometry)
     n_carreteras = sum(_puntos_interseccion(ruta_geom, g) for g in carreteras.geometry)
-    n_ferrocarril = sum(_puntos_interseccion(ruta_geom, g) for g in ferrocarril.geometry)
 
     return {
         "n_cruces_rios": n_rios,
@@ -102,7 +118,7 @@ def contar_cruces(
     }
 
 
-def cruces_escenario(ruta_path: Path | str, escenario: str) -> dict[str, int]:
+def cruces_escenario(ruta_path: Path | str, escenario: str) -> dict[str, int | None]:
     """Carga la ruta y las capas del escenario y devuelve el conteo de cruces."""
     ruta_path = Path(ruta_path)
     osm_path = RECORTE_DIR / f"osm_aoi_{escenario}.gpkg"
@@ -130,11 +146,13 @@ def main() -> None:
                 print(f"  [{perfil}] No encontrada: {ruta_path.name}")
                 continue
             resultado = cruces_escenario(ruta_path, s)
+            ffcc = resultado["n_cruces_ferrocarril"]
+            ffcc_txt = f"{ffcc:3d}" if ffcc is not None else "s/d"
             print(
                 f"  [{perfil}]"
                 f"  ríos={resultado['n_cruces_rios']:3d}"
                 f"  carreteras={resultado['n_cruces_carreteras']:3d}"
-                f"  ferrocarril={resultado['n_cruces_ferrocarril']:3d}"
+                f"  ferrocarril={ffcc_txt}"
             )
 
 
