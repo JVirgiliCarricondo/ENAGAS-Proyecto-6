@@ -45,7 +45,7 @@ RUTAS_DIR = BASE / "Rutas"
 ESCENARIOS = ["A", "B"]
 PERFILES = ["corto", "equilibrio", "ambiental", "pendiente"]
 
-BUFFER_M = 250.0        # semiancho del corredor (m) para engordar la línea a corredor
+BUFFER_M = 60.0         # semiancho del corredor (m) para engordar la línea a corredor
 UMBRAL_PCT = 50.0       # % de solapamiento por encima del cual un par es redundante
 PASO_MUESTREO_M = 50.0  # separación entre puntos al muestrear una ruta (distancias)
 
