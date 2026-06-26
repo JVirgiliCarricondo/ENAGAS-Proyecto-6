@@ -1,33 +1,20 @@
-# Caso de estudio — Grupo 6 (Reto 6, Enagás)
-# Define el CRS y la rejilla de trabajo, el área de interés (AOI) y los pares origen→destino.
-# Hay dos escenarios independientes (A y B). El pipeline ejecuta uno a la vez.
-# El escenario activo se selecciona en src/app/ o por parámetro de línea de comandos.
-
-crs_trabajo: "EPSG:25830"     # ETRS89 / UTM 30N (península). CRS común de todas las capas.
-resolucion_m: 30              # tamaño de celda de la rejilla común, en metros
-
-# ─── ESCENARIO A ────────────────────────────────────────────────────────────
+crs_trabajo: EPSG:25830
+resolucion_m: 30
 escenario_A:
-
   origen:
-    nombre: "A_inicial"
+    nombre: A_inicial
     x: 741453
     y: 4561984
-
   destino:
-    nombre: "A_final"
+    nombre: A_final
     x: 739098
     y: 4550264
-
-# ─── ESCENARIO B ────────────────────────────────────────────────────────────
 escenario_B:
-
   origen:
-    nombre: "B_inicial"
+    nombre: B_inicial
     x: 692198
     y: 4596017
-
   destino:
-    nombre: "B_final"
+    nombre: B_final
     x: 693832
     y: 4600576
