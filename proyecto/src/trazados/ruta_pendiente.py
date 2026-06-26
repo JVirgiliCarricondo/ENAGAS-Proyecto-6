@@ -72,6 +72,16 @@ PESO_A_CAPA = {
 _VECINOS = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
             (0, 1), (1, -1), (1, 0), (1, 1)]
 
+# Colores RGBA por perfil/tipo para identificar rutas en QGIS (paleta ColorBrewer Set1).
+_COLOR_RUTA = {
+    "corto":      "31,120,180,255",   # azul
+    "equilibrio": "255,127,0,255",    # naranja
+    "ambiental":  "51,160,44,255",    # verde
+    "pendiente":  "227,26,28,255",    # rojo
+    "anisotropa": "106,61,154,255",   # morado (modo demo)
+    "isotropa":   "160,160,160,255",  # gris   (modo demo)
+}
+
 
 def _utm_to_rowcol(x: float, y: float, transform: rasterio.Affine) -> tuple[int, int]:
     """Coordenadas UTM (x, y) → (row, col). (idéntico a run_trazados)."""
@@ -221,6 +231,33 @@ def exposicion_transversal(
     return float(np.mean(vals)) if vals else 0.0
 
 
+def _write_route_qml(path: Path, tipo: str) -> None:
+    """Estilo QGIS para una ruta: línea de color fijo según el perfil."""
+    color = _COLOR_RUTA.get(tipo, "128,128,128,255")
+    qml = f"""<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
+<qgis version="3.0" styleCategories="AllStyleCategories">
+  <renderer-v2 type="singleSymbol" forcerasterrender="0" enableorderby="0" symbollevels="0">
+    <symbols>
+      <symbol type="line" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+        <layer class="SimpleLine" enabled="1" pass="0" locked="0">
+          <prop k="line_color" v="{color}"/>
+          <prop k="line_style" v="solid"/>
+          <prop k="line_width" v="0.5"/>
+          <prop k="line_width_unit" v="MM"/>
+          <prop k="capstyle" v="round"/>
+          <prop k="joinstyle" v="round"/>
+          <prop k="offset" v="0"/>
+          <prop k="offset_unit" v="MM"/>
+        </layer>
+      </symbol>
+    </symbols>
+    <rotation/>
+    <sizescale/>
+  </renderer-v2>
+</qgis>"""
+    path.with_suffix(".qml").write_text(qml, encoding="utf-8")
+
+
 def _exportar(celdas, transform, crs, tipo: str, lam: float, path: Path,
               expos: float) -> LineString:
     linea = LineString([rt.xy(transform, r, c, offset="center") for r, c in celdas])
@@ -232,6 +269,7 @@ def _exportar(celdas, transform, crs, tipo: str, lam: float, path: Path,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     gdf.to_file(path, driver="GPKG")
+    _write_route_qml(path, tipo)
     return linea
 
 

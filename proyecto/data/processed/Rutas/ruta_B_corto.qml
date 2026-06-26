@@ -4,7 +4,7 @@
     <symbols>
       <symbol type="line" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
         <layer class="SimpleLine" enabled="1" pass="0" locked="0">
-          <prop k="line_color" v="0,0,0,255"/>
+          <prop k="line_color" v="31,120,180,255"/>
           <prop k="line_style" v="solid"/>
           <prop k="line_width" v="0.5"/>
           <prop k="line_width_unit" v="MM"/>
