@@ -53,7 +53,7 @@ Todo el cálculo es reproducible y auditable: las capas se alinean a un CRS y re
 ## Componentes
 
 ### 1. Ingesta (`src/ingesta/`)
-Descarga/lee las capas de `data/raw/` (DEM, CLC, OSM, hidrografía IGN, Red Natura 2000, IGME), las **recorta al AOI**, las **reproyecta a EPSG:25830** y las **remuestrea a una rejilla común** (misma resolución y origen de celda). Salida en dos subcarpetas de `data/processed/`:
+Descarga/lee las capas de `data/raw/` (DEM, catastro, OSM, hidrografía IGN, Red Natura 2000, IGME), las **recorta al AOI**, las **reproyecta a EPSG:25830** y las **remuestrea a una rejilla común** (misma resolución y origen de celda). Salida en dos subcarpetas de `data/processed/`:
 
 - **`Recorte_AOI/`** — capas vectoriales recortadas y reproyectadas (`.gpkg`). Si una capa no tiene geometrías en el AOI se guarda igualmente un `.gpkg` vacío.
 - **`Rasters_AOI/`** — rasters alineados a la rejilla común (`.tif`). El DEM sale aquí directamente; las capas vectoriales las rasteriza `src/superficie/` y también las deposita aquí.
@@ -71,7 +71,9 @@ Convierte cada capa alineada en un **coste por celda** (p.ej. pendiente → cost
 Sobre cada superficie de coste calcula el **camino de mínimo coste** origen→destino con **A\*** sobre el grafo de la rejilla (`networkx.astar_path` o implementación propia; cada celda = nodo, aristas a 8 vecinos). Se elige A\* sobre Dijkstra por ser más eficiente para un único par origen→destino con la misma garantía de óptimo. Detalle de la representación en grafo en [`modelo_coste.md`](modelo_coste.md) §8.1. Para garantizar **rutas diferenciadas**, aplica **corridor masking**: tras generar una ruta, penaliza la proximidad a ella antes de generar la siguiente, y descarta rutas con solapamiento por encima de un umbral.
 
 ### 4. Métricas (`src/metricas/`)
-Para cada ruta calcula: **longitud** (km), **coste relativo** (suma normalizada de celdas atravesadas), **cruces especiales** (nº y tipo: río, carretera, ferrocarril…), **km en zona protegida** (Red Natura 2000), **km en zona urbana/periurbana** (CLC/OSM) y **pendiente máxima y media** (del DEM a lo largo de la ruta).
+Para cada ruta calcula: **longitud** (km), **coste relativo** (suma normalizada de celdas atravesadas), **cruces especiales** (nº y tipo: río, carretera, ferrocarril…), **km en zona protegida** (Red Natura 2000), **km en zona urbana/periurbana** (catastro) y **pendiente máxima y media** (del DEM a lo largo de la ruta).
+
+> **Nota histórica — clasificación de suelo urbano:** inicialmente se planteó usar **CLC (Corine Land Cover)** como fuente de los usos del suelo. Al integrarla se vio que el **catastro** ofrece la misma información de forma más rigurosa (parcela a parcela, frente a los polígonos gruesos ≥25 ha de CLC) y con clasificación urbano/rústico directa. Por eso el pipeline usa catastro y la capa CLC se retiró de la ingesta.
 
 ### 5. Comparativa (`src/comparacion/`)
 Reúne las métricas de las 3-5 rutas en una **tabla multicriterio**, calcula un **scoring/ranking** (por criterio o agregado ponderado) y genera el **mapa** con las rutas diferenciadas (`folium` / `contextily`).

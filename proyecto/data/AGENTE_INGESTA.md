@@ -61,11 +61,11 @@ conservar antes de guardar.
 | Capa | Tipo | Fuente | CRS original típico |
 |------|------|--------|---------------------|
 | DEM Copernicus | Raster `.tif` | Copernicus GLO-30 AWS S3 | EPSG:25830 (reproyectado en descarga) |
-| Corine Land Cover | Vector `.gpkg` / `.shp` | Copernicus | EPSG:3035 |
 | Red Natura 2000 | Vector `.geojson` | MITECO | EPSG:4326 |
 | OSM | Vector `.gpkg` | OpenStreetMap | EPSG:4326 |
 | Hidrografía IGN | Vector `.gpkg` / `.shp` | IGN/CNIG | EPSG:25830 |
 | IGME geológico | Vector `.gpkg` / `.shp` | IGME | EPSG:25830 |
+| Catastro (usos del suelo) | Vector `.shp` | Sede Electrónica del Catastro | EPSG:25830 |
 
 ---
 
@@ -77,11 +77,11 @@ Las capas se guardan en dos subcarpetas según su tipo de salida:
 
 | Archivo | Contenido |
 |---------|-----------|
-| `clc_aoi.gpkg` | Corine Land Cover recortado y reproyectado |
 | `natura2000_aoi.gpkg` | Red Natura 2000 recortada y reproyectada |
 | `osm_aoi.gpkg` | Datos OSM recortados y reproyectados |
 | `hidrografia_aoi.gpkg` | Hidrografía IGN recortada |
 | `igme_aoi.gpkg` | Mapa geológico recortado |
+| `catastro_aoi.gpkg` | Parcelas catastrales (usos del suelo) recortadas |
 
 > Si una capa vectorial no tiene geometrías dentro del AOI, se guarda igualmente un `.gpkg` vacío para registrar que la capa fue procesada.
 
@@ -123,11 +123,16 @@ Archivos generados en `data/raw/` (sufijo `_A` o `_B`):
 | Archivo          | Fuente                          | Servicio       |
 |------------------|---------------------------------|----------------|
 | `DEM_{s}.tif`    | Copernicus GLO-30 (30 m)        | AWS S3 COG (`/vsicurl/`) |
-| `CLC_{s}.gpkg`   | Corine Land Cover IGN INSPIRE   | WFS            |
 | `RN2000_{s}.gpkg`| Red Natura 2000 IGN INSPIRE     | WFS            |
 | `OSM_{s}.gpkg`   | OpenStreetMap (carreteras)      | Overpass API   |
 | `HID_{s}.gpkg`   | Hidrografía IGN INSPIRE         | WFS            |
 | `IGME_{s}.gpkg`  | IGME MAGNA50                    | WFS / REST     |
+
+> **Catastro (usos del suelo):** no tiene descarga automática en este script.
+> Se obtiene manualmente de la Sede Electrónica del Catastro y se coloca en
+> `data/raw/` (parcelas `PARCELA.shp`); `alinear_capas.py` lo recorta al AOI
+> de cada escenario. Es la fuente de la clasificación urbano/rústico (sustituyó
+> a la antigua capa CLC/Corine, ya retirada).
 
 ### Paso 1 — Alineación (`src/ingesta/alinear_capas.py`)
 
@@ -137,7 +142,7 @@ python -m src.ingesta.alinear_capas --escenario B
 ```
 
 Cuando se indica `--escenario`, el script busca primero los archivos con
-sufijo (`DEM_A.tif`, `CLC_A.gpkg`…) antes de recurrir a los patrones glob.
+sufijo (`DEM_A.tif`, `HID_A.gpkg`…) antes de recurrir a los patrones glob.
 Si la descarga automática no está disponible, puede funcionar igualmente con
 los archivos descargados manualmente con los nombres anteriores.
 
@@ -180,7 +185,7 @@ Cada ejecución genera `data/processed/log_alineacion.txt` con:
 - **Resolución de referencia:** la más fina entre los rasters disponibles
   (no se degrada información innecesariamente).
 - **Remuestreo:** bilineal para capas continuas (DEM, pendiente);
-  nearest-neighbor para capas categóricas (CLC, Natura 2000).
+  nearest-neighbor para capas categóricas (catastro, Natura 2000).
 - **Umbral de duplicados:** 70% de solapamiento espacial. Ajustable en
   el propio script.
 - **Buffer del AOI:** 1 km por defecto. Configurable en `escenario.yaml`.

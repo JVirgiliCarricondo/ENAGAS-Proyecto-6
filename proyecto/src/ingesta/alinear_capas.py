@@ -810,7 +810,7 @@ def main() -> None:
             log.error(f"Capa desconocida: {args.only!r}. Opciones: {valid}")
             sys.exit(1)
 
-    # Añadir sufijo de escenario a los nombres de salida (e.g. clc_aoi_A.gpkg)
+    # Añadir sufijo de escenario a los nombres de salida (e.g. catastro_aoi_A.gpkg)
     layers_to_run = [
         spec._replace(
             output_name=(

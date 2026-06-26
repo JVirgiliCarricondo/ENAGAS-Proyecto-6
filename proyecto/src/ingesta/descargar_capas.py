@@ -12,7 +12,6 @@ descarga la unidad mínima de cada fuente que lo contenga:
 Archivos generados en data/raw/ (sufijo _A o _B según el escenario):
 
   DEM_{s}.tif      → MDT25 IGN WCS, 25 m, GeoTIFF
-  CLC_{s}.gpkg     → Corine Land Cover, WFS IGN INSPIRE (LC.LandCoverUnit)
   RN2000_{s}.gpkg  → Red Natura 2000, WFS IGN INSPIRE (PS.ProtectedSite)
   OSM_{s}.gpkg     → Carreteras + ferrocarril, Overpass API
   HID_{s}.gpkg     → Hidrografía IGN, WFS INSPIRE (HY.PhysicalWaters.Watercourses)
@@ -79,14 +78,12 @@ LOG_PATH = DATA_RAW / "log_descarga.txt"
 _IGN_WCS_MDT = "https://servicios.idee.es/wcs/mdt"
 _IGN_WFS_HID = "https://servicios.idee.es/wfs-inspire/hidrografia"
 _IGN_WFS_ENP = "https://servicios.idee.es/wfs-inspire/espacios-naturales-protegidos"
-_IGN_WFS_CLC = "https://servicios.idee.es/wfs-inspire/ocupacion-suelo"
 _IGME_REST   = "https://mapas.igme.es/gis/rest/services/Cartografia_Geologica/IGME_MAGNA_50/MapServer/11/query"
 _OVERPASS    = "https://overpass-api.de/api/interpreter"
 
 # Nombres de capa WFS INSPIRE (obtenidos vía GetCapabilities)
 _WFS_HID = "hy-n:WatercourseLink"      # enlaces de cursos de agua (tramos lineales)
 _WFS_ENP = "PS.ProtectedSite"          # Red Natura 2000 y otros ENP
-_WFS_CLC = "lcv:LandCoverUnit"         # unidades de cubierta terrestre (Corine LC)
 
 # Cabeceras HTTP que evitan el reseteo de conexión en servicios IGN
 # Connection: close desactiva keepalive, que causa ConnectionResetError(10054) en Windows
@@ -388,17 +385,6 @@ def download_dem(
     return True
 
 
-def download_clc(
-    bbox_25830: tuple[float, float, float, float],
-    out_path: Path,
-    log: logging.Logger,
-) -> bool:
-    """Corine Land Cover vía WFS IGN INSPIRE (max 2000 features; AOI pequeño)."""
-    log.info(f"  WFS IGN INSPIRE → {_WFS_CLC}")
-    gdf = _wfs_bbox(_IGN_WFS_CLC, _WFS_CLC, bbox_25830, log, max_features=2_000)
-    return _save_vector(gdf, out_path, log)
-
-
 def download_natura2000(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
@@ -557,7 +543,6 @@ def download_igme(
 # (etiqueta, nombre_archivo con {s}=sufijo escenario, función descargadora)
 SOURCES: list[tuple[str, str, Callable]] = [
     ("DEM IGN MDT25",    "DEM_{s}.tif",  download_dem),
-    ("Corine Land Cover","CLC_{s}.gpkg", download_clc),
     ("OSM",              "OSM_{s}.gpkg", download_osm),
     ("Hidrografía IGN",  "HID_{s}.gpkg", download_hidrografia),
     ("IGME geológico",   "IGME_{s}.gpkg",download_igme),
