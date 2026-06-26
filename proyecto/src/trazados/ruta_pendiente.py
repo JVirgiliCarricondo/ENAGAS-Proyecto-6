@@ -47,10 +47,9 @@ log = logging.getLogger(__name__)
 _ROOT = Path(__file__).resolve().parents[2]
 DATA = _ROOT / "data"
 CONFIG = DATA / "config"
-TRAZADOS = DATA / "processed" / "Trazados"
+TRAZADOS = DATA / "processed" / "Trazados"   # superficies escalares (.tif)
 CAPAS = DATA / "processed" / "Capas_Coste"
-PENDIENTE = CAPAS / "Pendiente"   # superficies intermedias por perfil
-RUTAS_DIR = DATA / "processed" / "Rutas"  # destino de rutas .gpkg (métricas leen aquí)
+RUTAS_DIR = DATA / "processed" / "Rutas"     # rutas LCP (.gpkg)
 
 _NODATA = -9999.0
 _BARRERA_DISCO = 999.0
@@ -337,7 +336,7 @@ def run_perfiles(s: str, lam: float) -> None:
         # El peso 'traversal' del perfil escala λ (fuerza del cruce perpendicular).
         lam_p = lam * float(pesos.get("traversal", 0.0))
         C, transform, crs = _superficie_perfil(s, pesos)
-        _guardar_superficie(C, transform, crs, PENDIENTE / f"superficie_{s}_{pid}.tif")
+        _guardar_superficie(C, transform, crs, TRAZADOS / f"superficie_{s}_{pid}.tif")
         origen = _snap_to_valid(*_utm_to_rowcol(*origen_utm, transform), C)
         destino = _snap_to_valid(*_utm_to_rowcol(*destino_utm, transform), C)
         celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lam_p)
@@ -366,7 +365,7 @@ def run_escenario(s: str, lam: float) -> None:
     for tipo, lval in [("isotropa", 0.0), ("anisotropa", lam)]:
         celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lval)
         expos = exposicion_transversal(celdas, gx, gy, S)
-        out = PENDIENTE / f"ruta_{s}_{tipo}.gpkg"
+        out = RUTAS_DIR / f"ruta_{s}_{tipo}.gpkg"
         linea = _exportar(celdas, transform, crs, tipo, lval, out, expos)
         print(f"  {tipo:11s}: {out.name}  longitud={linea.length:7.0f} m  "
               f"exposición_transversal={expos:.4f}")
