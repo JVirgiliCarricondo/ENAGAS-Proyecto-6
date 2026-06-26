@@ -9,6 +9,9 @@ shapely
 pyproj
 numpy
 
+# --- Configuración ---
+PyYAML         # lectura de escenario.yaml y perfiles.yaml (ingesta, superficie, trazados)
+
 # --- Descarga de datos ---
 osmnx          # OpenStreetMap
 requests       # servicios WCS/WFS/WMS de Copernicus, IGN, IGME
