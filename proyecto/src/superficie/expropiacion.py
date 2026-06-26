@@ -134,6 +134,12 @@ def run(scenario: str) -> Path:
 
     # ── Paso 2: leer catastro y asignar coste ────────────────────────────────
     gdf = gpd.read_file(cat_path)
+    # Defensa: .area y la rasterización asumen coordenadas en EPSG:25830 (metros).
+    # La ingesta ya lo entrega así, pero reproyectamos por si la entrada no viene
+    # alineada (coherente con cruces/zonas protegidas, que también lo hacen).
+    if gdf.crs is not None and gdf.crs.to_epsg() != 25830:
+        log.info("[expropiacion_%s] reproyectando catastro %s → EPSG:25830", s, gdf.crs)
+        gdf = gdf.to_crs(epsg=25830)
     log.info("[expropiacion_%s] %d parcelas leídas desde %s", s, len(gdf), cat_path.name)
 
     if gdf.empty:
