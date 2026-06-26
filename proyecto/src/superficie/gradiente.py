@@ -65,7 +65,7 @@ def _nombre_salida(s: str, sigma_m: float, sufijo: str = "") -> str:
         base += f"_sig{int(round(sigma_m))}m"
     return base + sufijo
 NODATA = -9999.0
-RESOLUCION_M = 30.0
+RESOLUCION_M = 30.0  # solo valor por defecto/fallback; el cellsize real se deriva del transform del DEM
 
 # Visualización de flechas
 PASO_FLECHAS = 6           # 1 flecha cada 6 celdas (≈180 m) — rejilla fija, comparable entre sigmas
@@ -145,12 +145,17 @@ def procesar(s: str, sigma_m: float) -> tuple[Path, Path]:
     valido = np.isfinite(dem) & (dem != dem_nodata)
     z = np.where(valido, dem, np.nan)
 
+    # Cellsize real de la rejilla: se deriva del propio DEM (su transform), no de
+    # una constante. Así sigma (en celdas) y el gradiente siguen al dato si el DEM
+    # se regenera a otra resolución, en vez de quedar mal escalados en silencio.
+    resolucion_m = abs(transform.a)
+
     # --- COPIA suavizada (el DEM original queda intacto) ---
-    sigma_celdas = sigma_m / RESOLUCION_M
+    sigma_celdas = sigma_m / resolucion_m
     z_suave = suavizar_gaussiano(z, sigma_celdas)
 
     # --- Gradiente sobre la copia suavizada ---
-    dzdx, dzdy = gradiente_horn(z_suave, RESOLUCION_M)
+    dzdx, dzdy = gradiente_horn(z_suave, resolucion_m)
     pendiente_deg = np.degrees(np.arctan(np.hypot(dzdx, dzdy)))
 
     # Azimut de la línea de máxima pendiente (sentido DESCENSO), brújula 0=N,90=E
@@ -202,7 +207,7 @@ def _flechas(
     a, e = transform.a, transform.e
     c, f = transform.c, transform.f
     H, W = z_suave.shape
-    paso_m = PASO_FLECHAS * RESOLUCION_M
+    paso_m = PASO_FLECHAS * abs(a)  # cellsize real del DEM, no la constante
     long_max = paso_m * 0.45
     probe = 1.5  # celdas: distancia fija para el chequeo de cota
 

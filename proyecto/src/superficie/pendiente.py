@@ -55,7 +55,7 @@ SALIDA_DIR = BASE / "Capas_Coste"
 ESCENARIOS = ["A", "B"]
 CRS_TRABAJO = "EPSG:25830"
 NODATA = -9999.0
-RESOLUCION_M = 30.0
+RESOLUCION_M = 30.0  # solo valor por defecto/fallback; el cellsize real se deriva del transform del DEM
 
 
 def mapeo_coste_pendiente(pendiente_grados: np.ndarray) -> np.ndarray:
@@ -186,8 +186,15 @@ def procesar_escenario(s: str) -> Path:
         if ref.crs is None or ref.crs.to_epsg() != 25830:
             raise ValueError(f"CRS incorrecto en {dem_path}: se requiere {CRS_TRABAJO}")
 
+    # Cellsize real de la rejilla: se deriva del propio DEM (su transform), no de
+    # una constante. Así la pendiente sigue al dato si el DEM se regenera a otra
+    # resolución, en vez de quedar mal escalada en silencio.
+    cellsize = abs(transform.a)
+
     # --- Paso 2: pendiente Horn + curva por tramos sobre array numpy ---
-    pendiente_grados = calcular_pendiente_horn(dem_data, transform, nodata=dem_nodata)
+    pendiente_grados = calcular_pendiente_horn(
+        dem_data, transform, nodata=dem_nodata, cellsize=cellsize
+    )
     cost_array = mapeo_coste_pendiente(pendiente_grados)
 
     mascara_dem_invalido = ~np.isfinite(dem_data) | (dem_data == dem_nodata)
