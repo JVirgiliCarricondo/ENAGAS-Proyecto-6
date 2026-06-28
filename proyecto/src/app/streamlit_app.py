@@ -63,27 +63,39 @@ except ImportError:
 # ── CSS estilo Enagás ─────────────────────────────────────────────────────────
 _CSS = """
 <style>
-  .stApp { background-color: #f0f4f8; }
+  .stApp { background-color: #f4f6f9; }
 
-  .enagas-header {
-    background: linear-gradient(135deg, #002B5C 0%, #005BAA 100%);
-    padding: 22px 32px 18px;
-    border-radius: 10px;
-    margin-bottom: 28px;
+  .enagas-page-header {
+    background: white;
+    border-top: 4px solid #76B82A;
+    border-bottom: 1px solid #dde6ef;
+    padding: 14px 28px;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
   }
-  .enagas-header h1 {
-    color: white;
-    font-size: 1.55rem;
+  .header-divider {
+    width: 2px;
+    height: 38px;
+    background: #0066B2;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .header-title {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 1.38rem;
     font-weight: 700;
-    margin: 0 0 4px;
-    font-family: 'Segoe UI', Arial, sans-serif;
-    letter-spacing: -0.2px;
-  }
-  .enagas-header p {
-    color: #90c4e8;
+    color: #002B5C;
     margin: 0;
-    font-size: 0.88rem;
+    line-height: 1.2;
+  }
+  .header-subtitle {
     font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 0.81rem;
+    color: #6B7D8E;
+    margin: 3px 0 0;
   }
 
   .scenario-card {
@@ -172,7 +184,7 @@ def _guardar_cfg(cfg: dict) -> None:
 
 def _ejecutar_pipeline(progress_cb) -> dict:
     import logging as _logging
-    _logging.basicConfig(level=logging.WARNING)
+    _logging.basicConfig(level=_logging.WARNING)
 
     from trazados.ruta_pendiente import run_perfiles
     from metricas.calculo import calcular_todas
@@ -203,7 +215,8 @@ def _mapa_entrada(coords: dict) -> folium.Map:
     m = folium.Map(
         location=[sum(lats) / len(lats), sum(lons) / len(lons)],
         zoom_start=11,
-        tiles="CartoDB positron",
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attr="Esri WorldImagery",
     )
 
     cfg_markers = {
@@ -257,7 +270,12 @@ def _mapa_resultados() -> folium.Map | None:
 
     gdf0 = gpd.read_file(rutas[0][2]).to_crs("EPSG:4326")
     c = gdf0.geometry.iloc[0].centroid
-    m = folium.Map(location=[c.y, c.x], zoom_start=12, tiles="CartoDB positron")
+    m = folium.Map(
+        location=[c.y, c.x],
+        zoom_start=12,
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attr="Esri WorldImagery",
+    )
 
     grupos = {s: folium.FeatureGroup(name=f"Escenario {s}", show=True) for s in ("A", "B")}
 
@@ -396,7 +414,7 @@ def _render_input():
             map_data = _st_folium(
                 m,
                 key="mapa_entrada",
-                height=560,
+                height=420,
                 use_container_width=True,
                 returned_objects=["last_clicked"],
             )
@@ -478,7 +496,7 @@ def _render_results():
         if m is None:
             st.warning("No se encontraron archivos de rutas en Rutas/")
         elif _HAS_ST_FOLIUM:
-            _st_folium(m, key="mapa_resultados", height=640,
+            _st_folium(m, key="mapa_resultados", height=460,
                        use_container_width=True, returned_objects=[])
         else:
             from streamlit.components.v1 import html as _html
@@ -538,37 +556,32 @@ def _render_results():
                 st.info("Diversidad no calculada.")
                 continue
 
-            dif   = div.get("diferenciadas")
-            solap = div.get("solap_max_par", 0.0)
-            buf   = div.get("buffer_m", 60)
+            perfiles_div = div.get("perfiles", [])
+            buf = div.get("buffer_m", 60)
+            st.caption(
+                f"Solapamiento dirigido (%) — buffer corredor: {buf:.0f} m. "
+                f"Celda (fila i, col j): % de la longitud de la ruta i que discurre "
+                f"dentro del corredor de j."
+            )
 
-            if dif is None:
-                st.info("n/a — se necesitan al menos 2 rutas para comparar.")
-            elif dif:
-                st.success(
-                    f"Corredores DIFERENCIADOS — solapamiento maximo: {solap:.1f}%  "
-                    f"(buffer {buf:.0f} m)"
-                )
+            if len(perfiles_div) < 2:
+                st.info("Se necesitan al menos 2 rutas para comparar.")
             else:
-                st.warning(
-                    f"Corredores REDUNDANTES — solapamiento maximo: {solap:.1f}%  "
-                    f"(buffer {buf:.0f} m)"
-                )
+                matriz = div.get("matriz", {})
+                nombres = [_NOMBRE_PERFIL.get(p, p) for p in perfiles_div]
+                data = []
+                for pi in perfiles_div:
+                    row = []
+                    for pj in perfiles_div:
+                        if pi == pj:
+                            row.append("-")
+                        else:
+                            val = matriz.get(pi, {}).get(pj, 0.0)
+                            row.append(f"{val:.1f}%")
+                    data.append(row)
+                df_matriz = pd.DataFrame(data, index=nombres, columns=nombres)
+                st.dataframe(df_matriz, use_container_width=True)
 
-            if div.get("pares"):
-                pares_rows = []
-                for pi, pj, sp in sorted(div["pares"], key=lambda x: -x[2]):
-                    estado = "Redundante" if sp >= div.get("umbral_pct", 50) else "OK"
-                    pares_rows.append({
-                        "Par": f"{_NOMBRE_PERFIL.get(pi, pi)}  ↔  {_NOMBRE_PERFIL.get(pj, pj)}",
-                        "Solapamiento": f"{sp:.1f} %",
-                        "Estado": estado,
-                    })
-                st.dataframe(
-                    pd.DataFrame(pares_rows),
-                    use_container_width=True,
-                    hide_index=True,
-                )
             st.markdown("---")
 
 
@@ -578,13 +591,29 @@ def _main():
     import logging
     logging.disable(logging.WARNING)
 
+    _LOGO_SVG = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 185 80" width="120" height="52">'
+        '<path d="M 25 19 A 30 30 0 0 1 55 19" fill="none" stroke="#76B82A"'
+        ' stroke-width="5.5" stroke-linecap="round"/>'
+        '<path d="M 55 19 A 30 30 0 1 1 25 19" fill="none" stroke="#0066B2"'
+        ' stroke-width="5.5" stroke-linecap="round"/>'
+        '<text x="82" y="53" font-family="Arial,Helvetica,sans-serif"'
+        ' font-size="27" font-weight="bold" fill="#0066B2" letter-spacing="-0.5">enagas</text>'
+        '</svg>'
+    )
+
     st.markdown(_CSS, unsafe_allow_html=True)
-    st.markdown("""
-    <div class="enagas-header">
-      <h1>Generador de Trazados de Ramales H₂</h1>
-      <p>CI2 Lab 2026 &nbsp;&middot;&nbsp; Grupo 6 &nbsp;&middot;&nbsp; Enagás</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="enagas-page-header">'
+        f'<div>{_LOGO_SVG}</div>'
+        f'<div class="header-divider"></div>'
+        f'<div>'
+        f'<div class="header-title">Generador de Trazados de Ramales H₂</div>'
+        f'<div class="header-subtitle">CI2 Lab 2026 &nbsp;&middot;&nbsp; Enágas</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     if "pantalla" not in st.session_state:
         st.session_state.pantalla = "input"
