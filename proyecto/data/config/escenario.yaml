@@ -18,12 +18,3 @@ escenario_B:
     nombre: B_final
     x: 693832
     y: 4600576
-escenario_C:
-  origen:
-    nombre: C_inicial
-    x: 733808
-    y: 4555785
-  destino:
-    nombre: C_final
-    x: 741904
-    y: 4554467
