@@ -445,8 +445,13 @@ def _ejecutar_pipeline(
     escenarios: list[str],
     perfiles: list[dict] | None = None,
 ) -> dict:
+    import importlib
     import logging as _logging
     _logging.basicConfig(level=_logging.WARNING)
+
+    for _mod in list(sys.modules.keys()):
+        if _mod.startswith(("trazados.", "metricas.", "superficie.", "ingesta.")):
+            del sys.modules[_mod]
 
     from trazados.ruta_pendiente import run_perfiles
     from metricas.calculo import calcular_todas
