@@ -49,16 +49,24 @@ perfiles:
 
   - id: equilibrio
     nombre: "Equilibrio (recomendado)"
-    descripcion: "Balance entre criterios: pendiente, traversalidad, impacto, longitud y viabilidad."
+    descripcion: "Balance multicriterio calibrado con las bandas de ponderación de Enagás (anexo II, EV-500)."
+    # Pesos alineados con la tabla de Enagás (suman 1.00 = 100 %).
+    # Mapeo capa→grupo; el grupo Patrimonio (sin capa en el modelo) se redistribuye
+    # entre los 4 grupos con capa, reescalando sus puntos medios dentro de banda:
+    #   Medioambiente 30-40 %  → protegida                       0.37
+    #   Urbanístico   15-25 %  → expropiacion                    0.21
+    #   Geotecnia     15-25 %  → geotecnia+pendiente+traversal   0.21
+    #   Construcción  10-20 %  → cruces                          0.16
+    #   Otros          5 %     → longitud                        0.05
     pesos:
-      pendiente:    0.6
-      traversal:    0.5
-      protegida:    0.6
-      cruces:       0.4
-      expropiacion: 0.4
-      geotecnia:    0.4
-      longitud:     0.5
-    nota: "Perfil recomendado como punto de partida para MVP 1-3"
+      protegida:    0.37   # Medioambiente
+      expropiacion: 0.21   # Urbanístico
+      geotecnia:    0.09   # Geotecnia ┐
+      pendiente:    0.08   # Geotecnia ├ 0.21
+      traversal:    0.04   # Geotecnia ┘
+      cruces:       0.16   # Construcción / cruces
+      longitud:     0.05   # Otros (coste-distancia base del LCP)
+    nota: "Pesos alineados con anexo II EV-500 (Enagás); Patrimonio (sin capa) redistribuido."
 
 # ============================================================================
 # PARÁMETROS DE COSTE INTRA-CAPA (calibrables)
