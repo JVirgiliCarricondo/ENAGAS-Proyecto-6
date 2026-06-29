@@ -73,6 +73,24 @@ perfiles:
 # Todos los valores numéricos de cada capa de coste se definen aquí.
 # Los módulos Python leen este bloque al importarse; editar el YAML y
 # volver a ejecutar el pipeline es suficiente para recalibrar cualquier peso.
+#
+# ESTANDARIZACIÓN (metodología oficial Enagás — docs/metodologia_enagas.md):
+#   Las capas con condicionante en la tabla oficial (geotecnia, expropiación,
+#   zonas protegidas y cruces) tienen sus costes derivados de los factores de
+#   ponderación (A) oficiales con un divisor común:
+#
+#       coste_celda = A_oficial / A_REF      con A_REF = 38
+#
+#   38 = "Terrenos inestables (arcillas expansivas)", el mayor factor entre los
+#   condicionantes que modelamos. Así TODA capa queda en [0, 1] (estandarizada)
+#   y se conserva la jerarquía oficial ENTRE condicionantes, requisito para que
+#   la suma ponderada de capas produzca soluciones comparables.
+#   Anclajes: RedNatura 28.5→0.75 · urbano 25.25→0.66 · urbano medio/industrial
+#   17.75→0.47 · roca dura 13→0.34 · curso hídrico permanente 13→0.34 · curso
+#   hídrico no permanente 9.75→0.26 · yeso/inestable 38→1.00.
+#   Clases SIN factor oficial (litologías intermedias, viario/ferrocarril) se
+#   interpolan por dificultad constructiva dentro del mismo [0, 1].
+#   La capa de PENDIENTE queda fuera de este criterio (se mantiene intacta).
 # ============================================================================
 
 parametros_capas:
@@ -95,76 +113,86 @@ parametros_capas:
   # P2 — Geotecnia (src/superficie/geotecnia.py)
   # Índice de coste geotécnico por litología (campo DLO del IGME).
   # Cualquier DLO no listado recibe default_cost.
-  # Valores [0.1, 0.7]: 0.1 = excavación fácil, 0.7 = material problemático.
+  # Valores [0.05, 1.0] estandarizados (A_oficial / 38). Anclajes oficiales:
+  #   · Caliza presente = "Roca dura" (A=13)            → 0.34
+  #   · Yeso/expansivo  = "Terrenos inestables" (A=38)  → 1.00
+  # Las clases intermedias (sin factor oficial) se interpolan por dificultad de
+  # excavación; el terreno trivial (aluviales) ≈ 0 (no es condicionante).
   # Nota: las dos entradas marcadas "corrupción GPKG" son variantes del mismo
   # DLO con caracteres mal codificados en la fuente; no modificarlas.
   # --------------------------------------------------------------------------
   geotecnia:
-    default_cost: 0.3
+    default_cost: 0.15
     tabla_costes:
-      # ── Coste 0.1: Aluviales y fondos de valle (excavación muy fácil) ──────
-      "Gravas, arenas, limos y arcillas. Aluviales y fondos de valle": 0.1
-      "CANTOS, ARENAS Y LIMOS. CONOS DE DEYECCIÓN": 0.1
-      "Cantos y gravas polimácticas redondeadas. Terrazas": 0.1
-      "Cantos y gravas polimícticas redondeadas. Terrazas": 0.1    # corrupción GPKG: á→í
-      "GRAVAS POLIGENICAS, ARENAS Y LIMOS. TERRAZAS": 0.1
-      # ── Coste 0.2: Sedimentos finos / coluviales ───────────────────────────
-      "Limo-arcillas y arenas con algun canto. Rellenos de Val": 0.2
-      "Limo-arcillas y arenas con algún canto. Rellenos de Val": 0.2
-      "CANTOS, LIMOS Y ARCILLAS. COLUVIAL": 0.2
-      # ── Coste 0.3: Arcillas blandas / paleocanales aislados ────────────────
-      "Arcillas y paleocanales de arenisca. Unidad de Mequinenza-Ballobar": 0.3
-      "Paleocanal individual": 0.3
-      # ── Coste 0.4: Arenisca compacta / paleocanales exhumados ──────────────
-      "Paleocanales de arenisca exhumados (ambas unidades)": 0.4
-      "Paleocanales de arenisca exhumados. Unidad de Mequinenza-Ballobar": 0.4
-      "Paleocanales de arenisca exhumados. Unidad de Torrente de Cinca-Alcolea de Cinca": 0.4
-      "Paleocanales amalgamados": 0.4
-      # ── Coste 0.5: Conglomerados / mezcla duro-blando ──────────────────────
-      "Areniscas, conglomerados y arcillas": 0.5
-      "Areniscas, conglomerados y arcillas. Unidad de Torrente de Cinca-Alcolea de Cinca": 0.5
-      "Arcillas rojas, capas de calizas y areniscas": 0.5
-      # ── Coste 0.6: Caliza presente (más duro) ──────────────────────────────
-      "Arcillas, paleocanales de arenisca y capas de calizas": 0.6
-      "Arcillas rojas con niveles edafizados, capas de caliza...": 0.6
-      "Arcillas rojas con niveles edafizados, capas de caliza y paleocanal. de arenisca. Un. de Fayón-Fraga": 0.6
-      "Arcillas rojas con niveles edafizados, capas de caliza y paleocanal. de arenisca. Un. de Fay¢n-Fraga": 0.6  # corrupción GPKG: ó→¢
-      # ── Coste 0.7: Yeso (corrosivo y expansivo: problemático) ──────────────
-      "Arcillas rojas con yeso nodular y areniscas": 0.7
-      "Arcillas rojas con yeso nodular y areniscas. Unidad de Mequinenza-Ballobar": 0.7
-      "ARCILLAS ROJAS CON NIVELES CENTIMETRICOS DE YESOS Y CALIZAS": 0.7
-      "CANTOS, LIMOS YESIFEROS Y ARCILLAS. FONDOS DE VALLE PLANOS": 0.7
-      "YESOS TABULARES Y NODULARES CON ARCILLAS GRISES": 0.7
-      "YESOS TABULARES Y NODULARES CON ARCILLAS ROJAS Y GRISES": 0.7
-      "YESOS TABULARES Y NODULARES CON MARGAS Y ARCILLAS": 0.7
-      "Yesos masivos. U.BUJARALOZ-SARIÑENA": 0.7
+      # ── Coste 0.05: Aluviales y fondos de valle (excavación trivial) ───────
+      "Gravas, arenas, limos y arcillas. Aluviales y fondos de valle": 0.05
+      "CANTOS, ARENAS Y LIMOS. CONOS DE DEYECCIÓN": 0.05
+      "Cantos y gravas polimácticas redondeadas. Terrazas": 0.05
+      "Cantos y gravas polimícticas redondeadas. Terrazas": 0.05    # corrupción GPKG: á→í
+      "GRAVAS POLIGENICAS, ARENAS Y LIMOS. TERRAZAS": 0.05
+      # ── Coste 0.10: Sedimentos finos / coluviales ──────────────────────────
+      "Limo-arcillas y arenas con algun canto. Rellenos de Val": 0.10
+      "Limo-arcillas y arenas con algún canto. Rellenos de Val": 0.10
+      "CANTOS, LIMOS Y ARCILLAS. COLUVIAL": 0.10
+      # ── Coste 0.15: Arcillas blandas / paleocanales aislados (defecto) ─────
+      "Arcillas y paleocanales de arenisca. Unidad de Mequinenza-Ballobar": 0.15
+      "Paleocanal individual": 0.15
+      # ── Coste 0.22: Arenisca compacta / paleocanales exhumados ─────────────
+      "Paleocanales de arenisca exhumados (ambas unidades)": 0.22
+      "Paleocanales de arenisca exhumados. Unidad de Mequinenza-Ballobar": 0.22
+      "Paleocanales de arenisca exhumados. Unidad de Torrente de Cinca-Alcolea de Cinca": 0.22
+      "Paleocanales amalgamados": 0.22
+      # ── Coste 0.28: Conglomerados / mezcla duro-blando ─────────────────────
+      "Areniscas, conglomerados y arcillas": 0.28
+      "Areniscas, conglomerados y arcillas. Unidad de Torrente de Cinca-Alcolea de Cinca": 0.28
+      "Arcillas rojas, capas de calizas y areniscas": 0.28
+      # ── Coste 0.34: Caliza presente = "Roca dura" oficial (A=13 → /38) ─────
+      "Arcillas, paleocanales de arenisca y capas de calizas": 0.34
+      "Arcillas rojas con niveles edafizados, capas de caliza...": 0.34
+      "Arcillas rojas con niveles edafizados, capas de caliza y paleocanal. de arenisca. Un. de Fayón-Fraga": 0.34
+      "Arcillas rojas con niveles edafizados, capas de caliza y paleocanal. de arenisca. Un. de Fay¢n-Fraga": 0.34  # corrupción GPKG: ó→¢
+      # ── Coste 1.00: Yeso = "Terrenos inestables/expansivos" oficial (A=38) ─
+      "Arcillas rojas con yeso nodular y areniscas": 1.00
+      "Arcillas rojas con yeso nodular y areniscas. Unidad de Mequinenza-Ballobar": 1.00
+      "ARCILLAS ROJAS CON NIVELES CENTIMETRICOS DE YESOS Y CALIZAS": 1.00
+      "CANTOS, LIMOS YESIFEROS Y ARCILLAS. FONDOS DE VALLE PLANOS": 1.00
+      "YESOS TABULARES Y NODULARES CON ARCILLAS GRISES": 1.00
+      "YESOS TABULARES Y NODULARES CON ARCILLAS ROJAS Y GRISES": 1.00
+      "YESOS TABULARES Y NODULARES CON MARGAS Y ARCILLAS": 1.00
+      "Yesos masivos. U.BUJARALOZ-SARIÑENA": 1.00
 
   # --------------------------------------------------------------------------
   # P3 — Expropiación (src/superficie/expropiacion.py)
-  # Coste por tipo catastral (campo TIPO). Escala [0, 1]: 0 = dominio público
-  # (sin expropiación), 1 = urbano consolidado (expropiación muy costosa).
+  # Coste por tipo catastral (campo TIPO). Escala [0, 1] estandarizada
+  # (A_oficial / 38) sobre la tipología urbanística oficial:
+  #   · Urbano (U)        = "Área urbana alta densidad" (A=25.25)        → 0.66
+  #   · Periurbano        = "Área urbana media densidad/industrial" (17.75) → 0.47
+  #   · Dominio público   = sin expropiación                            → 0.03
+  #   · Rústico (R)       = agrícola genérico (sin condicionante fuerte) → 0.10
   # fondo_cost: celdas sin parcela catastral (zona no catastrada).
   # Parcelas rústicas (R) con área < area_periurbano_m2 se tratan como periurbano.
   # --------------------------------------------------------------------------
   expropiacion:
-    fondo_cost: 0.20          # celda sin parcela catastral
-    default_cost: 0.40        # TIPO no listado en la tabla
+    fondo_cost: 0.10          # celda sin parcela catastral (≈ rústico)
+    default_cost: 0.30        # TIPO no listado en la tabla
     area_periurbano_m2: 500.0 # parcelas R menores que este umbral → periurbano
-    cost_periurbano: 0.50
+    cost_periurbano: 0.47     # "Área urbana media densidad / Zona industrial" (A=17.75)
     tipos:
-      D: 0.05   # dominio público (vía, río, camino)
-      R: 0.20   # rústico
-      X: 0.40   # sin clasificar
-      U: 0.90   # urbano
+      D: 0.03   # dominio público (vía, río, camino) — sin expropiación
+      R: 0.10   # rústico (agrícola genérico)
+      X: 0.30   # sin clasificar
+      U: 0.66   # urbano = "Área urbana alta densidad" (A=25.25 → /38)
 
   # --------------------------------------------------------------------------
   # P4 — Zonas protegidas (src/superficie/zonas_protegidas.py)
   # Variable binaria: dentro de Red Natura 2000 = valor_protegida, fuera = valor_fondo.
-  # La magnitud de la penalización la decide el peso de la capa en la
-  # combinación (perfiles[*].pesos.protegida), no el valor aquí.
+  # valor_protegida estandarizado al factor oficial "RED NATURA 2000" (A=28.5):
+  #   28.5 / 38 → 0.75. Así la capa comparte escala [0,1] con las demás.
+  # El peso de la capa (perfiles[*].pesos.protegida) sigue modulando el énfasis
+  # por perfil; el valor base ya refleja la severidad oficial del condicionante.
   # --------------------------------------------------------------------------
   zonas_protegidas:
-    valor_protegida: 1.0   # cualquier tipo Red Natura (ZEPA / LIC / ZEC)
+    valor_protegida: 0.75  # "RED NATURA 2000" oficial (A=28.5 → /38); ZEPA/LIC/ZEC
     valor_fondo: 0.0       # fuera de zona protegida
 
   # --------------------------------------------------------------------------
@@ -172,10 +200,18 @@ parametros_capas:
   # Coste de cruce puntual (se paga UNA VEZ al atravesar la línea).
   # Fuente OSM: campo 'highway' (y 'railway' para ferrocarril).
   # Fuente hidrografía IGN: campos 'text' (nombre) y 'length' (metros).
+  #
+  # Ríos: estandarizados a los factores oficiales de curso hídrico (A_oficial/38):
+  #   · Curso hídrico con agua permanente (A=13)    → 0.34  (río principal)
+  #   · Curso hídrico sin agua permanente (A=9.75)  → 0.26  (rambla/sin nombre)
+  #   (referencia: "Cruce por perforación horizontal" A=7 → 0.18, la técnica más
+  #    barata; por eso un cruce de río resuelto bien es de coste moderado.)
+  # Viario y ferrocarril NO tienen factor en la tabla oficial: se conservan
+  # calibrados por dificultad constructiva/permisos, dentro del mismo [0, 1].
   # --------------------------------------------------------------------------
   cruces:
     fondo: 0.0              # celda sin ningún cruce
-    ferrocarril: 0.9        # fila con columna 'railway' no nula
+    ferrocarril: 0.9        # fila con columna 'railway' no nula (sin factor oficial)
     highway_default: 0.3    # tipo 'highway' no listado (~unclassified)
     highway:
       path: 0.2
@@ -190,7 +226,7 @@ parametros_capas:
       trunk: 0.8
       motorway: 0.8
       construction: 0.4     # vía en obra (~residential)
-    rio_sin_nombre: 0.3     # sin nombre en 'text' (rambla / val estacional)
-    rio_menor: 0.5          # con nombre y longitud ≤ umbral_rio_m
-    rio_principal: 0.8      # con nombre y longitud > umbral_rio_m
+    rio_sin_nombre: 0.26    # sin nombre → curso hídrico no permanente (A=9.75)
+    rio_menor: 0.30         # con nombre y longitud ≤ umbral_rio_m
+    rio_principal: 0.34     # con nombre y longitud > umbral_rio_m → permanente (A=13)
     umbral_rio_m: 2000.0    # umbral de longitud para clasificar ríos (metros)

@@ -85,24 +85,25 @@ El **umbral de barrera dura está fijado en 30°**. Los cortes intermedios (5°/
 ### 5.1 Expropiación parcelaria — Catastro
 
 Columna `TIPO` de `catastro_aoi_{s}.gpkg`. Coste administrativo de ocupar el suelo.
+Valores **estandarizados al factor oficial Enagás** `A / 38` (ver [`../docs/metodologia_enagas.md`](../docs/metodologia_enagas.md); urbano alta densidad A=25.25 → 0.66, periurbano/media densidad A=17.75 → 0.47).
 
-| TIPO | Descripción | Coste |
-|------|-------------|-------|
-| D | Dominio público | 0.05 |
-| R | Rústico | 0.20 |
-| X | Sin clasificar | 0.40 |
-| R (<500 m²) | Periurbano (refinamiento opcional) | 0.50 |
-| U | Urbano | 0.90 |
-| Fondo (sin parcela) | Rústico por defecto | 0.20 |
+| TIPO | Descripción | Coste | A oficial |
+|------|-------------|-------|-----------|
+| D | Dominio público | 0.03 | — |
+| R | Rústico | 0.10 | — |
+| X | Sin clasificar | 0.30 | — |
+| R (<500 m²) | Periurbano (refinamiento opcional) | 0.47 | 17.75 |
+| U | Urbano | 0.66 | 25.25 |
+| Fondo (sin parcela) | Rústico por defecto | 0.10 | — |
 
 ### 5.2 Red Natura 2000
 
-Variable binaria. La magnitud de la penalización la pone el peso de la capa en la combinación (§8).
+Variable binaria. El valor "dentro" está **estandarizado al factor oficial Enagás** RED NATURA 2000 (A=28.5 / 38 = 0.75); la magnitud final la modula además el peso de la capa en la combinación (§8).
 
 | Situación | Valor | Tratamiento |
 |-----------|-------|-------------|
 | Fuera de zona protegida | 0.0 | finito |
-| Dentro de Red Natura (ZEPA / LIC / ZEC) | 1.0 | finito (transitable con autorización) |
+| Dentro de Red Natura (ZEPA / LIC / ZEC) | 0.75 | finito (transitable con autorización; A=28.5) |
 | Fondo (sin polígono) | 0.0 | — |
 
 No hay barrera dura. Los km en zona protegida se reportan como métrica (hito 4).
@@ -127,13 +128,13 @@ No hay barrera dura. Los km en zona protegida se reportan como métrica (hito 4)
 | `railway` (`rail`) | 0.9 |
 | No listado | 0.3 |
 
-**Hidrografía — IGN, columnas `text` y `length`:**
+**Hidrografía — IGN, columnas `text` y `length`** (estandarizada al factor oficial Enagás `A / 38`: curso permanente A=13 → 0.34, no permanente A=9.75 → 0.26):
 
-| Criterio | Coste |
-|----------|-------|
-| Sin nombre | 0.3 |
-| Con nombre, length ≤ 2000 m | 0.5 |
-| Con nombre, length > 2000 m | 0.8 |
+| Criterio | Coste | A oficial |
+|----------|-------|-----------|
+| Sin nombre (rambla / no permanente) | 0.26 | 9.75 |
+| Con nombre, length ≤ 2000 m (río menor) | 0.30 | — (interpolado) |
+| Con nombre, length > 2000 m (río principal/permanente) | 0.34 | 13 |
 
 Fusión OSM + HID: **máximo por celda**. Líneas rasterizadas a 1 celda (`all_touched=True`). Fondo: 0.0.
 
@@ -145,19 +146,19 @@ La ruta paga al atravesar **perpendicularmente** la línea (≈ 1 celda). No se 
 
 ## 6.A Geotecnia y seguridad
 
-**IGME MAGNA 50, campo `DLO` (descripción litológica):**
+**IGME MAGNA 50, campo `DLO` (descripción litológica).** Valores **estandarizados al factor oficial Enagás** `A / 38` (terrenos inestables A=38 → 1.00 fija el techo; roca dura A=13 → 0.34):
 
-| Litología (DLO contiene...) | Coste |
-|-----------------------------|-------|
-| Aluvial / terrazas recientes | 0.1 |
-| Arcillas, limos, margas blandas | 0.2 |
-| Arenas, gravas sueltas | 0.3 |
-| Conglomerados, areniscas medias | 0.4 |
-| Calizas, dolomías | 0.5 |
-| Roca masiva (granito, cuarcita) | 0.6 |
-| Yeso (excavación problemática) | 0.7 |
-| No clasificado / sin dato | 0.4 |
-| Fondo (sin polígono IGME) | 0.3 |
+| Litología (DLO contiene...) | Coste | A oficial |
+|-----------------------------|-------|-----------|
+| Aluvial / terrazas recientes (fácil) | 0.05 | — |
+| Sedimento fino (limos, margas) | 0.10 | — |
+| Arcillas blandas | 0.15 | — |
+| Arenisca compacta | 0.22 | — |
+| Conglomerados | 0.28 | — |
+| Calizas, dolomías, roca dura | 0.34 | 13 |
+| Yeso (inestable / expansivo) | 1.00 | 38 |
+| No clasificado / sin dato | 0.15 | — (defecto) |
+| Fondo (sin polígono IGME) | 0.15 | — (defecto) |
 
 ---
 
@@ -181,7 +182,7 @@ coste_total(i,j) = BASE_LONG        · w_longitud
 ```
 
 **Primera iteración (pesos iguales):** `w = 1/n` para cada capa + `BASE_LONG = 1.0`.
-Generada por `src/superficie/combinar.py` → `Trazados/superficie_{s}.tif`. Rango típico: [1.06, 1.73].
+Generada por `src/superficie/combinar.py` → `Trazados/superficie_{s}.tif`. Rango típico: [1.06, 1.73] *(medido antes de la recalibración A de §5–§6.A; recalcular tras regenerar las capas)*.
 
 ### 8.1 Del raster al grafo (A\*)
 
@@ -197,8 +198,8 @@ Generada por `src/superficie/combinar.py` → `Trazados/superficie_{s}.tif`. Ran
 | Tema | Decisión |
 |------|----------|
 | Barrera de pendiente | 30° → `inf` en memoria, `999.0` en disco |
-| Red Natura | Variable binaria transitable (0/1). No barrera. |
-| Urbano consolidado | Coste 0.90 finito. No barrera. |
+| Red Natura | Variable binaria transitable (0 / 0.75; A=28.5/38). No barrera. |
+| Urbano consolidado | Coste 0.66 finito (A=25.25/38). No barrera. |
 | Cruces | Rasterización fina 1 celda (`all_touched=True`) + conteo en métricas |
 | Doble conteo urbano | No hay en MVP: solo lo lleva Catastro |
 | Solver | A\* (Dijkstra solo como respaldo) |
@@ -210,7 +211,7 @@ Generada por `src/superficie/combinar.py` → `Trazados/superficie_{s}.tif`. Ran
 
 ## 10. Calibración
 
-Valores orientativos, calibrables con el caso real. Cuando Enagás facilite un ramal existente → **backtesting** (hito 4/6). Registrar cambios en [`../coordinacion/seguimiento.md`](../coordinacion/seguimiento.md).
+Los valores intra-capa de §5–§6.A están **anclados a los factores de ponderación oficiales de Enagás** (`coste = A / 38`, con A_REF=38 = terrenos inestables; ver [`../docs/metodologia_enagas.md`](../docs/metodologia_enagas.md)), de modo que se preserva la jerarquía oficial entre condicionantes y toda capa queda en [0, 1]. La pendiente queda fuera de este anclaje (curva por tramos propia, §4). Siguen siendo calibrables con el caso real: cuando Enagás facilite un ramal existente → **backtesting** (hito 4/6). Registrar cambios en [`../coordinacion/seguimiento.md`](../coordinacion/seguimiento.md).
 
 ---
 
@@ -273,8 +274,8 @@ with rasterio.open(out_path, "w", **profile) as dst:
 | Capa | Script | Fuente | Columna | all_touched | Fondo |
 |------|--------|--------|---------|-------------|-------|
 | `pendiente_{s}.tif` | `pendiente.py` | `dem_aoi_{s}.tif` | — (array) | — | no aplica |
-| `geotecnia_{s}.tif` | `geotecnia.py` | `igme_aoi_{s}.gpkg` | `DLO` | False | 0.3 |
-| `expropiacion_{s}.tif` | `expropiacion.py` | `catastro_aoi_{s}.gpkg` | `TIPO` | False | 0.2 |
+| `geotecnia_{s}.tif` | `geotecnia.py` | `igme_aoi_{s}.gpkg` | `DLO` | False | 0.15 |
+| `expropiacion_{s}.tif` | `expropiacion.py` | `catastro_aoi_{s}.gpkg` | `TIPO` | False | 0.10 |
 | `protegida_{s}.tif` | `zonas_protegidas.py` | `natura2000_aoi_{s}.gpkg` | `TIPO` | False | 0.0 |
 | `cruces_{s}.tif` | `cruces_viario_rios.py` | `osm_aoi_{s}.gpkg` + `hidrografia_aoi_{s}.gpkg` | `highway` / `text`+`length` | True | 0.0 |
 | `superficie_{s}.tif` | `combinar.py` | todas las anteriores | — | — | — |

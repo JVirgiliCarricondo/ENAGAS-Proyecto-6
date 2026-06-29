@@ -41,12 +41,14 @@ Tabla OSM (columna 'highway'; ferrocarril en columna 'railway'):
   'construction' (vias en obra: estado temporal, no clase) y el default lo fija
   el agente geografo-SIG: 0.4 y 0.3 respectivamente (calibrables, §10).
 
-Tabla hidrografia (columnas 'text' = nombre del rio, 'length' = metros):
+Tabla hidrografia (columnas 'text' = nombre del rio, 'length' = metros).
+Estandarizada al factor oficial Enagas A / 38 (curso permanente A=13 -> 0.34,
+no permanente A=9.75 -> 0.26; ver docs/metodologia_enagas.md):
 
   Criterio                          Coste
-  Sin nombre (text nulo/vacio)      0.3   (rambla/val estacional)
-  Con nombre y length <= 2000 m     0.5   (rio menor)
-  Con nombre y length >  2000 m     0.8   (rio principal)
+  Sin nombre (text nulo/vacio)      0.26  (rambla/val estacional, A=9.75)
+  Con nombre y length <= 2000 m     0.30  (rio menor, interpolado)
+  Con nombre y length >  2000 m     0.34  (rio principal/permanente, A=13)
 
 Columnas descartadas para el coste (utiles solo para metricas/trazabilidad):
   OSM: osm_id, oneway, surface, maxspeed (name puede usarse en metricas).

@@ -6,10 +6,11 @@ rejilla del DEM del AOI. Modelo de coste en modelo_coste.md (5.2) y resumen del
 reto en CLAUDE.md.
 
 La proteccion es una variable binaria: una celda esta dentro de Red Natura
-o no lo esta. La capa NO grada la intensidad de la penalizacion; eso lo hace
-el PESO de la capa en la combinacion multicriterio (§8), que es independiente
-del resto de capas. Por eso aqui el valor es 1 (dentro) o 0 (fuera), nada
-intermedio.
+o no lo esta. El valor "dentro" esta estandarizado al factor oficial
+"RED NATURA 2000" (A=28.5 / 38 = 0.75), de modo que la capa comparte la escala
+[0,1] con las demas. El PESO de la capa en la combinacion multicriterio (§8)
+sigue modulando el enfasis por perfil. Por eso aqui el valor es 0.75 (dentro)
+o 0 (fuera), nada intermedio.
 
 Patron comun de las capas de coste (hito 2):
   Paso 1 - Leer la rejilla de referencia: copiar SIEMPRE transform/width/height/
@@ -22,10 +23,10 @@ Patron comun de las capas de coste (hito 2):
   Paso 5 - Guardar con el mismo profile que el DEM (GTiff, float32,
            nodata=-9999.0, compress=lzw).
 
-Tabla de valores (binaria, modelo_coste.md 5.2):
+Tabla de valores (binaria, estandarizada A_oficial / 38):
 
-  Situacion                          Valor
-  Dentro de Red Natura (ZEPA/LIC/ZEC)  1
+  Situacion                            Valor
+  Dentro de Red Natura (ZEPA/LIC/ZEC)  0.75   (A oficial = 28.5)
   Fuera de poligono (sin proteccion)   0
 
 Nota: la capa es transitable (valor finito). No hay barrera dura (inf): la

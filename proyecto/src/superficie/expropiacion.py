@@ -44,14 +44,15 @@ NODATA = -9999.0
 # Se genera un .qml junto al .tif para que QGIS aplique los colores al instante.
 # Los breakpoints usan puntos medios entre valores de coste consecutivos para
 # evitar que la imprecisión float32 haga caer un valor en el bin equivocado.
-#   Valores reales:   0.05   0.20   0.40   0.50   0.90
-#   Breakpoints:         0.125  0.30  0.45   0.70   0.95
+# Valores estandarizados A_oficial / 38 (ver perfiles.yaml, expropiacion):
+#   Valores reales:   0.03   0.10   0.30   0.47   0.66
+#   Breakpoints:        0.065  0.20  0.385  0.565  0.70
 _QGIS_PALETTE: list[tuple[float, str, str, int]] = [
-    (0.125, "#4CAF50", "Dominio público (D)",        255),
-    (0.30,  "#FFEB3B", "Rústico / sin parcela (R)",  255),
-    (0.45,  "#FF9800", "Sin clasificar (X)",         255),
-    (0.70,  "#E65100", "Periurbano (R &lt; 500 m²)", 255),
-    (0.95,  "#C62828", "Urbano (U)",                 255),
+    (0.065, "#4CAF50", "Dominio público (D)",        255),
+    (0.20,  "#FFEB3B", "Rústico / sin parcela (R)",  255),
+    (0.385, "#FF9800", "Sin clasificar (X)",         255),
+    (0.565, "#E65100", "Periurbano (R &lt; 500 m²)", 255),
+    (0.70,  "#C62828", "Urbano (U)",                 255),
 ]
 
 

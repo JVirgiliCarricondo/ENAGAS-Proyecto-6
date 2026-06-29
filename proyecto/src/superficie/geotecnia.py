@@ -4,13 +4,13 @@ Para cada escenario A y B, rasteriza los polígonos geológicos del IGME
 sobre la rejilla del DEM de referencia asignando un índice de coste fijo
 por litología (columna DLO).
 
-  - Píxeles dentro del AOI sin polígono IGME  → DEFAULT_COST (0.3)
+  - Píxeles dentro del AOI sin polígono IGME  → DEFAULT_COST (0.15)
   - Píxeles fuera del AOI (nodata en el DEM)  → NODATA (-9999, transparente)
 
 Salida: data/processed/Capas_Coste/geotecnia_{A,B}.tif  +  .qml de estilos
   - CRS: EPSG:25830, transform/shape igual que dem_aoi_{s}.tif
   - dtype: float32, nodata: -9999.0, compresión: LZW
-  - Valores válidos: [0.1, 0.7]
+  - Valores válidos: [0.05, 1.0] (estandarizado A_oficial / 38; ver perfiles.yaml)
 """
 
 from __future__ import annotations
@@ -40,24 +40,25 @@ COST_TABLE: dict[str, float] = {str(k): float(v) for k, v in _gcfg["tabla_costes
 DEFAULT_COST: float = float(_gcfg["default_cost"])
 
 # ColorBrewer RdYlGn invertido: verde (fácil) → rojo oscuro (problemático)
+# Valores estandarizados A_oficial / 38 (ver perfiles.yaml, parametros_capas.geotecnia).
 _COLORS: dict[float, str] = {
-    0.1: "#1a9641",
-    0.2: "#a6d96a",
-    0.3: "#ffffbf",
-    0.4: "#fdae61",
-    0.5: "#f46d43",
-    0.6: "#d73027",
-    0.7: "#a50026",
+    0.05: "#1a9641",
+    0.10: "#a6d96a",
+    0.15: "#ffffbf",
+    0.22: "#fdae61",
+    0.28: "#f46d43",
+    0.34: "#d73027",
+    1.00: "#a50026",
 }
 
 _LABELS: dict[float, str] = {
-    0.1: "0.1 - Aluviales (facil)",
-    0.2: "0.2 - Sedimento fino",
-    0.3: "0.3 - Arcilla blanda (defecto)",
-    0.4: "0.4 - Arenisca compacta",
-    0.5: "0.5 - Conglomerado/caliza",
-    0.6: "0.6 - Caliza presente",
-    0.7: "0.7 - Yeso (problematico)",
+    0.05: "0.05 - Aluviales (facil)",
+    0.10: "0.10 - Sedimento fino",
+    0.15: "0.15 - Arcilla blanda (defecto)",
+    0.22: "0.22 - Arenisca compacta",
+    0.28: "0.28 - Conglomerado",
+    0.34: "0.34 - Caliza (roca dura, A=13)",
+    1.00: "1.00 - Yeso (inestable/expansivo, A=38)",
 }
 
 
@@ -125,9 +126,11 @@ def _write_qml(tif_path: Path) -> None:
     costs = sorted(_COLORS)
     items_lines = []
     for i, v in enumerate(costs):
-        upper = round(v + 0.05, 2) if i < len(costs) - 1 else 0.70
+        # Escala no uniforme: el límite superior de cada clase DISCRETA es el
+        # punto medio hasta la siguiente; la última llega al máximo (1.0).
+        upper = round((v + costs[i + 1]) / 2, 3) if i < len(costs) - 1 else 1.0
         items_lines.append(
-            f'          <item value="{upper:.2f}" label="{_LABELS[v]}" '
+            f'          <item value="{upper:.3f}" label="{_LABELS[v]}" '
             f'color="{_COLORS[v]}" alpha="255"/>'
         )
     items_xml = "\n".join(items_lines)
@@ -142,7 +145,7 @@ def _write_qml(tif_path: Path) -> None:
         zoomedOutResamplingMethod="nearestNeighbour"/>
     </provider>
     <rasterrenderer type="singlebandpseudocolor" band="1"
-        classificationMin="0.1" classificationMax="0.7"
+        classificationMin="0.05" classificationMax="1.0"
         opacity="1" alphaBand="-1" nodataColor="">
       <rasterTransparency/>
       <minMaxOrigin>
@@ -154,7 +157,7 @@ def _write_qml(tif_path: Path) -> None:
         <stdDevFactor>2</stdDevFactor>
       </minMaxOrigin>
       <rastershader>
-        <colorrampshader minimumValue="0.1" maximumValue="0.7"
+        <colorrampshader minimumValue="0.05" maximumValue="1.0"
             colorRampType="DISCRETE" classificationMode="1"
             clip="0" labelPrecision="1">
 {items_xml}

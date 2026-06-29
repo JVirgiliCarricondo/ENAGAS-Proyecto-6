@@ -3,6 +3,7 @@
 > Análisis técnico del reto. Documento de referencia para todo el grupo.
 > Enunciado original en [`retos_alumnos.md`](retos_alumnos.md) (sección "Retos 5 y 6 — Enagás").
 > Objetivos progresivos (8 hitos MVP) de Enagás analizados en [`hitos_mvp.md`](hitos_mvp.md).
+> Metodología oficial de Enagás (factores de ponderación y fórmula `G = E·F`) en [`metodologia_enagas.md`](metodologia_enagas.md).
 
 ## 1. El problema
 

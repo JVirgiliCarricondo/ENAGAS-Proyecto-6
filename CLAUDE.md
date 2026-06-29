@@ -50,7 +50,7 @@ Detalle de hitos y sprints en [`coordinacion/plan_proyecto.md`](coordinacion/pla
 
 - [`CLAUDE.md`](CLAUDE.md) — este fichero: contexto y árbol del workspace.
 - [`estado.md`](estado.md) — resumen ejecutivo del avance.
-- [`docs/`](docs/) — contexto compartido y análisis técnico del reto. Incluye [`docs/referencias_sig/`](docs/referencias_sig/): biblioteca SIG anotada ([`biblioteca_sig.md`](docs/referencias_sig/biblioteca_sig.md)) — base de conocimiento del futuro agente geógrafo-SIG.
+- [`docs/`](docs/) — contexto compartido y análisis técnico del reto. Incluye [`docs/metodologia_enagas.md`](docs/metodologia_enagas.md): metodología oficial de Enagás (factores de ponderación de condicionantes y fórmula de dificultad del corredor `G = E·F`), y [`docs/referencias_sig/`](docs/referencias_sig/): biblioteca SIG anotada ([`biblioteca_sig.md`](docs/referencias_sig/biblioteca_sig.md)) — base de conocimiento del futuro agente geógrafo-SIG.
 - [`formacion/`](formacion/) — dimensión 1: plan y materiales de formación.
 - [`coordinacion/`](coordinacion/) — dimensión 2: gestión del proyecto y seguimiento.
 - [`proyecto/`](proyecto/) — dimensión 3: el prototipo (código, datos, pruebas).
