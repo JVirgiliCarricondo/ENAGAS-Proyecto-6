@@ -591,25 +591,22 @@ def _main():
     import logging
     logging.disable(logging.WARNING)
 
-    _LOGO_SVG = (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 185 80" width="120" height="52">'
-        '<path d="M 25 19 A 30 30 0 0 1 55 19" fill="none" stroke="#76B82A"'
-        ' stroke-width="5.5" stroke-linecap="round"/>'
-        '<path d="M 55 19 A 30 30 0 1 1 25 19" fill="none" stroke="#0066B2"'
-        ' stroke-width="5.5" stroke-linecap="round"/>'
-        '<text x="82" y="53" font-family="Arial,Helvetica,sans-serif"'
-        ' font-size="27" font-weight="bold" fill="#0066B2" letter-spacing="-0.5">enagas</text>'
-        '</svg>'
+    import base64
+    _LOGO_PATH = Path(__file__).parent / "assets" / "Logo.png"
+    _logo_tag = (
+        f'<img src="data:image/png;base64,{base64.b64encode(_LOGO_PATH.read_bytes()).decode()}"'
+        f' height="52" style="display:block;">'
+        if _LOGO_PATH.exists() else ""
     )
 
     st.markdown(_CSS, unsafe_allow_html=True)
     st.markdown(
         f'<div class="enagas-page-header">'
-        f'<div>{_LOGO_SVG}</div>'
+        f'<div>{_logo_tag}</div>'
         f'<div class="header-divider"></div>'
         f'<div>'
         f'<div class="header-title">Generador de Trazados de Ramales H₂</div>'
-        f'<div class="header-subtitle">CI2 Lab 2026 &nbsp;&middot;&nbsp; Enágas</div>'
+        f'<div class="header-subtitle">CI2 Lab 2026 &nbsp;&middot;&nbsp; Enagás</div>'
         f'</div>'
         f'</div>',
         unsafe_allow_html=True,
