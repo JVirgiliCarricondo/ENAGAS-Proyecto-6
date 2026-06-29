@@ -35,6 +35,8 @@ sys.path.insert(0, str(_ROOT / "src"))
 _CONFIG_PATH = _ROOT / "data" / "config" / "escenario.yaml"
 _PERFILES_PATH = _ROOT / "data" / "config" / "perfiles.yaml"
 _RUTAS_DIR   = _ROOT / "data" / "processed" / "Rutas"
+_CAPAS_COSTE_DIR = _ROOT / "data" / "processed" / "Capas_Coste"
+_RECORTE_AOI_DIR = _ROOT / "data" / "processed" / "Recorte_AOI"
 
 # Constantes
 MAX_DIST_M = 15_000.0
@@ -426,6 +428,29 @@ def _render_editor_pesos() -> list[dict]:
     return perfiles
 
 
+def _faltantes_escenario_para_pipeline(sid: str) -> list[str]:
+    """Lista artefactos mínimos que deben existir para procesar un escenario."""
+    faltan: list[str] = []
+    req = [
+        _CAPAS_COSTE_DIR / f"pendiente_direccion_{sid}.tif",
+        _RECORTE_AOI_DIR / f"dem_aoi_{sid}.tif",
+    ]
+    for p in req:
+        if not p.exists():
+            faltan.append(p.name)
+
+    capas_base = [
+        _CAPAS_COSTE_DIR / f"pendiente_{sid}.tif",
+        _CAPAS_COSTE_DIR / f"protegida_{sid}.tif",
+        _CAPAS_COSTE_DIR / f"cruces_{sid}.tif",
+        _CAPAS_COSTE_DIR / f"expropiacion_{sid}.tif",
+        _CAPAS_COSTE_DIR / f"geotecnia_{sid}.tif",
+    ]
+    if not any(p.exists() for p in capas_base):
+        faltan.append("capas_coste_<escenario>.tif")
+    return faltan
+
+
 def _crear_escenario(cfg: dict, coords: dict, nuevo_id: str, ref_id: str | None) -> str:
     sid = _normalizar_id_escenario(nuevo_id)
     if not sid:
@@ -457,7 +482,14 @@ def _ejecutar_pipeline(
     for i, s in enumerate(escenarios):
         pct = 0.05 + (0.75 * i / len(escenarios))
         progress_cb(pct, f"Calculando rutas — Escenario {s}...")
-        run_perfiles(s, lam=4.0, perfiles_override=perfiles)
+        # Compatibilidad: algunas versiones de run_perfiles no aceptan
+        # perfiles_override todavía.
+        try:
+            run_perfiles(s, lam=4.0, perfiles_override=perfiles)
+        except TypeError as exc:
+            if "perfiles_override" not in str(exc):
+                raise
+            run_perfiles(s, lam=4.0)
 
     progress_cb(0.85, "Calculando metricas...")
     resultados = calcular_todas(escenarios=escenarios)
@@ -679,12 +711,30 @@ def _render_input():
         st.session_state.escenario_activo = ids_cfg[0] if ids_cfg else "A"
     if "punto_activo_rol" not in st.session_state:
         st.session_state.punto_activo_rol = "origen"
+    if "modo_entrada_puntos" not in st.session_state:
+        st.session_state.modo_entrada_puntos = "Coordenadas"
     if "_last_click" not in st.session_state:
         st.session_state._last_click = None
+    if "pending_map_point_update" not in st.session_state:
+        st.session_state.pending_map_point_update = None
 
     coords = st.session_state.coords
     escenarios = sorted(coords.keys(), key=lambda x: (len(x), x))
     esc_activo = st.session_state.escenario_activo
+
+    # Aplica actualizaciones pendientes del clic en mapa ANTES de instanciar widgets.
+    pending = st.session_state.pending_map_point_update
+    if pending:
+        sid = pending["escenario"]
+        rol = pending["rol"]
+        x_new = float(pending["x"])
+        y_new = float(pending["y"])
+        if sid in coords and rol in ("origen", "destino"):
+            coords[sid][rol]["x"] = x_new
+            coords[sid][rol]["y"] = y_new
+            st.session_state[f"{sid}_{rol}_x"] = x_new
+            st.session_state[f"{sid}_{rol}_y"] = y_new
+        st.session_state.pending_map_point_update = None
 
     st.markdown(
         '<div class="constraints-box">'
@@ -732,22 +782,46 @@ def _render_input():
             f'<div class="scenario-card"><h3>Escenario {esc_activo}</h3>',
             unsafe_allow_html=True,
         )
-        for rol in ("origen", "destino"):
-            st.markdown(
-                f'<p class="section-label">{rol.capitalize()}</p>',
-                unsafe_allow_html=True,
-            )
-            c1, c2 = st.columns(2)
-            with c1:
-                coords[esc_activo][rol]["x"] = st.number_input(
-                    "X (m)", value=coords[esc_activo][rol]["x"],
-                    step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_x",
+        st.session_state.modo_entrada_puntos = st.radio(
+            "Como quieres fijar los puntos",
+            options=["Coordenadas", "Mapa"],
+            horizontal=True,
+            key="radio_modo_entrada_puntos",
+        )
+
+        if st.session_state.modo_entrada_puntos == "Coordenadas":
+            st.caption("Modo coordenadas: edita X/Y manualmente.")
+            for rol in ("origen", "destino"):
+                st.markdown(
+                    f'<p class="section-label">{rol.capitalize()}</p>',
+                    unsafe_allow_html=True,
                 )
-            with c2:
-                coords[esc_activo][rol]["y"] = st.number_input(
-                    "Y (m)", value=coords[esc_activo][rol]["y"],
-                    step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_y",
+                c1, c2 = st.columns(2)
+                with c1:
+                    coords[esc_activo][rol]["x"] = st.number_input(
+                        "X (m)", value=float(coords[esc_activo][rol]["x"]),
+                        step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_x",
+                    )
+                with c2:
+                    coords[esc_activo][rol]["y"] = st.number_input(
+                        "Y (m)", value=float(coords[esc_activo][rol]["y"]),
+                        step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_y",
+                    )
+        else:
+            st.caption("Modo mapa: selecciona Origen o Destino y pincha en el mapa.")
+            if _HAS_ST_FOLIUM:
+                st.markdown("**Siguiente clic en el mapa establece:**")
+                st.session_state.punto_activo_rol = st.radio(
+                    "Punto activo",
+                    options=["origen", "destino"],
+                    format_func=str.capitalize,
+                    index=0 if st.session_state.punto_activo_rol == "origen" else 1,
+                    label_visibility="collapsed",
+                    horizontal=True,
+                    key="radio_punto_rol",
                 )
+            else:
+                st.info("Instala `streamlit-folium` para activar el clic en mapa.")
 
         dist = _dist_m(
             coords[esc_activo]["origen"]["x"], coords[esc_activo]["origen"]["y"],
@@ -766,21 +840,6 @@ def _render_input():
                 f"El mapa muestra todos; el activo ({esc_activo}) resalta en color."
             )
 
-        if _HAS_ST_FOLIUM:
-            st.markdown("---")
-            st.markdown(f"**Siguiente clic en el mapa establece ({esc_activo}):**")
-            st.session_state.punto_activo_rol = st.radio(
-                "Punto activo",
-                options=["origen", "destino"],
-                format_func=str.capitalize,
-                index=0 if st.session_state.punto_activo_rol == "origen" else 1,
-                label_visibility="collapsed",
-                horizontal=True,
-                key="radio_punto_rol",
-            )
-        else:
-            st.info("Instala `streamlit-folium` para activar el clic en mapa.")
-
     with col_map:
         st.markdown(
             f"**Mapa — Escenario {esc_activo}**  "
@@ -797,15 +856,21 @@ def _render_input():
                 use_container_width=True,
                 returned_objects=["last_clicked"],
             )
-            if map_data and map_data.get("last_clicked"):
+            if st.session_state.modo_entrada_puntos == "Mapa" and map_data and map_data.get("last_clicked"):
                 click = map_data["last_clicked"]
                 click_key = f"{click['lat']:.7f},{click['lng']:.7f}"
                 if click_key != st.session_state._last_click:
                     st.session_state._last_click = click_key
                     rol = st.session_state.punto_activo_rol
                     x_utm, y_utm = _latlon_to_utm(click["lat"], click["lng"])
-                    coords[esc_activo][rol]["x"] = round(x_utm)
-                    coords[esc_activo][rol]["y"] = round(y_utm)
+                    x_new = float(round(x_utm))
+                    y_new = float(round(y_utm))
+                    st.session_state.pending_map_point_update = {
+                        "escenario": esc_activo,
+                        "rol": rol,
+                        "x": x_new,
+                        "y": y_new,
+                    }
                     st.rerun()
         else:
             from streamlit.components.v1 import html as _html
@@ -822,7 +887,14 @@ def _render_input():
         )
         for s in escenarios
     }
-    can_run = all(d <= MAX_DIST_M for d in distancias.values())
+    escenarios_faltantes = {s: _faltantes_escenario_para_pipeline(s) for s in escenarios}
+    escenarios_invalidos_datos = [s for s, faltan in escenarios_faltantes.items() if faltan]
+    escenarios_invalidos_dist = [s for s, d in distancias.items() if d > MAX_DIST_M]
+    escenarios_procesables = [
+        s for s in escenarios
+        if s not in escenarios_invalidos_dist and s not in escenarios_invalidos_datos
+    ]
+    can_run = len(escenarios_procesables) > 0
 
     btn_col, _ = st.columns([1, 3])
     with btn_col:
@@ -836,23 +908,41 @@ def _render_input():
             try:
                 resultados = _ejecutar_pipeline(
                     lambda pct, msg: bar.progress(pct, text=msg),
-                    escenarios=escenarios,
+                    escenarios=escenarios_procesables,
                     perfiles=copy.deepcopy(perfiles_cfg),
                 )
                 st.session_state.resultados = resultados
-                st.session_state.escenarios_procesados = escenarios
+                st.session_state.escenarios_procesados = escenarios_procesables
                 st.session_state.perfiles_procesados = copy.deepcopy(perfiles_cfg)
                 st.session_state.pantalla = "resultados"
                 st.rerun()
             except Exception as exc:
                 st.error(f"Error durante el procesamiento: {exc}")
 
-    if not can_run:
-        invalidos = [s for s, d in distancias.items() if d > MAX_DIST_M]
-        st.warning(
-            "Corrige las distancias antes de lanzar el procesamiento. "
-            f"Escenarios fuera de limite: {', '.join(invalidos)}"
+    mensajes: list[str] = []
+    if escenarios_invalidos_dist:
+        mensajes.append(
+            "Se omiten por distancia > 15 km: " + ", ".join(escenarios_invalidos_dist)
         )
+    if escenarios_invalidos_datos:
+        det = "; ".join(
+            f"{s} (faltan: {', '.join(escenarios_faltantes[s])})"
+            for s in escenarios_invalidos_datos
+        )
+        mensajes.append("Se omiten por datos/capas incompletos: " + det)
+
+    if mensajes and can_run:
+        st.info(
+            "Se procesarán solo los escenarios válidos: "
+            + ", ".join(escenarios_procesables)
+            + ". "
+            + " | ".join(mensajes)
+        )
+    elif not can_run:
+        if mensajes:
+            st.warning("No hay escenarios procesables. " + " | ".join(mensajes))
+        else:
+            st.warning("No hay escenarios procesables con la configuración actual.")
 
 
 # ── Página de resultados ──────────────────────────────────────────────────────
