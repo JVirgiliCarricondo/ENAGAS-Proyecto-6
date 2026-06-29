@@ -358,14 +358,24 @@ def _guardar_superficie(C: np.ndarray, transform, crs, path: Path) -> None:
         _write_qml(path, float(valido.min()), float(valido.max()))
 
 
-def run_perfiles(s: str, lam: float) -> None:
-    """Rehace las rutas por perfil (perfiles.yaml) con el motor anisótropo."""
+def run_perfiles(s: str, lam: float, perfiles_override: list[dict] | None = None) -> None:
+    """Rehace las rutas por perfil con el motor anisótropo.
+
+    Args:
+        s: Identificador de escenario (p. ej. 'A').
+        lam: Peso base de penalización por transversalidad.
+        perfiles_override: Lista de perfiles con claves 'id' y 'pesos'. Si es
+            None, se leen desde data/config/perfiles.yaml.
+    """
     cfg = yaml.safe_load((CONFIG / "escenario.yaml").read_text(encoding="utf-8"))
     esc = cfg[f"escenario_{s}"]
     origen_utm = (esc["origen"]["x"], esc["origen"]["y"])
     destino_utm = (esc["destino"]["x"], esc["destino"]["y"])
 
-    perfiles = yaml.safe_load((CONFIG / "perfiles.yaml").read_text(encoding="utf-8"))["perfiles"]
+    if perfiles_override is not None:
+        perfiles = perfiles_override
+    else:
+        perfiles = yaml.safe_load((CONFIG / "perfiles.yaml").read_text(encoding="utf-8"))["perfiles"]
     gx, gy, S = _cargar_direccion(s)
 
     print(f"\n=== Escenario {s}: rutas por perfil (lam_base={lam}) ===")
