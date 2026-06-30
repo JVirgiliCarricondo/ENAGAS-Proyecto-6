@@ -20,10 +20,6 @@ def _load() -> dict:
         return yaml.safe_load(fh)
 
 
-def params_pendiente() -> dict:
-    return _load()["parametros_capas"]["pendiente"]
-
-
 def params_geotecnia() -> dict:
     return _load()["parametros_capas"]["geotecnia"]
 
@@ -38,6 +34,10 @@ def params_zonas_protegidas() -> dict:
 
 def params_cruces() -> dict:
     return _load()["parametros_capas"]["cruces"]
+
+
+def params_tpi() -> dict:
+    return _load()["parametros_capas"]["tpi"]
 
 
 def get_perfil(perfil_id: str) -> dict:

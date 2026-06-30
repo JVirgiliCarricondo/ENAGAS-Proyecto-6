@@ -13,13 +13,13 @@ perfiles:
     descripcion: "Minimiza la longitud; tolera más pendiente e impacto ambiental."
     pesos:
       longitud:     1.5   # distancia muy importante
-      pendiente:    0.2
+      tpi:          0.2   # relieve (posición topográfica)
       protegida:    0.2
       cruces:       0.3
       expropiacion: 0.2
       geotecnia:    0.1
       traversal:    0.1   # poca importancia: solo interesa la longitud
-    nota: "Mejor velocidad de ejecución, pero pendientes/impacto mayores"
+    nota: "Mejor velocidad de ejecución, pero relieve/impacto mayores"
 
   - id: ambiental
     nombre: "Menor impacto ambiental"
@@ -28,24 +28,24 @@ perfiles:
       protegida:    1.5   # evitar zonas protegidas ante todo
       cruces:       0.8   # evitar cruces con infraestructuras
       expropiacion: 0.5
-      pendiente:    0.3
+      tpi:          0.3   # relieve (posición topográfica)
       geotecnia:    0.3
       longitud:     0.3
       traversal:    0.3
     nota: "Prioriza viabilidad medioambiental"
 
   - id: pendiente
-    nombre: "Menor pendiente y traversalidad"
-    descripcion: "Busca terreno llano y sigue la dirección del gradiente (mayor estabilidad geotécnica)."
+    nombre: "Por relieve (divisorias / TPI)"
+    descripcion: "Prioriza la posición topográfica (TPI): tiende a seguir crestas/divisorias y evitar valles y fondos de cauce; sigue la dirección del gradiente (mayor estabilidad geotécnica). La barrera de pendiente >35° se conserva dentro de la capa TPI."
     pesos:
-      pendiente:    1.5   # evitar pendiente fuerte
+      tpi:          1.5   # fuerte preferencia por el relieve (cresta barata, valle caro)
       traversal:    1.2   # seguir la dirección del gradiente
       geotecnia:    0.8   # terreno estable
       protegida:    0.4
       cruces:       0.3
       expropiacion: 0.3
       longitud:     0.3
-    nota: "Reduce coste de obra por excavación y riesgo de movimientos de ladera"
+    nota: "Ruta diferenciada por divisorias; reduce cruces de cauce. (id 'pendiente' conservado por compatibilidad.)"
 
   - id: equilibrio
     nombre: "Equilibrio (recomendado)"
@@ -53,16 +53,16 @@ perfiles:
     # Pesos alineados con la tabla de Enagás (suman 1.00 = 100 %).
     # Mapeo capa→grupo; el grupo Patrimonio (sin capa en el modelo) se redistribuye
     # entre los 4 grupos con capa, reescalando sus puntos medios dentro de banda:
-    #   Medioambiente 30-40 %  → protegida                       0.37
-    #   Urbanístico   15-25 %  → expropiacion                    0.21
-    #   Geotecnia     15-25 %  → geotecnia+pendiente+traversal   0.21
-    #   Construcción  10-20 %  → cruces                          0.16
-    #   Otros          5 %     → longitud                        0.05
+    #   Medioambiente 30-40 %  → protegida                  0.37
+    #   Urbanístico   15-25 %  → expropiacion               0.21
+    #   Geotecnia     15-25 %  → geotecnia+tpi+traversal    0.21
+    #   Construcción  10-20 %  → cruces                     0.16
+    #   Otros          5 %     → longitud                   0.05
     pesos:
       protegida:    0.37   # Medioambiente
       expropiacion: 0.21   # Urbanístico
       geotecnia:    0.09   # Geotecnia ┐
-      pendiente:    0.08   # Geotecnia ├ 0.21
+      tpi:          0.08   # Geotecnia ├ 0.21  (relieve vía TPI)
       traversal:    0.04   # Geotecnia ┘
       cruces:       0.16   # Construcción / cruces
       longitud:     0.05   # Otros (coste-distancia base del LCP)
@@ -94,20 +94,6 @@ perfiles:
 # ============================================================================
 
 parametros_capas:
-
-  # --------------------------------------------------------------------------
-  # P1 — Pendiente (src/superficie/pendiente.py)
-  # Curva de coste por tramos sobre la pendiente en grados (algoritmo Horn).
-  #   [0, umbral_llano_deg]               → coste 0.0  (terreno trivial)
-  #   [umbral_llano_deg, umbral_inclinado_deg] → rampa lineal 0.0 → coste_max_inclinado
-  #   [umbral_inclinado_deg, umbral_barrera_deg] → rampa lineal coste_max_inclinado → 1.0
-  #   > umbral_barrera_deg                → np.inf (celda intransitable)
-  # --------------------------------------------------------------------------
-  pendiente:
-    umbral_llano_deg: 5          # por debajo: coste 0.0
-    umbral_inclinado_deg: 15     # inicio de segunda rampa
-    coste_max_inclinado: 0.6     # coste al llegar a umbral_inclinado_deg
-    umbral_barrera_deg: 30       # por encima: barrera dura (np.inf)
 
   # --------------------------------------------------------------------------
   # P2 — Geotecnia (src/superficie/geotecnia.py)
@@ -236,3 +222,24 @@ parametros_capas:
     rio_menor: 0.30         # con nombre y longitud ≤ umbral_rio_m
     rio_principal: 0.34     # con nombre y longitud > umbral_rio_m → permanente (A=13)
     umbral_rio_m: 2000.0    # umbral de longitud para clasificar ríos (metros)
+
+  # --------------------------------------------------------------------------
+  # P6 — TPI / posición topográfica (src/superficie/tpi.py)
+  # Coste DECRECIENTE con el TPI (cresta barata, valle caro) para la estrategia
+  # "ir por la cresta": el LCP tiende a seguir divisorias y así evita cruces de
+  # cauce. NO impone barreras duras (la transitabilidad la gobierna la pendiente).
+  #   TPI(celda) = z(celda) − media(z en vecindario anular de radio_ext_m)
+  # El TPI se estandariza (z-score) sobre el AOI y se acota a ±sigma_clip σ:
+  #   TPI = +sigma_clip·σ (cresta) → 0.0 · TPI = 0 → 0.5 · TPI = −sigma_clip·σ (valle) → 1.0
+  # Por ser relativo al terreno, el centrado es data-driven (excepción consciente
+  # al criterio de umbrales fijos de la pendiente — documentado en tpi.py).
+  # radio_int_m=0 → disco; >0 → anillo verdadero (formulación de Weiss 2001).
+  # CALIBRAR radio sobre el AOI: crestas sobre divisorias reales, valles sobre cauces.
+  # BARRERA DURA: el TPI no ve la inclinación, así que la transitabilidad se calcula
+  # aparte (pendiente Horn del DEM); celdas > umbral_barrera_deg → intransitables.
+  # --------------------------------------------------------------------------
+  tpi:
+    radio_ext_m: 300.0      # radio exterior del vecindario anular (m) ≈ 10 celdas a 30 m
+    radio_int_m: 0.0        # radio interior (m); 0 = disco
+    sigma_clip: 2.0         # acota el TPI estandarizado a ±2σ antes de mapear a [0, 1]
+    umbral_barrera_deg: 35  # pendiente Horn > este valor → celda intransitable (barrera dura)
