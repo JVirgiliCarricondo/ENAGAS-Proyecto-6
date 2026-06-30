@@ -19,6 +19,7 @@ perfiles:
       expropiacion: 0.2
       geotecnia:    0.1
       traversal:    0.1   # poca importancia: solo interesa la longitud
+      inundable:    0.2   # evitar inundables poco prioritario (manda la longitud)
     nota: "Mejor velocidad de ejecución, pero pendientes/impacto mayores"
 
   - id: ambiental
@@ -32,6 +33,7 @@ perfiles:
       geotecnia:    0.3
       longitud:     0.3
       traversal:    0.3
+      inundable:    0.8   # zona inundable = riesgo a evitar (mismo énfasis que cruces)
     nota: "Prioriza viabilidad medioambiental"
 
   - id: pendiente
@@ -45,6 +47,7 @@ perfiles:
       cruces:       0.3
       expropiacion: 0.3
       longitud:     0.3
+      inundable:    0.4   # terreno inundable = inestable/anegable, a evitar
     nota: "Reduce coste de obra por excavación y riesgo de movimientos de ladera"
 
   - id: equilibrio
@@ -52,21 +55,26 @@ perfiles:
     descripcion: "Balance multicriterio calibrado con las bandas de ponderación de Enagás (anexo II, EV-500)."
     # Pesos alineados con la tabla de Enagás (suman 1.00 = 100 %).
     # Mapeo capa→grupo; el grupo Patrimonio (sin capa en el modelo) se redistribuye
-    # entre los 4 grupos con capa, reescalando sus puntos medios dentro de banda:
-    #   Medioambiente 30-40 %  → protegida                       0.37
-    #   Urbanístico   15-25 %  → expropiacion                    0.21
-    #   Geotecnia     15-25 %  → geotecnia+pendiente+traversal   0.21
-    #   Construcción  10-20 %  → cruces                          0.16
+    # entre los grupos con capa, reescalando sus puntos medios dentro de banda.
+    # Al incorporar la capa de INUNDABILIDAD (factor oficial 14.25, grupo de
+    # riesgo/medioambiente) se le asigna un 10 % y se reescalan los 7 pesos
+    # anteriores por 0.90, conservando sus proporciones y la suma = 1.00:
+    #   Medioambiente 30-40 %  → protegida                       0.33
+    #   Urbanístico   15-25 %  → expropiacion                    0.19
+    #   Geotecnia     15-25 %  → geotecnia+pendiente+traversal   0.19
+    #   Construcción  10-20 %  → cruces                          0.14
+    #   Riesgo inund. (14.25)  → inundable                       0.10
     #   Otros          5 %     → longitud                        0.05
     pesos:
-      protegida:    0.37   # Medioambiente
-      expropiacion: 0.21   # Urbanístico
-      geotecnia:    0.09   # Geotecnia ┐
-      pendiente:    0.08   # Geotecnia ├ 0.21
+      protegida:    0.33   # Medioambiente
+      expropiacion: 0.19   # Urbanístico
+      geotecnia:    0.08   # Geotecnia ┐
+      pendiente:    0.07   # Geotecnia ├ ~0.19
       traversal:    0.04   # Geotecnia ┘
-      cruces:       0.16   # Construcción / cruces
+      cruces:       0.14   # Construcción / cruces
+      inundable:    0.10   # Riesgo de inundación (peligrosidad fluvial T=100)
       longitud:     0.05   # Otros (coste-distancia base del LCP)
-    nota: "Pesos alineados con anexo II EV-500 (Enagás); Patrimonio (sin capa) redistribuido."
+    nota: "Pesos EV-500 (Enagás) + capa de inundabilidad (10 %); resto reescalado, suma 1.00."
 
 # ============================================================================
 # PARÁMETROS DE COSTE INTRA-CAPA (calibrables)
@@ -200,6 +208,19 @@ parametros_capas:
   zonas_protegidas:
     valor_protegida: 0.75  # "RED NATURA 2000" oficial (A=28.5 → /38); ZEPA/LIC/ZEC
     valor_fondo: 0.0       # fuera de zona protegida
+
+  # --------------------------------------------------------------------------
+  # P6 — Zonas inundables (src/superficie/inundables.py)
+  # Variable binaria: dentro de la lámina de peligrosidad fluvial T=100 (SNCZI)
+  # = valor_inundable, fuera = valor_fondo.
+  # valor_inundable estandarizado al factor oficial "ZONAS INUNDABLES" (A=14.25):
+  #   14.25 / 38 → 0.375. Comparte escala [0,1] con las demás capas.
+  # El peso de la capa (perfiles[*].pesos.inundable) modula el énfasis por perfil.
+  # Sin barrera dura: encarece el corredor pero no lo bloquea.
+  # --------------------------------------------------------------------------
+  inundables:
+    valor_inundable: 0.375  # "ZONAS INUNDABLES" oficial (A=14.25 → /38); lámina T=100
+    valor_fondo: 0.0        # fuera de zona inundable
 
   # --------------------------------------------------------------------------
   # P5 — Cruces viario + ríos (src/superficie/cruces_viario_rios.py)

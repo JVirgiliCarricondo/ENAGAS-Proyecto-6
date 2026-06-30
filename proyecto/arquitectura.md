@@ -53,7 +53,7 @@ Todo el cálculo es reproducible y auditable: las capas se alinean a un CRS y re
 ## Componentes
 
 ### 1. Ingesta (`src/ingesta/`)
-Descarga/lee las capas de `data/raw/` (DEM, catastro, OSM, hidrografía IGN, Red Natura 2000, IGME), las **recorta al AOI**, las **reproyecta a EPSG:25830** y las **remuestrea a una rejilla común** (misma resolución y origen de celda). Salida en dos subcarpetas de `data/processed/`:
+Descarga/lee las capas de `data/raw/` (DEM, catastro, OSM, hidrografía IGN, Red Natura 2000, IGME, zonas inundables SNCZI), las **recorta al AOI**, las **reproyecta a EPSG:25830** y las **remuestrea a una rejilla común** (misma resolución y origen de celda). Salida en dos subcarpetas de `data/processed/`:
 
 - **`Recorte_AOI/`** — capas vectoriales recortadas y reproyectadas (`.gpkg`). Si una capa no tiene geometrías en el AOI se guarda igualmente un `.gpkg` vacío.
 - **`Rasters_AOI/`** — rasters alineados a la rejilla común (`.tif`). El DEM sale aquí directamente; las capas vectoriales las rasteriza `src/superficie/` y también las deposita aquí.
@@ -63,7 +63,7 @@ Librerías: `rasterio` (raster, reproyección, remuestreo), `geopandas`/`shapely
 > **Regla de oro:** una capa no avanza al paso 2 si no comparte CRS y rejilla con las demás. La celda (i, j) debe representar el mismo trozo de terreno en todas las capas.
 
 ### 2. Superficies de coste (`src/superficie/`)
-Convierte cada capa alineada en un **coste por celda** (p.ej. pendiente → coste creciente; suelo urbano → coste alto; Red Natura 2000 → **variable binaria** dentro/fuera, con su penalización fijada por el peso; proximidad a cruces → coste). Combina las capas con un **vector de pesos** en una única superficie de coste. Cada **perfil de prioridad** (definido en `data/config/perfiles.yaml`) produce una superficie distinta.
+Convierte cada capa alineada en un **coste por celda** (p.ej. pendiente → coste creciente; suelo urbano → coste alto; Red Natura 2000 → **variable binaria** dentro/fuera, con su penalización fijada por el peso; zona inundable T=100 (SNCZI) → variable binaria dentro/fuera; proximidad a cruces → coste). Combina las capas con un **vector de pesos** en una única superficie de coste. Cada **perfil de prioridad** (definido en `data/config/perfiles.yaml`) produce una superficie distinta.
 
 > Diseño detallado de las funciones de coste por variable, umbrales y matriz de condicionantes en [`modelo_coste.md`](modelo_coste.md).
 
@@ -108,6 +108,7 @@ destino:                            # conexión a red troncal
     pendiente: 0.2
     uso_suelo: 0.2
     protegida: 0.3
+    inundable: 0.2
     longitud: 1.0
 - id: ambiental
   nombre: "Menor impacto ambiental"
@@ -115,6 +116,7 @@ destino:                            # conexión a red troncal
     pendiente: 0.2
     uso_suelo: 0.5
     protegida: 1.0
+    inundable: 0.8
     longitud: 0.3
 - id: pendiente
   nombre: "Menor pendiente"
@@ -122,6 +124,7 @@ destino:                            # conexión a red troncal
     pendiente: 1.0
     uso_suelo: 0.3
     protegida: 0.4
+    inundable: 0.4
     longitud: 0.3
 ```
 
@@ -133,6 +136,7 @@ destino:                            # conexión a red troncal
   "coste_relativo": 0.0,          # índice normalizado 0-1, NUNCA €
   "cruces": {"rio": 0, "carretera": 0, "ferrocarril": 0},
   "km_protegida": 0.0,
+  "km_inundable": 0.0,            # km en zona inundable T=100 (SNCZI)
   "km_urbana": 0.0,
   "pendiente_max_pct": 0.0,
   "pendiente_media_pct": 0.0,

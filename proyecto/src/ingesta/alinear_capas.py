@@ -81,6 +81,7 @@ _SCENARIO_FILES: dict[str, str] = {
     "OSM":             "OSM_{s}.gpkg",
     "Hidrografía IGN": "HID_{s}.gpkg",
     "IGME geológico":  "IGME_{s}.gpkg",
+    "Zonas inundables SNCZI": "INUNDABLES_{s}.tif",
     # RN2000 no tiene sufijo de escenario: es una capa nacional única en data/raw/RN2000/.
     # Se descubre por glob_patterns y se recorta al AOI de cada escenario.
 }
@@ -149,6 +150,17 @@ LAYERS: list[LayerSpec] = [
         output_name="igme_aoi.gpkg",
     ),
     LayerSpec(
+        label="Zonas inundables SNCZI",
+        layer_type="raster",
+        categorical=True,   # máscara binaria 0/1 → remuestreo por vecino más próximo
+        glob_patterns=[
+            "INUNDABLES.tif", "INUNDABLES.tiff",
+            "**/INUNDABLES*.tif", "**/INUNDABLES*.tiff",
+            "**/*inundab*.tif", "**/*FluvialT100*.tif",
+        ],
+        output_name="inundables_aoi.tif",
+    ),
+    LayerSpec(
         label="Catastro - Usos del Suelo Urbanística",
         layer_type="vector",
         categorical=True,
@@ -185,6 +197,10 @@ _DOWNLOAD_HINTS: dict[str, str] = {
     "IGME geológico": (
         "  → https://www.igme.es/\n"
         "    Guárdalo como: data/raw/GEO-IGME.gpkg"
+    ),
+    "Zonas inundables SNCZI": (
+        "  → SNCZI/MITECO, peligrosidad fluvial T=100 (WMS NZ.Flood.FluvialT100).\n"
+        "    Descarga automática con descargar_capas.py → data/raw/INUNDABLES_{A,B}.tif"
     ),
     "Catastro - Usos del Suelo Urbanística": (
         "  → Catastro Inmobiliario: https://www.catastro.minhap.gob.es/\n"
