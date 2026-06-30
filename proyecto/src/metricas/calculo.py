@@ -10,7 +10,7 @@ Módulos integrados:
   · pendiente.py           → pendiente_max_pct, pendiente_media_pct,
                               porcentaje_ruta_sigue_pendiente, km_ruta_sigue_pendiente
   · zonas_protegidas.py    → km_protegida, pct_protegida
-  · inundables.py          → km_inundable, pct_inundable
+  · zonas_inundables.py    → km_inundable, pct_inundable
   · zonas_urbanas.py       → km_suelo_{urbano,diseminado,rustico,especial}
   · cruces.py              → n_cruces_{rios,carreteras,ferrocarril}
   · diversidad_corredores.py → solap_max_par, diferenciadas, pares, distancias
@@ -39,7 +39,7 @@ try:
     from .longitud import longitud_km as _longitud_km_fn
     from .longitud import coste_relativo as _coste_relativo_fn
     from . import zonas_protegidas as _prot_mod
-    from . import inundables as _inund_mod
+    from . import zonas_inundables as _inund_mod
     from . import zonas_urbanas as _urb_mod
     from . import cruces as _cruces_mod
     from . import diversidad_corredores as _div_mod
@@ -48,7 +48,7 @@ except ImportError:
     from longitud import longitud_km as _longitud_km_fn  # type: ignore[no-redef]
     from longitud import coste_relativo as _coste_relativo_fn  # type: ignore[no-redef]
     import zonas_protegidas as _prot_mod  # type: ignore[no-redef]
-    import inundables as _inund_mod  # type: ignore[no-redef]
+    import zonas_inundables as _inund_mod  # type: ignore[no-redef]
     import zonas_urbanas as _urb_mod  # type: ignore[no-redef]
     import cruces as _cruces_mod  # type: ignore[no-redef]
     import diversidad_corredores as _div_mod  # type: ignore[no-redef]
@@ -89,7 +89,7 @@ class MetricasRuta:
     km_protegida: float = 0.0
     pct_protegida: float = 0.0
 
-    # Zonas inundables peligrosidad fluvial T=100 (inundables.py)
+    # Zonas inundables SNCZI (zonas_inundables.py)
     km_inundable: float = 0.0
     pct_inundable: float = 0.0
 
@@ -221,13 +221,13 @@ def calcular_metricas_ruta(escenario: str, perfil: str) -> MetricasRuta:
     except Exception as exc:
         m.errores["zonas_protegidas"] = str(exc)
 
-    # 3b. Zonas inundables (peligrosidad fluvial T=100) ────────────────────────
+    # 3b. Zonas inundables ─────────────────────────────────────────────────────
     try:
         inund = _inund_mod.calcular(linea, s)
         m.km_inundable = inund["km_inundable"]
         m.pct_inundable = inund["pct_inundable"]
     except Exception as exc:
-        m.errores["inundables"] = str(exc)
+        m.errores["zonas_inundables"] = str(exc)
 
     # 4. Uso del suelo catastral ───────────────────────────────────────────────
     try:
@@ -320,7 +320,7 @@ def _imprimir_tabla(rutas: list[MetricasRuta]) -> None:
     cab = (
         f"  {'perfil':12s} {'km':>7s} {'coste':>6s} "
         f"{'pend_max%':>9s} {'pend_med%':>9s} "
-        f"{'km_prot':>8s} {'km_inund':>9s} {'km_urb':>7s} "
+        f"{'km_prot':>8s} {'km_urb':>7s} "
         f"{'rios':>5s} {'carr':>5s} {'ffcc':>5s}"
     )
     print(cab)
@@ -331,7 +331,7 @@ def _imprimir_tabla(rutas: list[MetricasRuta]) -> None:
         print(
             f"  {m.perfil:12s} {m.longitud_km:7.2f} {m.coste_relativo:6.3f} "
             f"{m.pendiente_max_pct:9.1f} {m.pendiente_media_pct:9.2f} "
-            f"{m.km_protegida:8.3f} {m.km_inundable:9.3f} {m.km_suelo_urbano:7.3f} "
+            f"{m.km_protegida:8.3f} {m.km_suelo_urbano:7.3f} "
             f"{m.n_cruces_rios:5d} {m.n_cruces_carreteras:5d} {ffcc}"
             f"{err_tag}"
         )

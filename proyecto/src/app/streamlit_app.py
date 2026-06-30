@@ -62,7 +62,7 @@ _CAPAS_PESO: list[tuple[str, str]] = [
     ("longitud",     "Longitud (distancia)"),
     ("pendiente",    "Pendiente"),
     ("protegida",    "Zonas protegidas"),
-    ("inundable",    "Zonas inundables (T=100)"),
+    ("inundable",    "Zonas inundables"),
     ("cruces",       "Cruces (vias y rios)"),
     ("expropiacion", "Expropiacion (catastro)"),
     ("geotecnia",    "Geotecnia (litologia)"),

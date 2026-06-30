@@ -127,10 +127,6 @@ Punto de partida; el resto **complementa** estas dos.
   Espacios protegidos (ZEC/ZEPA; vector). **Por qué importa:** zonas a evitar/penalizar y km en zona protegida (MVP 1, 4).
   Acceso: https://www.miteco.gob.es/en/cartografia-y-sig/ide/descargas/biodiversidad/rn2000.html
 
-- 🔗 🟢 📚 **SNCZI — Zonas inundables / Mapas de Peligrosidad por Inundación (MITECO).**
-  Láminas de inundación por periodo de retorno (T=10/100/500; peligrosidad fluvial y marina). Disponible como **WMS INSPIRE** (capa `NZ.Flood.FluvialT100`) y como **GeoTIFF de peligrosidad 1 m** descargable por municipio en el Centro de Descargas del CNIG. **Por qué importa:** condicionante "Zonas inundables" (factor oficial Enagás A=14.25) en la superficie de coste (MVP 1, 4). El prototipo la ingiere por WMS (única capa por WMS: el SNCZI no ofrece WFS vectorial fiable).
-  Acceso (descarga fluvial): https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/agua/mapas-peligrosidad-por-inundacion-fluvial.html · WMS: https://servicios.idee.es/wms-inspire/riesgos-naturales/inundaciones · Geoportal SNCZI: https://sig.mapama.gob.es/snczi/
-
 - 🔗 🟢 📚 **IGME — cartografía geológica.** *(Hueco: portal pendiente de confirmar.)*
   Litología / cruces geológicos especiales. **Por qué importa:** condicionante técnico (MVP 1). Confirmar el portal de descargas del IGME (p.ej. mapa geológico continuo / serie MAGNA).
 

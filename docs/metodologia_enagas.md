@@ -148,6 +148,7 @@ Cómo se traduce la metodología oficial a las capas y módulos del prototipo. P
 | Terrenos inestables (38), Roca muy dura (20.5), Roca dura (13) | `geotecnia` (`parametros_capas.geotecnia`) | **Aplicado**: yeso/inestable A=38 → 1.00 (techo), roca dura A=13 → 0.34. |
 | Pendiente muy fuerte (20.5), Fuerte pendiente (14.25) | `pendiente` (curva por tramos) | **Sin tocar** (fuera del anclaje A): curva propia + `umbral_barrera_deg`. |
 | RED NATURA 2000 (28.5), Parque Nacional (29.5), Reserva regional (20.75) | `protegida` (`zonas_protegidas`) | **Aplicado**: binaria 0 / 0.75 (A=28.5/38), por debajo de inestabilidad/pendiente extrema. |
+| Zonas inundables (14.25) | `inundable` (`zonas_inundables`) | **Aplicado** (29-jun-2026): binaria 0 / 0.375 (A=14.25/38), unión SNCZI T10+T100+T500 sin gradación (la tabla oficial solo da un factor para el condicionante). |
 | Área urbana alta/media densidad (25.25 / 17.75), Zona industrial (17.75) | `expropiacion` (tipos catastrales U/X) | **Aplicado**: U=0.66 (A=25.25), periurbano=0.47 (A=17.75). |
 | Curso hídrico permanente (13) / no permanente (9.75), Cruce perforación horizontal (7) | `cruces` (ríos + viario) | **Aplicado** a ríos: permanente 0.34 (A=13), no permanente 0.26 (A=9.75). Viario/ferrocarril sin factor oficial → calibración constructiva. |
 | Sitio/zona arqueológica (25.5 / 13), Patrimonio UNESCO (22) | *(sin capa)* | Pendiente de fuente; tipología "arqueológicos". |

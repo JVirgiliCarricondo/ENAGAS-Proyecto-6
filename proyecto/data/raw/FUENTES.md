@@ -11,7 +11,6 @@
 | OSM | OpenStreetMap | Automática (`descargar_capas.py`) | 2026-06-16 | EPSG:4326 | Vector |
 | HID | Hidrografía IGN INSPIRE | Automática (`descargar_capas.py`) | 2026-06-16 | EPSG:25830 | Vector |
 | IGME | Mapa Geológico IGME | Automática (`descargar_capas.py`) | 2026-06-16 | EPSG:25830 | Vector |
-| INUNDABLES | Zonas inundables peligrosidad fluvial T=100 (SNCZI) | **Manual** (tiles CNIG) + `descargar_capas.py` / WMS fallback | 2026-06-30 | EPSG:25830 | Raster |
 | RN2000 | Red Natura 2000 (MITECO) | **Manual** (leer instrucciones) | 2025 (ed. final) | EPSG:25830 | Vector |
 | CATASTRO | Catastro INSPIRE (DGC) | **Manual** (leer instrucciones) | 2026-06-16 | EPSG:25830 | Vector |
 
@@ -71,25 +70,6 @@ Estas cuatro capas se obtienen ejecutando `src/ingesta/descargar_capas.py` con l
 - **Archivos en `raw/`:** `IGME_A.gpkg`, `IGME_B.gpkg`
 - **Salida en `Recorte_AOI/`:** `igme_aoi_A.gpkg`, `igme_aoi_B.gpkg`
 - **Licencia:** datos públicos IGME. Citar como: "Mapa Geológico de España a escala 1:50.000 (MAGNA), IGME-CSIC."
-
----
-
-### INUNDABLES — Zonas inundables, peligrosidad fluvial T=100 (SNCZI)
-
-- **Qué aporta:** lámina de inundación de periodo de retorno T=100 años (probabilidad media) → condicionante "Zonas inundables" (factor oficial Enagás A=14.25) en la superficie de coste.
-- **Fuente PRIMARIA (manual):** GeoTIFF oficial de peligrosidad del **Centro de Descargas del CNIG / SNCZI**, por hoja, calado (profundidad) en metros, **1 m**, EPSG:25830, `nodata = -3.0`.
-  - Portal: `https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/agua/mapas-peligrosidad-por-inundacion-fluvial.html` (filtrar por municipio).
-  - Ficheros `ESNZSNCZIMPF**T100**<hoja>.tif`; descargar y dejar en `data/raw/INUNDABLES/`.
-- **Fuente FALLBACK (automática):** WMS INSPIRE `NZ.Flood.FluvialT100` (`https://servicios.idee.es/wms-inspire/riesgos-naturales/inundaciones`). Se usa solo si no hay tiles locales (el SNCZI no expone WFS vectorial; es la única capa por WMS).
-- **Obtención:** `descargar_capas.py` detecta los tiles locales, **mosaica** las hojas que intersectan cada AOI, las remuestrea a 30 m con `Resampling.max` (bloque inundable si alguna subcelda de 1 m tiene calado) y produce una **máscara binaria uint8** (1 = inundable, 0 = fuera).
-- **Geometría:** Raster (máscara binaria 0/1).
-- **Tiles usados (hojas que tocan cada corredor):**
-  - Escenario A: `ESNZSNCZIMPFT100AB111.tif`
-  - Escenario B: `ESNZSNCZIMPFT100X108.tif` + `ESNZSNCZIMPFT100Y108.tif`
-- **Archivos en `raw/`:** `INUNDABLES_A.tif`, `INUNDABLES_B.tif` (+ tiles en `raw/INUNDABLES/`)
-- **Salida en `Recorte_AOI/`:** `inundables_aoi_A.tif`, `inundables_aoi_B.tif`
-- **⚠️ Nota de cobertura (importante):** en los corredores actuales (1 km de ancho) la lámina T=100 da **0 % de celdas inundables** dentro del AOI de A y B, confirmado por las **dos** fuentes (GeoTIFF oficial 1 m y WMS). La llanura de inundación del Ebro (hasta ~18 m de calado en la hoja X108) queda **fuera del pasillo**. El dato es correcto y la capa está bien alineada; simplemente **no condiciona el trazado actual**. Pasaría a ser relevante si se ensancha el AOI o se mueven origen/destino.
-- **Licencia:** datos públicos MITECO/SNCZI, reutilización con atribución.
 
 ---
 

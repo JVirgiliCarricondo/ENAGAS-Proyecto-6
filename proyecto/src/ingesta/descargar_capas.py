@@ -16,9 +16,7 @@ Archivos generados en data/raw/ (sufijo _A o _B según el escenario):
   OSM_{s}.gpkg     → Carreteras + ferrocarril, Overpass API
   HID_{s}.gpkg     → Hidrografía IGN, WFS INSPIRE (HY.PhysicalWaters.Watercourses)
   IGME_{s}.gpkg    → Mapa geológico IGME MAGNA50, WFS / ArcGIS REST fallback
-  INUNDABLES_{s}.tif → Zonas inundables peligrosidad fluvial T=100 (SNCZI):
-                       GeoTIFF oficial CNIG en data/raw/INUNDABLES/ (primaria) o, en
-                       su defecto, WMS INSPIRE NZ.Flood.FluvialT100 → máscara binaria
+  INUND_{s}.gpkg   → Zonas inundables SNCZI (MITECO), OGC API Features, unión T10+T100+T500
 
 Para verificar los nombres de capa de cada WFS:
   GET {endpoint}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetCapabilities
@@ -83,16 +81,19 @@ _IGN_WFS_HID = "https://servicios.idee.es/wfs-inspire/hidrografia"
 _IGN_WFS_ENP = "https://servicios.idee.es/wfs-inspire/espacios-naturales-protegidos"
 _IGME_REST   = "https://mapas.igme.es/gis/rest/services/Cartografia_Geologica/IGME_MAGNA_50/MapServer/11/query"
 _OVERPASS    = "https://overpass-api.de/api/interpreter"
-
-# Zonas inundables: SNCZI/MITECO solo expone WMS (no hay WFS vectorial fiable).
-# Se obtiene la lámina de peligrosidad como ráster (GetMap) recortado al AOI.
-_WMS_INUNDABLES       = "https://servicios.idee.es/wms-inspire/riesgos-naturales/inundaciones"
-_WMS_INUNDABLES_LAYER = "NZ.Flood.FluvialT100"   # peligrosidad fluvial T=100 (prob. media)
-_GRID_RES_M           = 30.0                     # resolución de la rejilla común (escenario.yaml)
+# SNCZI (Sistema Nacional de Cartografía de Zonas Inundables), MITECO.
+# El WFS clásico (wfs.aspx) no expone estas capas (error interno del servidor,
+# verificado); MITECO migró la descarga por bbox a OGC API Features:
+# GetCapabilities → https://wmts.mapama.gob.es/sig-api/ogc/features/v1/collections
+_MITECO_OAFEAT_ZI = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
 
 # Nombres de capa WFS INSPIRE (obtenidos vía GetCapabilities)
 _WFS_HID = "hy-n:WatercourseLink"      # enlaces de cursos de agua (tramos lineales)
 _WFS_ENP = "PS.ProtectedSite"          # Red Natura 2000 y otros ENP
+# SNCZI: láminas de inundación por periodo de retorno (T10, T100, T500 años).
+# IDs de colección confirmados en /collections del API-Features (29-jun-2026).
+# El modelo de coste solo usa la UNIÓN de las tres (binario, sin distinguir T).
+_OAFEAT_ZI = ["agua:Zi_laminas_q10", "agua:Zi_laminas_q100", "agua:Zi_laminas_q500"]
 
 # Cabeceras HTTP que evitan el reseteo de conexión en servicios IGN
 # Connection: close desactiva keepalive, que causa ConnectionResetError(10054) en Windows
@@ -286,6 +287,39 @@ def _wfs_bbox(
     return None
 
 
+def _ogc_features_bbox(
+    base_url: str,
+    collection_id: str,
+    bbox_25830: tuple[float, float, float, float],
+    log: logging.Logger,
+    limit: int = 5_000,
+) -> "gpd.GeoDataFrame | None":
+    """
+    Descarga una colección OGC API Features (estándar OGC 17-069r3, sucesor del
+    WFS clásico) filtrando por bbox. El bbox se da en WGS84 (CRS84), como exige
+    el estándar; la respuesta GeoJSON viene en WGS84 y se reproyecta a 25830.
+    Devuelve None si la colección no existe o el servicio no responde.
+    """
+    w, s, e, n = _to_4326(*bbox_25830)
+    url = (
+        f"{base_url}/collections/{collection_id}/items"
+        f"?f=application%2Fgeo%2Bjson&bbox={w},{s},{e},{n}&limit={limit}"
+    )
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        log.debug(f"    Error OGC API Features {collection_id}: {exc}")
+        return None
+
+    features = data.get("features", [])
+    if not features:
+        return None
+    gdf = gpd.GeoDataFrame.from_features(features, crs="EPSG:4326")
+    return gdf.to_crs("EPSG:25830")
+
+
 # ──────────────────────────────────────────────────────────────────────────── #
 # Descargadores por fuente                                                     #
 # ──────────────────────────────────────────────────────────────────────────── #
@@ -457,6 +491,40 @@ def download_natura2000(
         return _save_vector(None, out_path, log)
 
 
+def download_zonas_inundables(
+    bbox_25830: tuple[float, float, float, float],
+    out_path: Path,
+    log: logging.Logger,
+) -> bool:
+    """
+    Zonas inundables SNCZI (MITECO) vía OGC API Features: une T10, T100 y T500
+    en una sola capa, ya que el modelo de coste solo distingue dentro/fuera
+    (sin gradación por periodo de retorno; ver perfiles.yaml
+    parametros_capas.zonas_inundables).
+    """
+    log.info(f"  OGC API Features SNCZI/MITECO → {_MITECO_OAFEAT_ZI}")
+    partes = []
+    for collection_id in _OAFEAT_ZI:
+        gdf_t = _ogc_features_bbox(_MITECO_OAFEAT_ZI, collection_id, bbox_25830, log)
+        if gdf_t is not None and not gdf_t.empty:
+            gdf_t["periodo_retorno"] = collection_id.rsplit("_q", 1)[-1]
+            partes.append(gdf_t[["geometry", "periodo_retorno"]])
+            log.info(f"    {collection_id} → {len(gdf_t)} polígonos")
+        else:
+            log.debug(f"    {collection_id} → sin datos en el AOI")
+
+    if not partes:
+        log.warning("  SNCZI sin láminas de inundación en el AOI")
+        return _save_vector(None, out_path, log)
+
+    gdf = (
+        partes[0]
+        if len(partes) == 1
+        else gpd.GeoDataFrame(gpd.pd.concat(partes, ignore_index=True), crs=partes[0].crs)
+    )
+    return _save_vector(gdf, out_path, log)
+
+
 def download_osm(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
@@ -546,208 +614,16 @@ def download_igme(
     return _save_vector(None, out_path, log)
 
 
-# Directorio de tiles oficiales de peligrosidad (descarga manual del CNIG).
-_INUNDABLES_DIR = DATA_RAW / "INUNDABLES"
-
-
-def download_inundables(
-    bbox_25830: tuple[float, float, float, float],
-    out_path: Path,
-    log: logging.Logger,
-) -> bool:
-    """
-    Zonas inundables — peligrosidad fluvial T=100 (SNCZI / MITECO).
-
-    Fuente PRIMARIA: tiles GeoTIFF oficiales de peligrosidad (calado, 1 m,
-    EPSG:25830) descargados a mano del Centro de Descargas del CNIG y dejados en
-    data/raw/INUNDABLES/ (ESNZSNCZIMPFT100*.tif). Es el dato oficial, de mayor
-    fidelidad que el WMS.
-
-    Fuente FALLBACK: si no hay tiles locales, se solicita la lámina
-    NZ.Flood.FluvialT100 al WMS INSPIRE de riesgos naturales (única vía
-    automática; el SNCZI no expone WFS vectorial).
-
-    En ambos casos la salida es una máscara binaria uint8 recortada al bbox del
-    AOI, en EPSG:25830 y a la resolución de la rejilla común:
-
-        1 → celda dentro de zona inundable T=100      0 → fuera
-
-    Corresponde al factor oficial "Zonas inundables" (A=14.25) de la metodología
-    de Enagás. alinear_capas.py la remuestrea luego a la rejilla común.
-    """
-    tiles = _find_inundables_tiles(bbox_25830, log)
-    if tiles:
-        return _download_inundables_local(tiles, bbox_25830, out_path, log)
-    log.info("  Sin tiles locales en data/raw/INUNDABLES/ → fallback WMS INSPIRE")
-    return _download_inundables_wms(bbox_25830, out_path, log)
-
-
-def _find_inundables_tiles(
-    bbox_25830: tuple[float, float, float, float],
-    log: logging.Logger,
-) -> list[Path]:
-    """Tiles T=100 locales cuyo bounding box intersecta el AOI (sin duplicados)."""
-    if not _INUNDABLES_DIR.exists():
-        return []
-    import rasterio
-    from rasterio.warp import transform_bounds
-
-    xmin, ymin, xmax, ymax = bbox_25830
-    out: list[Path] = []
-    for tile in sorted(_INUNDABLES_DIR.glob("*MPFT100*.tif")):
-        if "(" in tile.name:        # descartar copias duplicadas "(1)", "(2)"
-            continue
-        try:
-            with rasterio.open(tile) as ds:
-                b = ds.bounds
-                if ds.crs and ds.crs.to_epsg() != 25830:
-                    b = transform_bounds(ds.crs, "EPSG:25830", *b)
-                if b[0] <= xmax and b[2] >= xmin and b[1] <= ymax and b[3] >= ymin:
-                    out.append(tile)
-        except Exception as exc:
-            log.debug(f"    No se pudo abrir {tile.name}: {exc}")
-    return out
-
-
-def _download_inundables_local(
-    tiles: list[Path],
-    bbox_25830: tuple[float, float, float, float],
-    out_path: Path,
-    log: logging.Logger,
-) -> bool:
-    """
-    Mosaica los tiles de calado (1 m) sobre la rejilla del bbox a 30 m y produce
-    una máscara binaria de presencia de inundación: un bloque de 30 m es
-    inundable si alguna de sus subceldas de 1 m tiene calado (Resampling.max).
-    """
-    import numpy as np
-    import rasterio
-    from rasterio.crs import CRS
-    from rasterio.transform import from_origin
-    from rasterio.warp import reproject, Resampling
-
-    xmin, ymin, xmax, ymax = bbox_25830
-    res = _GRID_RES_M
-    width = max(1, math.ceil((xmax - xmin) / res))
-    height = max(1, math.ceil((ymax - ymin) / res))
-    dst_transform = from_origin(xmin, ymin + height * res, res, res)
-    dst_crs = CRS.from_epsg(25830)
-
-    combined = np.zeros((height, width), dtype="uint8")
-    log.info(f"  {len(tiles)} tile(s) oficial(es) SNCZI → mosaico {width}×{height} @ {res:.0f} m")
-    for tile in tiles:
-        log.info(f"    + {tile.name}")
-        with rasterio.open(tile) as src:
-            nd = src.nodata if src.nodata is not None else -3.0
-            tmp = np.zeros((height, width), dtype="float32")
-            reproject(
-                source=rasterio.band(src, 1),
-                destination=tmp,
-                src_transform=src.transform,
-                src_crs=src.crs or dst_crs,
-                dst_transform=dst_transform,
-                dst_crs=dst_crs,
-                src_nodata=nd,
-                dst_nodata=0,
-                resampling=Resampling.max,   # el bloque 30 m es inundable si lo es 1 subcelda
-            )
-        combined[tmp > 0] = 1   # cualquier calado > 0 → inundable
-
-    with rasterio.open(
-        out_path, "w",
-        driver="GTiff",
-        height=height, width=width,
-        count=1, dtype="uint8",
-        crs=dst_crs,
-        transform=dst_transform,
-        compress="lzw",
-    ) as dst:
-        dst.write(combined, 1)
-
-    n_inund = int(np.count_nonzero(combined))
-    pct = 100.0 * n_inund / combined.size if combined.size else 0.0
-    log.info(f"  ✓ {out_path.name}  ({n_inund} celdas inundables, {pct:.1f}% del bbox) "
-             f"[fuente: GeoTIFF oficial CNIG]")
-    return True
-
-
-def _download_inundables_wms(
-    bbox_25830: tuple[float, float, float, float],
-    out_path: Path,
-    log: logging.Logger,
-) -> bool:
-    """Fallback automático: lámina NZ.Flood.FluvialT100 vía WMS INSPIRE → máscara binaria."""
-    import numpy as np
-    import rasterio
-    from rasterio.crs import CRS
-    from rasterio.io import MemoryFile
-    from rasterio.transform import from_bounds
-
-    xmin, ymin, xmax, ymax = bbox_25830
-    width = max(1, min(4096, math.ceil((xmax - xmin) / _GRID_RES_M)))
-    height = max(1, min(4096, math.ceil((ymax - ymin) / _GRID_RES_M)))
-
-    # WMS 1.3.0: para CRS proyectado (EPSG:25830) el orden de ejes del BBOX es
-    # Este,Norte → xmin,ymin,xmax,ymax. Enteros por compatibilidad con el proxy.
-    params = {
-        "SERVICE": "WMS",
-        "VERSION": "1.3.0",
-        "REQUEST": "GetMap",
-        "LAYERS": _WMS_INUNDABLES_LAYER,
-        "STYLES": "",
-        "CRS": "EPSG:25830",
-        "BBOX": f"{int(xmin)},{int(ymin)},{int(xmax)},{int(ymax)}",
-        "WIDTH": str(width),
-        "HEIGHT": str(height),
-        "FORMAT": "image/png",
-        "TRANSPARENT": "TRUE",
-    }
-    log.info(f"  WMS INSPIRE SNCZI → {_WMS_INUNDABLES_LAYER}  ({width}×{height} px)")
-    resp = requests.get(_WMS_INUNDABLES, params=params, headers=_HEADERS, timeout=120)
-    resp.raise_for_status()
-
-    content = resp.content
-    ctype = resp.headers.get("Content-Type", "")
-    if "xml" in ctype.lower() or b"ServiceException" in content[:2000]:
-        snippet = content[:300].decode("utf-8", "replace")
-        raise RuntimeError(f"WMS devolvió excepción en lugar de imagen: {snippet}")
-
-    with MemoryFile(content) as mf:
-        with mf.open() as src:
-            arr = src.read()  # (bandas, alto, ancho)
-    if arr.shape[0] >= 4:
-        mask = (arr[3] > 0).astype("uint8")            # canal alfa > 0 → píxel pintado
-    else:
-        mask = (arr[:3].min(axis=0) < 250).astype("uint8")  # sin alfa: no-blanco = inundable
-
-    transform = from_bounds(xmin, ymin, xmax, ymax, width, height)
-    with rasterio.open(
-        out_path, "w",
-        driver="GTiff",
-        height=height, width=width,
-        count=1, dtype="uint8",
-        crs=CRS.from_epsg(25830),
-        transform=transform,
-        compress="lzw",
-    ) as dst:
-        dst.write(mask, 1)
-
-    n_inund = int(np.count_nonzero(mask))
-    pct = 100.0 * n_inund / mask.size if mask.size else 0.0
-    log.info(f"  ✓ {out_path.name}  ({n_inund} celdas inundables, {pct:.1f}% del bbox) [fuente: WMS]")
-    return True
-
-
 # ──────────────────────────────────────────────────────────────────────────── #
 # Catálogo de fuentes                                                          #
 # ──────────────────────────────────────────────────────────────────────────── #
 # (etiqueta, nombre_archivo con {s}=sufijo escenario, función descargadora)
 SOURCES: list[tuple[str, str, Callable]] = [
-    ("DEM IGN MDT25",    "DEM_{s}.tif",  download_dem),
-    ("OSM",              "OSM_{s}.gpkg", download_osm),
-    ("Hidrografía IGN",  "HID_{s}.gpkg", download_hidrografia),
-    ("IGME geológico",   "IGME_{s}.gpkg",download_igme),
-    ("Zonas inundables SNCZI", "INUNDABLES_{s}.tif", download_inundables),
+    ("DEM IGN MDT25",      "DEM_{s}.tif",   download_dem),
+    ("OSM",                "OSM_{s}.gpkg",  download_osm),
+    ("Hidrografía IGN",    "HID_{s}.gpkg",  download_hidrografia),
+    ("IGME geológico",     "IGME_{s}.gpkg", download_igme),
+    ("Zonas inundables",   "INUND_{s}.gpkg",download_zonas_inundables),
     # RN2000: fuente nacional añadida manualmente a data/raw/RN2000/.
     # alinear_capas.py la recorta al AOI de cada escenario.
 ]

@@ -1,21 +1,20 @@
-"""Métrica — % de cada ruta solución que pasa por zona inundable (peligrosidad T=100).
+"""Métrica — % de cada ruta solución que pasa por zona inundable (SNCZI).
 
 Para cada ruta (.gpkg de Rutas/) mide qué porcentaje de su LONGITUD discurre
-dentro de zona inundable T=100, muestreando el raster binario de coste
-Capas_Coste/inundable_{s}.tif (>0 = dentro de lámina T=100, 0 = fuera), ya
-alineado a la rejilla común EPSG:25830. El raster lo genera
-src/superficie/inundables.py.
+dentro de alguna lámina de inundación SNCZI, muestreando el raster binario de
+coste Capas_Coste/inundable_{s}.tif (>0 = dentro, 0 = fuera), ya alineado a la
+rejilla común EPSG:25830. El raster lo genera src/superficie/zonas_inundables.py.
 
 Porcentaje por LONGITUD (no por nº de celdas): la línea se densifica en pasos de
 media celda y cada sub-segmento se clasifica por el valor del raster en su punto
-medio. Mismo método que zonas_protegidas.py.
+medio. Idéntico patrón a metricas/zonas_protegidas.py.
 
 Interfaz común del módulo de métricas:
     calcular(linea, escenario) -> dict[str, float]
 
 Uso standalone (desde proyecto/):
-    python -m src.metricas.inundables
-    python -m src.metricas.inundables --escenario A
+    python -m src.metricas.zonas_inundables
+    python -m src.metricas.zonas_inundables --escenario A
 """
 
 from __future__ import annotations
@@ -82,7 +81,7 @@ def _medir_polilinea(
 
 
 def calcular(linea: BaseGeometry, escenario: str) -> dict[str, float]:
-    """Porcentaje de la longitud de la ruta dentro de zona inundable T=100.
+    """Porcentaje de la longitud de la ruta dentro de zona inundable.
 
     Args:
         linea:     geometría de la ruta (LineString/MultiLineString) en EPSG:25830.
@@ -90,19 +89,19 @@ def calcular(linea: BaseGeometry, escenario: str) -> dict[str, float]:
 
     Returns:
         dict con:
-          km_total      longitud total de la ruta (km)
-          km_inundable  longitud dentro de zona inundable T=100 (km)
-          pct_inundable porcentaje de la longitud dentro de inundable (0-100)
+          km_total       longitud total de la ruta (km)
+          km_inundable   longitud dentro de zona inundable SNCZI (km)
+          pct_inundable  porcentaje de la longitud dentro de zona inundable (0-100)
     """
     s = escenario.upper()
-    inund_path = CAPAS_DIR / f"inundable_{s}.tif"
-    if not inund_path.exists():
+    inundable_path = CAPAS_DIR / f"inundable_{s}.tif"
+    if not inundable_path.exists():
         raise FileNotFoundError(
-            f"Raster de zonas inundables no encontrado: {inund_path}\n"
-            f"Ejecuta primero src/superficie/inundables.py"
+            f"Raster de zonas inundables no encontrado: {inundable_path}\n"
+            f"Ejecuta primero src/superficie/zonas_inundables.py"
         )
 
-    with rasterio.open(inund_path) as src:
+    with rasterio.open(inundable_path) as src:
         arr = src.read(1)
         transform = src.transform
     paso = abs(transform.a) / 2.0  # media celda: no se salta ninguna celda
@@ -136,7 +135,7 @@ def _cargar_linea(perfil: str, escenario: str) -> BaseGeometry:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="% de cada ruta que pasa por zona inundable (peligrosidad T=100)."
+        description="% de cada ruta que pasa por zona inundable (SNCZI)."
     )
     parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
     args = parser.parse_args()

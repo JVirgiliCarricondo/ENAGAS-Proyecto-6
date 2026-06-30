@@ -64,6 +64,7 @@ SLOPE_REF = 30.0  # grados; normaliza S a [0,1] (= barrera dura de pendiente.py)
 PESO_A_CAPA = {
     "pendiente": "pendiente",
     "protegida": "protegida",
+    "inundable": "inundable",
     "cruces": "cruces",
     "expropiacion": "expropiacion",
     "geotecnia": "geotecnia",

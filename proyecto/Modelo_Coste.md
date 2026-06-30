@@ -20,7 +20,6 @@ El **camino de mínimo coste** (LCP) se resuelve con **A\* o Dijkstra** sobre un
 | Tránsito continuo | pendiente | por celda | técnico | DEM |
 | Tránsito discreto | expropiación | por celda | administrativo | Catastro |
 | Tránsito discreto | Red Natura 2000 | por celda | ambiental | MITECO |
-| Tránsito discreto | zonas inundables (T=100) | por celda | riesgo/seguridad | SNCZI / MITECO |
 | Tránsito continuo | geotecnia | por celda | técnico/seguridad | IGME |
 | Cruce puntual | carreteras, ferrocarril, ríos | al cruzar | técnico | OSM / IGN |
 
@@ -35,7 +34,7 @@ El **camino de mínimo coste** (LCP) se resuelve con **A\* o Dijkstra** sobre un
 | Menor complejidad técnica | ↓ | pendiente, cruces | técnico | cubierto |
 | Menor coste total | ↓ | — (función objetivo) | — | es la salida |
 | Mayor viabilidad administrativa | ↑ | suelo urbano consolidado | administrativo | parcial |
-| Mayores seguridad y operabilidad | ↑ | geotecnia (IGME), inundable (SNCZI) | técnico/operacional | cubierto |
+| Mayores seguridad y operabilidad | ↑ | geotecnia (IGME) | técnico/operacional | cubierto |
 
 Cada perfil de prioridad (`data/config/perfiles.yaml`) sube el peso de la dimensión que prioriza → rutas diferenciadas (hito 3).
 
@@ -109,21 +108,17 @@ Variable binaria. El valor "dentro" está **estandarizado al factor oficial Enag
 
 No hay barrera dura. Los km en zona protegida se reportan como métrica (hito 4).
 
-### 5.3 Zonas inundables — peligrosidad fluvial T=100 (SNCZI)
+### 5.2b Zonas inundables — SNCZI (MITECO)
 
-Variable binaria. El valor "dentro" está **estandarizado al factor oficial Enagás** ZONAS INUNDABLES (A=14.25 / 38 = 0.375); el peso de la capa en cada perfil (§8) modula cuánto se evita.
-
-A diferencia de las demás capas, la entrada **ya es un raster** (lámina de peligrosidad T=100 del SNCZI): GeoTIFF oficial del CNIG mosaicado, o WMS `NZ.Flood.FluvialT100` como fallback → máscara binaria (ver [`data/raw/FUENTES.md`](data/raw/FUENTES.md)). No se rasteriza un vector: se **remuestrea la máscara a la rejilla del DEM** (vecino más próximo, capa categórica).
+Variable binaria. El valor "dentro" está **estandarizado al factor oficial Enagás** Zonas inundables (A=14.25 / 38 = 0.375; ver [`../docs/metodologia_enagas.md`](../docs/metodologia_enagas.md)). Igual patrón que Red Natura 2000 (§5.2): sin barrera dura, sin gradación por periodo de retorno — la capa fuente une T10+T100+T500 en la descarga (`src/ingesta/descargar_capas.py`) porque la tabla oficial solo da un factor para el condicionante "Zonas inundables", no uno por periodo de retorno.
 
 | Situación | Valor | Tratamiento |
 |-----------|-------|-------------|
-| Fuera de zona inundable | 0.0 | finito |
-| Dentro de lámina T=100 | 0.375 | finito (transitable con medidas; A=14.25) |
-| Fondo (sin dato) | 0.0 | — |
+| Fuera de lámina de inundación | 0.0 | finito |
+| Dentro de lámina SNCZI (T10 ∪ T100 ∪ T500) | 0.375 | finito (transitable; A=14.25) |
+| Fondo (sin polígono) | 0.0 | — |
 
-No hay barrera dura. Los km en zona inundable se reportan como métrica (hito 4).
-
-> **Cobertura en el caso actual:** en los corredores A y B (1 km de ancho) la lámina T=100 da **0 % de celdas inundables** (confirmado con el GeoTIFF oficial de 1 m y con el WMS): la llanura del Ebro queda fuera del pasillo. La capa está integrada y alineada, pero hoy no condiciona el trazado; pasaría a hacerlo si se ensancha el AOI o se mueven origen/destino.
+No hay barrera dura. Los km en zona inundable se reportan como métrica (`src/metricas/zonas_inundables.py`).
 
 ---
 
@@ -194,9 +189,9 @@ coste_total(i,j) = BASE_LONG        · w_longitud
                  + pendiente(i,j)    · w_pendiente
                  + expropiacion(i,j) · w_expropiacion
                  + protegida(i,j)    · w_protegida
+                 + inundable(i,j)    · w_inundable
                  + cruces(i,j)       · w_cruces
                  + geotecnia(i,j)    · w_geotecnia
-                 + inundable(i,j)    · w_inundable
 ```
 
 **Primera iteración (pesos iguales):** `w = 1/n` para cada capa + `BASE_LONG = 1.0`.
@@ -217,7 +212,7 @@ Generada por `src/superficie/combinar.py` → `Trazados/superficie_{s}.tif`. Ran
 |------|----------|
 | Barrera de pendiente | 30° → `inf` en memoria, `999.0` en disco |
 | Red Natura | Variable binaria transitable (0 / 0.75; A=28.5/38). No barrera. |
-| Zonas inundables | Variable binaria transitable (0 / 0.375; A=14.25/38). No barrera. Entrada ráster (SNCZI T=100). |
+| Zonas inundables | Variable binaria transitable (0 / 0.375; A=14.25/38). No barrera; sin gradación por periodo de retorno. |
 | Urbano consolidado | Coste 0.66 finito (A=25.25/38). No barrera. |
 | Cruces | Rasterización fina 1 celda (`all_touched=True`) + conteo en métricas |
 | Doble conteo urbano | No hay en MVP: solo lo lleva Catastro |
@@ -296,7 +291,7 @@ with rasterio.open(out_path, "w", **profile) as dst:
 | `geotecnia_{s}.tif` | `geotecnia.py` | `igme_aoi_{s}.gpkg` | `DLO` | False | 0.15 |
 | `expropiacion_{s}.tif` | `expropiacion.py` | `catastro_aoi_{s}.gpkg` | `TIPO` | False | 0.10 |
 | `protegida_{s}.tif` | `zonas_protegidas.py` | `natura2000_aoi_{s}.gpkg` | `TIPO` | False | 0.0 |
-| `inundable_{s}.tif` | `inundables.py` | `inundables_aoi_{s}.tif` (ráster) | — (máscara binaria) | nearest | 0.0 |
+| `inundable_{s}.tif` | `zonas_inundables.py` | `inundable_aoi_{s}.gpkg` | — (geometría) | False | 0.0 |
 | `cruces_{s}.tif` | `cruces_viario_rios.py` | `osm_aoi_{s}.gpkg` + `hidrografia_aoi_{s}.gpkg` | `highway` / `text`+`length` | True | 0.0 |
 | `superficie_{s}.tif` | `combinar.py` | todas las anteriores | — | — | — |
 

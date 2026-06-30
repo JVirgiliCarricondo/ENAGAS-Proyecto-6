@@ -36,8 +36,8 @@ def params_zonas_protegidas() -> dict:
     return _load()["parametros_capas"]["zonas_protegidas"]
 
 
-def params_inundables() -> dict:
-    return _load()["parametros_capas"]["inundables"]
+def params_zonas_inundables() -> dict:
+    return _load()["parametros_capas"]["zonas_inundables"]
 
 
 def params_cruces() -> dict:
