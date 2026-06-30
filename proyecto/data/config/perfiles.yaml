@@ -2,6 +2,11 @@
 # Cada perfil es un vector de PESOS (adimensionales) sobre las capas de coste.
 # Pesos distintos -> superficies de coste distintas -> rutas DIFERENCIADAS.
 # Estos valores son orientativos: calibrarlos con el caso real (ver seguimiento.md).
+#
+# NORMALIZACIÓN: los pesos de cada perfil están normalizados para sumar 1.00
+# (100%). Como consecuencia, cada peso individual queda siempre en [0, 1],
+# igual que los valores intra-capa de parametros_capas (ver más abajo). Si se
+# recalibra un perfil, volver a dividir cada peso por la suma del vector.
 
 # ============================================================================
 # PERFILES DE PRIORIDAD (4 alternativas diferenciadas)
@@ -11,43 +16,46 @@ perfiles:
   - id: corto
     nombre: "Más corto"
     descripcion: "Minimiza la longitud; tolera más pendiente e impacto ambiental."
+    # Normalizado (suma=1.00): proporciones originales (incl. inundable) / 2.8.
     pesos:
-      longitud:     1.5   # distancia muy importante
-      pendiente:    0.2
-      protegida:    0.2
-      cruces:       0.3
-      expropiacion: 0.2
-      geotecnia:    0.1
-      traversal:    0.1   # poca importancia: solo interesa la longitud
-      inundable:    0.2   # evitar inundables poco prioritario (manda la longitud)
+      longitud:     0.5357   # distancia muy importante
+      pendiente:    0.0714
+      protegida:    0.0714
+      cruces:       0.1071
+      expropiacion: 0.0714
+      geotecnia:    0.0357
+      traversal:    0.0357  # poca importancia: solo interesa la longitud
+      inundable:    0.0714  # evitar inundables poco prioritario (manda la longitud)
     nota: "Mejor velocidad de ejecución, pero pendientes/impacto mayores"
 
   - id: ambiental
     nombre: "Menor impacto ambiental"
     descripcion: "Evita zonas protegidas (Red Natura 2000) y cruces; aunque alargue el trazado."
+    # Normalizado (suma=1.00): proporciones originales (incl. inundable) / 4.8.
     pesos:
-      protegida:    1.5   # evitar zonas protegidas ante todo
-      cruces:       0.8   # evitar cruces con infraestructuras
-      expropiacion: 0.5
-      pendiente:    0.3
-      geotecnia:    0.3
-      longitud:     0.3
-      traversal:    0.3
-      inundable:    0.8   # zona inundable = riesgo a evitar (mismo énfasis que cruces)
+      protegida:    0.3125   # evitar zonas protegidas ante todo
+      cruces:       0.1667   # evitar cruces con infraestructuras
+      expropiacion: 0.1042
+      pendiente:    0.0625
+      geotecnia:    0.0625
+      longitud:     0.0625
+      traversal:    0.0625
+      inundable:    0.1667   # zona inundable = riesgo a evitar (mismo énfasis que cruces)
     nota: "Prioriza viabilidad medioambiental"
 
   - id: pendiente
     nombre: "Menor pendiente y traversalidad"
     descripcion: "Busca terreno llano y sigue la dirección del gradiente (mayor estabilidad geotécnica)."
+    # Normalizado (suma=1.00): proporciones originales (incl. inundable) / 5.2.
     pesos:
-      pendiente:    1.5   # evitar pendiente fuerte
-      traversal:    1.2   # seguir la dirección del gradiente
-      geotecnia:    0.8   # terreno estable
-      protegida:    0.4
-      cruces:       0.3
-      expropiacion: 0.3
-      longitud:     0.3
-      inundable:    0.4   # terreno inundable = inestable/anegable, a evitar
+      pendiente:    0.2885   # evitar pendiente fuerte
+      traversal:    0.2308   # seguir la dirección del gradiente
+      geotecnia:    0.1538   # terreno estable
+      protegida:    0.0769
+      cruces:       0.0577
+      expropiacion: 0.0577
+      longitud:     0.0577
+      inundable:    0.0769   # terreno inundable = inestable/anegable, a evitar
     nota: "Reduce coste de obra por excavación y riesgo de movimientos de ladera"
 
   - id: equilibrio

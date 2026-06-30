@@ -68,7 +68,7 @@ _CAPAS_PESO: list[tuple[str, str]] = [
     ("geotecnia",    "Geotecnia (litologia)"),
     ("traversal",    "Traversalidad (direccion pendiente)"),
 ]
-_PESO_MIN, _PESO_MAX, _PESO_STEP = 0.0, 2.0, 0.05
+_PESO_MIN, _PESO_MAX, _PESO_STEP = 0.0, 1.0, 0.01
 
 try:
     from streamlit_folium import st_folium as _st_folium
@@ -372,7 +372,9 @@ def _render_editor_pesos() -> list[dict]:
         st.caption(
             "Cada perfil combina las capas como: "
             "**coste = peso_longitud + Σ (peso_capa × capa)**. "
-            "Los valores son indices relativos, no euros."
+            "Los valores son indices relativos, no euros. "
+            "Cada peso está acotado a [0, 1]; lo ideal es que la suma de los "
+            "pesos de un perfil sea 1.00 (100%)."
         )
 
         pid = st.selectbox(
@@ -401,6 +403,12 @@ def _render_editor_pesos() -> list[dict]:
                     step=_PESO_STEP,
                     key=f"peso_{pid}_{clave}_v{ver}",
                 )
+
+        suma_pesos = sum(pesos.values())
+        if abs(suma_pesos - 1.0) > 0.01:
+            st.caption(f"Suma de pesos: {suma_pesos:.2f} (recomendado: 1.00)")
+        else:
+            st.caption(f"Suma de pesos: {suma_pesos:.2f} (correcto)")
 
         btn_r, btn_a = st.columns(2)
         with btn_r:
