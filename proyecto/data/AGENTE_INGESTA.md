@@ -65,6 +65,7 @@ conservar antes de guardar.
 | OSM | Vector `.gpkg` | OpenStreetMap | EPSG:4326 |
 | Hidrografía IGN | Vector `.gpkg` / `.shp` | IGN/CNIG | EPSG:25830 |
 | IGME geológico | Vector `.gpkg` / `.shp` | IGME | EPSG:25830 |
+| Zonas inundables | Vector `.gpkg` | SNCZI (MITECO), unión T10+T100+T500 | EPSG:4326 (OGC API Features → reproyectado en descarga) |
 | Catastro (usos del suelo) | Vector `.shp` | Sede Electrónica del Catastro | EPSG:25830 |
 
 ---
@@ -81,6 +82,7 @@ Las capas se guardan en dos subcarpetas según su tipo de salida:
 | `osm_aoi.gpkg` | Datos OSM recortados y reproyectados |
 | `hidrografia_aoi.gpkg` | Hidrografía IGN recortada |
 | `igme_aoi.gpkg` | Mapa geológico recortado |
+| `inundable_aoi.gpkg` | Zonas inundables SNCZI recortadas (unión T10+T100+T500) |
 | `catastro_aoi.gpkg` | Parcelas catastrales (usos del suelo) recortadas |
 
 > Si una capa vectorial no tiene geometrías dentro del AOI, se guarda igualmente un `.gpkg` vacío para registrar que la capa fue procesada.
@@ -127,6 +129,7 @@ Archivos generados en `data/raw/` (sufijo `_A` o `_B`):
 | `OSM_{s}.gpkg`   | OpenStreetMap (carreteras)      | Overpass API   |
 | `HID_{s}.gpkg`   | Hidrografía IGN INSPIRE         | WFS            |
 | `IGME_{s}.gpkg`  | IGME MAGNA50                    | WFS / REST     |
+| `INUND_{s}.gpkg` | Zonas inundables SNCZI (MITECO), unión T10+T100+T500 | OGC API Features |
 
 > **Catastro (usos del suelo):** no tiene descarga automática en este script.
 > Se obtiene manualmente de la Sede Electrónica del Catastro y se coloca en

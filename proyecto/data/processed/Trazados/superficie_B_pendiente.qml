@@ -7,15 +7,15 @@
         zoomedOutResamplingMethod="nearestNeighbour"/>
     </provider>
     <rasterrenderer opacity="1" alphaBand="-1" band="1" type="singlebandpseudocolor"
-      classificationMin="0.4400" classificationMax="2.6323" nodataColor="">
+      classificationMin="0.0917" classificationMax="0.5207" nodataColor="">
       <rasterTransparency/>
       <rastershader>
         <colorrampshader colorRampType="INTERPOLATED" clip="0"
-          minimumValue="0.4400" maximumValue="2.6323"
+          minimumValue="0.0917" maximumValue="0.5207"
           classificationMode="1" labelPrecision="3">
-          <item value="0.4400" color="#1a9850" label="Coste bajo"  alpha="255"/>
-          <item value="1.5362" color="#ffffbf" label="Coste medio" alpha="255"/>
-          <item value="2.6323" color="#d73027" label="Coste alto"  alpha="255"/>
+          <item value="0.0917" color="#1a9850" label="Coste bajo"  alpha="255"/>
+          <item value="0.3062" color="#ffffbf" label="Coste medio" alpha="255"/>
+          <item value="0.5207" color="#d73027" label="Coste alto"  alpha="255"/>
         </colorrampshader>
       </rastershader>
     </rasterrenderer>

@@ -77,10 +77,11 @@ class LayerSpec(NamedTuple):
 # _discover_layer_sources los comprueba ANTES de los glob_patterns cuando se
 # indica un escenario, de modo que los datos descargados tienen prioridad.
 _SCENARIO_FILES: dict[str, str] = {
-    "DEM Copernicus":  "DEM_{s}.tif",
-    "OSM":             "OSM_{s}.gpkg",
-    "Hidrografía IGN": "HID_{s}.gpkg",
-    "IGME geológico":  "IGME_{s}.gpkg",
+    "DEM Copernicus":   "DEM_{s}.tif",
+    "OSM":              "OSM_{s}.gpkg",
+    "Hidrografía IGN":  "HID_{s}.gpkg",
+    "IGME geológico":   "IGME_{s}.gpkg",
+    "Zonas inundables": "INUND_{s}.gpkg",
     # RN2000 no tiene sufijo de escenario: es una capa nacional única en data/raw/RN2000/.
     # Se descubre por glob_patterns y se recorta al AOI de cada escenario.
 }
@@ -149,6 +150,18 @@ LAYERS: list[LayerSpec] = [
         output_name="igme_aoi.gpkg",
     ),
     LayerSpec(
+        label="Zonas inundables",
+        layer_type="vector",
+        categorical=True,
+        glob_patterns=[
+            "INUND.gpkg", "INUND.shp", "INUND.geojson",
+            "**/INUND*.gpkg", "**/inundable*.gpkg", "**/Inundable*.gpkg",
+            "**/*zonas_inundables*.gpkg", "**/*ZonasInundables*.shp",
+            "**/SNCZI*.gpkg", "**/snczi*.gpkg",
+        ],
+        output_name="inundable_aoi.gpkg",
+    ),
+    LayerSpec(
         label="Catastro - Usos del Suelo Urbanística",
         layer_type="vector",
         categorical=True,
@@ -185,6 +198,10 @@ _DOWNLOAD_HINTS: dict[str, str] = {
     "IGME geológico": (
         "  → https://www.igme.es/\n"
         "    Guárdalo como: data/raw/GEO-IGME.gpkg"
+    ),
+    "Zonas inundables": (
+        "  → SNCZI (MITECO): https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/agua/zonas-inundables.html\n"
+        "    Guárdalo como: data/raw/INUND.gpkg  (o INUND.geojson; une T10/T100/T500 si descargas por separado)"
     ),
     "Catastro - Usos del Suelo Urbanística": (
         "  → Catastro Inmobiliario: https://www.catastro.minhap.gob.es/\n"

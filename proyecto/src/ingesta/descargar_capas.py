@@ -16,6 +16,7 @@ Archivos generados en data/raw/ (sufijo _A o _B según el escenario):
   OSM_{s}.gpkg     → Carreteras + ferrocarril, Overpass API
   HID_{s}.gpkg     → Hidrografía IGN, WFS INSPIRE (HY.PhysicalWaters.Watercourses)
   IGME_{s}.gpkg    → Mapa geológico IGME MAGNA50, WFS / ArcGIS REST fallback
+  INUND_{s}.gpkg   → Zonas inundables SNCZI (MITECO), OGC API Features, unión T10+T100+T500
 
 Para verificar los nombres de capa de cada WFS:
   GET {endpoint}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetCapabilities
@@ -80,10 +81,19 @@ _IGN_WFS_HID = "https://servicios.idee.es/wfs-inspire/hidrografia"
 _IGN_WFS_ENP = "https://servicios.idee.es/wfs-inspire/espacios-naturales-protegidos"
 _IGME_REST   = "https://mapas.igme.es/gis/rest/services/Cartografia_Geologica/IGME_MAGNA_50/MapServer/11/query"
 _OVERPASS    = "https://overpass-api.de/api/interpreter"
+# SNCZI (Sistema Nacional de Cartografía de Zonas Inundables), MITECO.
+# El WFS clásico (wfs.aspx) no expone estas capas (error interno del servidor,
+# verificado); MITECO migró la descarga por bbox a OGC API Features:
+# GetCapabilities → https://wmts.mapama.gob.es/sig-api/ogc/features/v1/collections
+_MITECO_OAFEAT_ZI = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
 
 # Nombres de capa WFS INSPIRE (obtenidos vía GetCapabilities)
 _WFS_HID = "hy-n:WatercourseLink"      # enlaces de cursos de agua (tramos lineales)
 _WFS_ENP = "PS.ProtectedSite"          # Red Natura 2000 y otros ENP
+# SNCZI: láminas de inundación por periodo de retorno (T10, T100, T500 años).
+# IDs de colección confirmados en /collections del API-Features (29-jun-2026).
+# El modelo de coste solo usa la UNIÓN de las tres (binario, sin distinguir T).
+_OAFEAT_ZI = ["agua:Zi_laminas_q10", "agua:Zi_laminas_q100", "agua:Zi_laminas_q500"]
 
 # Cabeceras HTTP que evitan el reseteo de conexión en servicios IGN
 # Connection: close desactiva keepalive, que causa ConnectionResetError(10054) en Windows
@@ -277,6 +287,39 @@ def _wfs_bbox(
     return None
 
 
+def _ogc_features_bbox(
+    base_url: str,
+    collection_id: str,
+    bbox_25830: tuple[float, float, float, float],
+    log: logging.Logger,
+    limit: int = 5_000,
+) -> "gpd.GeoDataFrame | None":
+    """
+    Descarga una colección OGC API Features (estándar OGC 17-069r3, sucesor del
+    WFS clásico) filtrando por bbox. El bbox se da en WGS84 (CRS84), como exige
+    el estándar; la respuesta GeoJSON viene en WGS84 y se reproyecta a 25830.
+    Devuelve None si la colección no existe o el servicio no responde.
+    """
+    w, s, e, n = _to_4326(*bbox_25830)
+    url = (
+        f"{base_url}/collections/{collection_id}/items"
+        f"?f=application%2Fgeo%2Bjson&bbox={w},{s},{e},{n}&limit={limit}"
+    )
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        log.debug(f"    Error OGC API Features {collection_id}: {exc}")
+        return None
+
+    features = data.get("features", [])
+    if not features:
+        return None
+    gdf = gpd.GeoDataFrame.from_features(features, crs="EPSG:4326")
+    return gdf.to_crs("EPSG:25830")
+
+
 # ──────────────────────────────────────────────────────────────────────────── #
 # Descargadores por fuente                                                     #
 # ──────────────────────────────────────────────────────────────────────────── #
@@ -448,6 +491,40 @@ def download_natura2000(
         return _save_vector(None, out_path, log)
 
 
+def download_zonas_inundables(
+    bbox_25830: tuple[float, float, float, float],
+    out_path: Path,
+    log: logging.Logger,
+) -> bool:
+    """
+    Zonas inundables SNCZI (MITECO) vía OGC API Features: une T10, T100 y T500
+    en una sola capa, ya que el modelo de coste solo distingue dentro/fuera
+    (sin gradación por periodo de retorno; ver perfiles.yaml
+    parametros_capas.zonas_inundables).
+    """
+    log.info(f"  OGC API Features SNCZI/MITECO → {_MITECO_OAFEAT_ZI}")
+    partes = []
+    for collection_id in _OAFEAT_ZI:
+        gdf_t = _ogc_features_bbox(_MITECO_OAFEAT_ZI, collection_id, bbox_25830, log)
+        if gdf_t is not None and not gdf_t.empty:
+            gdf_t["periodo_retorno"] = collection_id.rsplit("_q", 1)[-1]
+            partes.append(gdf_t[["geometry", "periodo_retorno"]])
+            log.info(f"    {collection_id} → {len(gdf_t)} polígonos")
+        else:
+            log.debug(f"    {collection_id} → sin datos en el AOI")
+
+    if not partes:
+        log.warning("  SNCZI sin láminas de inundación en el AOI")
+        return _save_vector(None, out_path, log)
+
+    gdf = (
+        partes[0]
+        if len(partes) == 1
+        else gpd.GeoDataFrame(gpd.pd.concat(partes, ignore_index=True), crs=partes[0].crs)
+    )
+    return _save_vector(gdf, out_path, log)
+
+
 def download_osm(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
@@ -542,10 +619,11 @@ def download_igme(
 # ──────────────────────────────────────────────────────────────────────────── #
 # (etiqueta, nombre_archivo con {s}=sufijo escenario, función descargadora)
 SOURCES: list[tuple[str, str, Callable]] = [
-    ("DEM IGN MDT25",    "DEM_{s}.tif",  download_dem),
-    ("OSM",              "OSM_{s}.gpkg", download_osm),
-    ("Hidrografía IGN",  "HID_{s}.gpkg", download_hidrografia),
-    ("IGME geológico",   "IGME_{s}.gpkg",download_igme),
+    ("DEM IGN MDT25",      "DEM_{s}.tif",   download_dem),
+    ("OSM",                "OSM_{s}.gpkg",  download_osm),
+    ("Hidrografía IGN",    "HID_{s}.gpkg",  download_hidrografia),
+    ("IGME geológico",     "IGME_{s}.gpkg", download_igme),
+    ("Zonas inundables",   "INUND_{s}.gpkg",download_zonas_inundables),
     # RN2000: fuente nacional añadida manualmente a data/raw/RN2000/.
     # alinear_capas.py la recorta al AOI de cada escenario.
 ]

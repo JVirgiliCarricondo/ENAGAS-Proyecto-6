@@ -108,6 +108,18 @@ Variable binaria. El valor "dentro" está **estandarizado al factor oficial Enag
 
 No hay barrera dura. Los km en zona protegida se reportan como métrica (hito 4).
 
+### 5.2b Zonas inundables — SNCZI (MITECO)
+
+Variable binaria. El valor "dentro" está **estandarizado al factor oficial Enagás** Zonas inundables (A=14.25 / 38 = 0.375; ver [`../docs/metodologia_enagas.md`](../docs/metodologia_enagas.md)). Igual patrón que Red Natura 2000 (§5.2): sin barrera dura, sin gradación por periodo de retorno — la capa fuente une T10+T100+T500 en la descarga (`src/ingesta/descargar_capas.py`) porque la tabla oficial solo da un factor para el condicionante "Zonas inundables", no uno por periodo de retorno.
+
+| Situación | Valor | Tratamiento |
+|-----------|-------|-------------|
+| Fuera de lámina de inundación | 0.0 | finito |
+| Dentro de lámina SNCZI (T10 ∪ T100 ∪ T500) | 0.375 | finito (transitable; A=14.25) |
+| Fondo (sin polígono) | 0.0 | — |
+
+No hay barrera dura. Los km en zona inundable se reportan como métrica (`src/metricas/zonas_inundables.py`).
+
 ---
 
 ## 6. Variables de cruce
@@ -177,6 +189,7 @@ coste_total(i,j) = BASE_LONG        · w_longitud
                  + pendiente(i,j)    · w_pendiente
                  + expropiacion(i,j) · w_expropiacion
                  + protegida(i,j)    · w_protegida
+                 + inundable(i,j)    · w_inundable
                  + cruces(i,j)       · w_cruces
                  + geotecnia(i,j)    · w_geotecnia
 ```
@@ -199,6 +212,7 @@ Generada por `src/superficie/combinar.py` → `Trazados/superficie_{s}.tif`. Ran
 |------|----------|
 | Barrera de pendiente | 30° → `inf` en memoria, `999.0` en disco |
 | Red Natura | Variable binaria transitable (0 / 0.75; A=28.5/38). No barrera. |
+| Zonas inundables | Variable binaria transitable (0 / 0.375; A=14.25/38). No barrera; sin gradación por periodo de retorno. |
 | Urbano consolidado | Coste 0.66 finito (A=25.25/38). No barrera. |
 | Cruces | Rasterización fina 1 celda (`all_touched=True`) + conteo en métricas |
 | Doble conteo urbano | No hay en MVP: solo lo lleva Catastro |
@@ -277,6 +291,7 @@ with rasterio.open(out_path, "w", **profile) as dst:
 | `geotecnia_{s}.tif` | `geotecnia.py` | `igme_aoi_{s}.gpkg` | `DLO` | False | 0.15 |
 | `expropiacion_{s}.tif` | `expropiacion.py` | `catastro_aoi_{s}.gpkg` | `TIPO` | False | 0.10 |
 | `protegida_{s}.tif` | `zonas_protegidas.py` | `natura2000_aoi_{s}.gpkg` | `TIPO` | False | 0.0 |
+| `inundable_{s}.tif` | `zonas_inundables.py` | `inundable_aoi_{s}.gpkg` | — (geometría) | False | 0.0 |
 | `cruces_{s}.tif` | `cruces_viario_rios.py` | `osm_aoi_{s}.gpkg` + `hidrografia_aoi_{s}.gpkg` | `highway` / `text`+`length` | True | 0.0 |
 | `superficie_{s}.tif` | `combinar.py` | todas las anteriores | — | — | — |
 
