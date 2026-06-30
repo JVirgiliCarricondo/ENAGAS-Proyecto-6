@@ -160,6 +160,12 @@ parametros_capas:
       "YESOS TABULARES Y NODULARES CON ARCILLAS ROJAS Y GRISES": 1.00
       "YESOS TABULARES Y NODULARES CON MARGAS Y ARCILLAS": 1.00
       "Yesos masivos. U.BUJARALOZ-SARIÑENA": 1.00
+      # ── Arcillas expansivas sin yeso (smectitas, montmorillonitas) ──────────
+      "Arcillas expansivas": 1.00
+      "Arcillas montmorilloniticas": 1.00
+      "Margas expansivas": 1.00
+      "Arcillas versicolores expansivas": 1.00
+
 
   # --------------------------------------------------------------------------
   # P3 — Expropiación (src/superficie/expropiacion.py)
