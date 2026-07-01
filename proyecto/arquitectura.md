@@ -63,7 +63,7 @@ Librerías: `rasterio` (raster, reproyección, remuestreo), `geopandas`/`shapely
 > **Regla de oro:** una capa no avanza al paso 2 si no comparte CRS y rejilla con las demás. La celda (i, j) debe representar el mismo trozo de terreno en todas las capas.
 
 ### 2. Superficies de coste (`src/superficie/`)
-Convierte cada capa alineada en un **coste por celda** (p.ej. pendiente → coste creciente; suelo urbano → coste alto; Red Natura 2000 → **variable binaria** dentro/fuera, con su penalización fijada por el peso; proximidad a cruces → coste). Combina las capas con un **vector de pesos** en una única superficie de coste. Cada **perfil de prioridad** (definido en `data/config/perfiles.yaml`) produce una superficie distinta.
+Convierte cada capa alineada en un **coste por celda** (p.ej. relieve vía TPI → cresta barata / valle caro, con barrera dura de pendiente >70 %; suelo urbano → coste alto; Red Natura 2000 → **variable binaria** dentro/fuera, con su penalización fijada por el peso; proximidad a cruces → coste). Combina las capas con un **vector de pesos** en una única superficie de coste. Cada **perfil de prioridad** (definido en `data/config/perfiles.yaml`) produce una superficie distinta.
 
 > Diseño detallado de las funciones de coste por variable, umbrales y matriz de condicionantes en [`modelo_coste.md`](modelo_coste.md).
 
@@ -105,22 +105,22 @@ destino:                            # conexión a red troncal
 - id: corto
   nombre: "Más corto"
   pesos:                            # peso por capa de coste (adimensional)
-    pendiente: 0.2
-    uso_suelo: 0.2
+    tpi: 0.2                        # relieve (posición topográfica)
+    expropiacion: 0.2              # usos del suelo (catastro)
     protegida: 0.3
-    longitud: 1.0
+    longitud: 1.5
 - id: ambiental
   nombre: "Menor impacto ambiental"
   pesos:
-    pendiente: 0.2
-    uso_suelo: 0.5
-    protegida: 1.0
+    tpi: 0.3
+    expropiacion: 0.5
+    protegida: 1.5
     longitud: 0.3
 - id: pendiente
-  nombre: "Menor pendiente"
+  nombre: "Por relieve (divisorias / TPI)"
   pesos:
-    pendiente: 1.0
-    uso_suelo: 0.3
+    tpi: 1.5                        # sigue crestas/divisorias; barrera >70% dentro del TPI
+    geotecnia: 0.8
     protegida: 0.4
     longitud: 0.3
 ```

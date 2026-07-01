@@ -90,7 +90,10 @@ perfiles:
 #   hídrico no permanente 9.75→0.26 · yeso/inestable 38→1.00.
 #   Clases SIN factor oficial (litologías intermedias, viario/ferrocarril) se
 #   interpolan por dificultad constructiva dentro del mismo [0, 1].
-#   La capa de PENDIENTE queda fuera de este criterio (se mantiene intacta).
+#   La capa de relieve (TPI) queda fuera de la estandarización por factor oficial
+#   A/38: el relieve NO es un condicionante de la tabla de Enagás, así que no hay
+#   un factor A que dividir entre 38. Se normaliza de otra forma: por z-score
+#   estadístico sobre el AOI, mapeado a [0, 1] (ver parametros_capas.tpi).
 # ============================================================================
 
 parametros_capas:
