@@ -1,31 +1,27 @@
 """
-Fase 2 — Ruta con LCP ANISÓTROPO (consideración de Enagás 2026-06-22).
+Fase 2 — Ruta con LCP ISÓTROPO por perfil de prioridad.
 
-La superficie escalar combinada (Trazados/superficie_{s}.tif) decide DÓNDE hay
-coste; la capa de DIRECCIÓN (Capas_Coste/pendiente_direccion_{s}.tif)
-decide CÓMO se cruza la pendiente que no se puede evitar: de frente (perpendicular
-a las curvas de nivel), nunca en transversal.
+La superficie escalar ponderada de cada perfil (Σ peso_capa · capa, con el TPI
+como descriptor del relieve) decide DÓNDE hay coste. El motor busca el camino de
+mínimo coste origen→destino sobre esa superficie.
 
-Coste de transición p→q (no se puede prehornear en un raster escalar; va aquí):
+Coste de transición p→q:
 
-    coste(p→q) = d · C_celda · (1 + λ · S · sinθ)
+    coste(p→q) = d · C_celda
 
   d       = distancia geométrica del paso (1 ortogonal, √2 diagonal)
-  C_celda = media del coste escalar de p y q (superficie combinada)
-  S       = pendiente normalizada [0,1] = clip(pendiente° / 30°, 0, 1)
-  θ       = ángulo entre el paso y la línea de máxima pendiente
-            sinθ=0 cruzando de frente (barato) · sinθ=1 transversal (caro)
-  λ       = peso de la penalización por transversalidad (configurable)
+  C_celda = media del coste escalar de p y q (superficie ponderada del perfil)
 
-En llano S≈0 → la dirección no penaliza (correcto). Algoritmo: Dijkstra 8-conexo.
+Algoritmo: Dijkstra 8-conexo. La preferencia por el relieve (seguir divisorias,
+evitar valles y fondos de cauce) la aporta la capa TPI dentro de la superficie
+escalar; ya no se modela la dirección del gradiente (anisotropía retirada).
 
-Genera, por escenario, en Capas_Coste/Pendiente/:
-  ruta_{s}_anisotropa.gpkg   (la propuesta, con la consideración de Enagás)
-  ruta_{s}_isotropa.gpkg     (baseline sin anisotropía, para comparar)
+Genera, por escenario, una ruta por perfil en Rutas/:
+  ruta_{s}_{perfil}.gpkg
 
 Uso (desde proyecto/):
   python -m src.trazados.ruta_pendiente
-  python -m src.trazados.ruta_pendiente --escenario A --lambda 4
+  python -m src.trazados.ruta_pendiente --escenario A
 """
 
 from __future__ import annotations
@@ -53,14 +49,10 @@ RUTAS_DIR = DATA / "processed" / "Rutas"     # rutas LCP (.gpkg)
 
 _NODATA = -9999.0
 _BARRERA_DISCO = 999.0
-SLOPE_REF = 30.0  # grados; normaliza S a [0,1] (= barrera dura de pendiente.py)
 
 # Mapeo peso (perfiles.yaml) → fichero de capa escalar en Capas_Coste/.
-# Claves NO listadas y con tratamiento especial:
+# Clave NO listada y con tratamiento especial:
 #   'longitud'  → coste base por celda (no es una capa).
-#   'traversal' → en MI versión NO es una capa escalar; su peso por perfil escala
-#                 λ (fuerza de la penalización anisótropa). Ver run_perfiles().
-#   'aspecto'   → capa intermedia, no de coste.
 PESO_A_CAPA = {
     "tpi": "tpi",
     "protegida": "protegida",
@@ -79,8 +71,6 @@ _COLOR_RUTA = {
     "equilibrio": "255,127,0,255",    # naranja
     "ambiental":  "51,160,44,255",    # verde
     "pendiente":  "227,26,28,255",    # rojo (perfil 'pendiente', ahora basado en TPI)
-    "anisotropa": "106,61,154,255",   # morado (modo demo)
-    "isotropa":   "160,160,160,255",  # gris   (modo demo)
 }
 
 
@@ -112,43 +102,11 @@ def _snap_to_valid(row: int, col: int, superficie: np.ndarray, radio: int = 20) 
     return best
 
 
-def _cargar_superficie(s: str) -> tuple[np.ndarray, rasterio.Affine, object]:
-    """Superficie escalar combinada (nan fuera AOI, inf barrera)."""
-    tif = TRAZADOS / f"superficie_{s}.tif"
-    if not tif.exists():
-        raise FileNotFoundError(
-            f"Falta {tif}. Ejecuta primero: python -m src.superficie.combinar --escenario {s}"
-        )
-    with rasterio.open(tif) as src:
-        arr = src.read(1).astype("float64")
-        transform, crs = src.transform, src.crs
-    arr = np.where(arr == _NODATA, np.nan, arr)
-    arr = np.where(arr == _BARRERA_DISCO, np.inf, arr)
-    return arr, transform, crs
-
-
-def _cargar_direccion(s: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Capa de dirección: dz/dx, dz/dy, pendiente normalizada S∈[0,1]."""
-    tif = CAPAS / f"pendiente_direccion_{s}.tif"
-    if not tif.exists():
-        raise FileNotFoundError(
-            f"Falta {tif}. Ejecuta primero: python -m src.superficie.gradiente --escenario {s}"
-        )
-    with rasterio.open(tif) as src:
-        gx = src.read(1).astype("float64")
-        gy = src.read(2).astype("float64")
-        slope = src.read(3).astype("float64")
-    for a in (gx, gy, slope):
-        a[a == _NODATA] = 0.0
-    S = np.clip(slope / SLOPE_REF, 0.0, 1.0)
-    return gx, gy, S
-
-
-def dijkstra_anisotropo(
-    C: np.ndarray, gx: np.ndarray, gy: np.ndarray, S: np.ndarray,
-    origen: tuple[int, int], destino: tuple[int, int], lam: float,
+def dijkstra(
+    C: np.ndarray,
+    origen: tuple[int, int], destino: tuple[int, int],
 ) -> list[tuple[int, int]]:
-    """LCP 8-conexo con coste de transición anisótropo. lam=0 → isótropo puro."""
+    """LCP 8-conexo isótropo: coste(p→q) = d · media(C_p, C_q)."""
     H, W = C.shape
     transitable = np.isfinite(C)  # nan (fuera) e inf (barrera) → no transitable
     INF = float("inf")
@@ -176,20 +134,7 @@ def dijkstra_anisotropo(
             d = 1.0 if step == 1 else np.sqrt(2.0)
             c_cell = 0.5 * (cp + C[rr, cc])
 
-            factor = 1.0
-            if lam > 0.0:
-                # paso en (Este, Norte): E=dc, N=-dr
-                uE, uN = dc / d, -dr / d
-                # gradiente de ascenso medio en (Este, Norte): E=gx, N=-gy
-                GE = 0.5 * (gx[r, c] + gx[rr, cc])
-                GN = -0.5 * (gy[r, c] + gy[rr, cc])
-                gmag = np.hypot(GE, GN)
-                if gmag > 1e-12:
-                    sinth = abs(uE * (GN / gmag) - uN * (GE / gmag))
-                    S_edge = 0.5 * (S[r, c] + S[rr, cc])
-                    factor = 1.0 + lam * S_edge * sinth
-
-            nd = d_p + d * c_cell * factor
+            nd = d_p + d * c_cell
             q = rr * W + cc
             if nd < dist[q]:
                 dist[q] = nd
@@ -208,28 +153,6 @@ def dijkstra_anisotropo(
         cur = prev[cur]
     celdas.reverse()
     return celdas
-
-
-def exposicion_transversal(
-    celdas: list[tuple[int, int]], gx: np.ndarray, gy: np.ndarray, S: np.ndarray,
-) -> float:
-    """Media de S·sinθ a lo largo de la ruta (exposición a cruce transversal).
-
-    0 = siempre de frente a la ladera; alto = mucho recorrido transversal en pendiente.
-    """
-    vals = []
-    for (r0, c0), (r1, c1) in zip(celdas[:-1], celdas[1:]):
-        dr, dc = r1 - r0, c1 - c0
-        d = np.hypot(dr, dc)
-        if d == 0:
-            continue
-        uE, uN = dc / d, -dr / d
-        GE = 0.5 * (gx[r0, c0] + gx[r1, c1])
-        GN = -0.5 * (gy[r0, c0] + gy[r1, c1])
-        gmag = np.hypot(GE, GN)
-        sinth = abs(uE * (GN / gmag) - uN * (GE / gmag)) if gmag > 1e-12 else 0.0
-        vals.append(0.5 * (S[r0, c0] + S[r1, c1]) * sinth)
-    return float(np.mean(vals)) if vals else 0.0
 
 
 def _write_route_qml(path: Path, tipo: str) -> None:
@@ -259,13 +182,11 @@ def _write_route_qml(path: Path, tipo: str) -> None:
     path.with_suffix(".qml").write_text(qml, encoding="utf-8")
 
 
-def _exportar(celdas, transform, crs, tipo: str, lam: float, path: Path,
-              expos: float) -> LineString:
+def _exportar(celdas, transform, crs, tipo: str, path: Path) -> LineString:
     linea = LineString([rt.xy(transform, r, c, offset="center") for r, c in celdas])
     gdf = gpd.GeoDataFrame(
-        {"tipo": [tipo], "lambda": [lam], "n_celdas": [len(celdas)],
-         "longitud_m": [round(linea.length, 1)],
-         "exposicion_transversal": [round(expos, 4)]},
+        {"tipo": [tipo], "n_celdas": [len(celdas)],
+         "longitud_m": [round(linea.length, 1)]},
         geometry=[linea], crs=crs,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -359,12 +280,11 @@ def _guardar_superficie(C: np.ndarray, transform, crs, path: Path) -> None:
         _write_qml(path, float(valido.min()), float(valido.max()))
 
 
-def run_perfiles(s: str, lam: float, perfiles_override: list[dict] | None = None) -> None:
-    """Rehace las rutas por perfil con el motor anisótropo.
+def run_perfiles(s: str, perfiles_override: list[dict] | None = None) -> None:
+    """Genera una ruta LCP isótropa por perfil de prioridad.
 
     Args:
         s: Identificador de escenario (p. ej. 'A').
-        lam: Peso base de penalización por transversalidad.
         perfiles_override: Lista de perfiles con claves 'id' y 'pesos'. Si es
             None, se leen desde data/config/perfiles.yaml.
     """
@@ -377,66 +297,31 @@ def run_perfiles(s: str, lam: float, perfiles_override: list[dict] | None = None
         perfiles = perfiles_override
     else:
         perfiles = yaml.safe_load((CONFIG / "perfiles.yaml").read_text(encoding="utf-8"))["perfiles"]
-    gx, gy, S = _cargar_direccion(s)
 
-    print(f"\n=== Escenario {s}: rutas por perfil (lam_base={lam}) ===")
+    print(f"\n=== Escenario {s}: rutas por perfil ===")
     for perfil in perfiles:
         pid, pesos = perfil["id"], perfil["pesos"]
-        # El peso 'traversal' del perfil escala λ (fuerza del cruce perpendicular).
-        lam_p = lam * float(pesos.get("traversal", 0.0))
         C, transform, crs = _superficie_perfil(s, pesos)
         _guardar_superficie(C, transform, crs, TRAZADOS / f"superficie_{s}_{pid}.tif")
         origen = _snap_to_valid(*_utm_to_rowcol(*origen_utm, transform), C)
         destino = _snap_to_valid(*_utm_to_rowcol(*destino_utm, transform), C)
-        celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lam_p)
-        expos = exposicion_transversal(celdas, gx, gy, S)
+        celdas = dijkstra(C, origen, destino)
         RUTAS_DIR.mkdir(parents=True, exist_ok=True)
         out = RUTAS_DIR / f"ruta_{s}_{pid}.gpkg"
-        linea = _exportar(celdas, transform, crs, pid, lam_p, out, expos)
-        print(f"  {pid:11s}: {out.name:24s} longitud={linea.length:7.0f} m  "
-              f"lam={lam_p:.2f}  exposicion_transversal={expos:.4f}")
-
-
-def run_escenario(s: str, lam: float) -> None:
-    cfg = yaml.safe_load((CONFIG / "escenario.yaml").read_text(encoding="utf-8"))
-    esc = cfg[f"escenario_{s}"]
-    origen_utm = (esc["origen"]["x"], esc["origen"]["y"])
-    destino_utm = (esc["destino"]["x"], esc["destino"]["y"])
-
-    C, transform, crs = _cargar_superficie(s)
-    gx, gy, S = _cargar_direccion(s)
-
-    origen = _snap_to_valid(*_utm_to_rowcol(*origen_utm, transform), C)
-    destino = _snap_to_valid(*_utm_to_rowcol(*destino_utm, transform), C)
-    log.info("[%s] origen=%s destino=%s", s, origen, destino)
-
-    print(f"\n=== Escenario {s} (lam={lam}) ===")
-    for tipo, lval in [("isotropa", 0.0), ("anisotropa", lam)]:
-        celdas = dijkstra_anisotropo(C, gx, gy, S, origen, destino, lval)
-        expos = exposicion_transversal(celdas, gx, gy, S)
-        out = RUTAS_DIR / f"ruta_{s}_{tipo}.gpkg"
-        linea = _exportar(celdas, transform, crs, tipo, lval, out, expos)
-        print(f"  {tipo:11s}: {out.name}  longitud={linea.length:7.0f} m  "
-              f"exposición_transversal={expos:.4f}")
+        linea = _exportar(celdas, transform, crs, pid, out)
+        print(f"  {pid:11s}: {out.name:24s} longitud={linea.length:7.0f} m")
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s  %(levelname)-8s  %(message)s", datefmt="%H:%M:%S")
-    parser = argparse.ArgumentParser(description="Ruta con LCP anisótropo (dirección de pendiente).")
+    parser = argparse.ArgumentParser(description="Ruta con LCP isótropo por perfil de prioridad.")
     parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
-    parser.add_argument("--lambda", dest="lam", type=float, default=4.0,
-                        help="peso de penalización por transversalidad (def: 4.0)")
-    parser.add_argument("--modo", choices=["perfiles", "demo"], default="perfiles",
-                        help="'perfiles' = 4 rutas de perfiles.yaml; 'demo' = iso vs aniso (pesos iguales)")
     args = parser.parse_args()
 
     escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
     for s in escenarios:
-        if args.modo == "perfiles":
-            run_perfiles(s, args.lam)
-        else:
-            run_escenario(s, args.lam)
+        run_perfiles(s)
     print(f"\nRutas guardadas en: {RUTAS_DIR}")
 
 

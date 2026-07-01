@@ -24,11 +24,11 @@ que su normalizacion se centra en la media del AOI (z-score). Se acota a
 escenarios salvo el centrado. Calibrar/validar con Enagas (ver radio del anillo).
 
 BARRERA DURA: como esta capa reemplaza a la pendiente, hereda la responsabilidad
-de la transitabilidad. Calcula la pendiente del DEM (algoritmo Horn) y marca las
-celdas > umbral_barrera_deg (35 deg) como nodata (intransitables). El TPI por si
-solo NO ve la inclinacion (una ladera recta de 35 deg tiene TPI ~ 0), por eso la
-barrera se calcula aparte, directamente del DEM. El coste morfologico de las
-celdas transitables sigue en [0, 1].
+de la transitabilidad. Calcula la pendiente del DEM (algoritmo Horn, en PORCENTAJE)
+y marca las celdas > umbral_barrera_pct (70 %, equivalente a ~35 deg: tan(35°)=0.70)
+como nodata (intransitables). El TPI por si solo NO ve la inclinacion (una ladera
+recta empinada tiene TPI ~ 0), por eso la barrera se calcula aparte, directamente
+del DEM. El coste morfologico de las celdas transitables sigue en [0, 1].
 
 Patron comun de las capas de coste (hito 2):
   Paso 1 - Leer la rejilla de referencia: copiar SIEMPRE transform/width/height/
@@ -73,14 +73,17 @@ _tcfg = _params_tpi()
 RADIO_EXT_M = float(_tcfg["radio_ext_m"])      # radio exterior del vecindario anular (m)
 RADIO_INT_M = float(_tcfg["radio_int_m"])      # radio interior (m); 0 = disco
 SIGMA_CLIP = float(_tcfg["sigma_clip"])        # acota el TPI estandarizado a +/- este nº de sigmas
-UMBRAL_BARRERA_DEG = float(_tcfg["umbral_barrera_deg"])  # pendiente > este valor -> intransitable
+UMBRAL_BARRERA_PCT = float(_tcfg["umbral_barrera_pct"])  # pendiente en % > este valor -> intransitable
 
 
-# ── Pendiente de Horn (heredada de la antigua pendiente.py, solo para la BARRERA) ──
+# ── Pendiente de Horn en PORCENTAJE (heredada de la antigua pendiente.py, solo para la BARRERA) ──
 
 
-def _pendiente_horn_numpy(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarray:
-    """Algoritmo Horn (1981) — equivalente a richdem TerrainAttribute(slope_degrees)."""
+def _pendiente_horn_pct_numpy(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarray:
+    """Algoritmo Horn (1981) en PORCENTAJE — slope_pct = 100 · tan(angulo) = 100 · |grad z|.
+
+    Equivalente a richdem TerrainAttribute(slope_percentage).
+    """
     z = dem.astype(np.float64)
     valid = np.isfinite(z) & (z != nodata)
     z_work = z.copy()
@@ -94,23 +97,23 @@ def _pendiente_horn_numpy(dem: np.ndarray, cellsize: float, nodata: float) -> np
     dzdx = ((z3 + 2 * z6 + z9) - (z1 + 2 * z4 + z7)) / (8.0 * cellsize)
     dzdy = ((z7 + 2 * z8 + z9) - (z1 + 2 * z2 + z3)) / (8.0 * cellsize)
 
-    slope_deg = np.degrees(np.arctan(np.hypot(dzdx, dzdy))).astype(np.float32)
-    slope_deg[~valid] = np.nan
-    return slope_deg
+    slope_pct = (np.hypot(dzdx, dzdy) * 100.0).astype(np.float32)
+    slope_pct[~valid] = np.nan
+    return slope_pct
 
 
-def calcular_pendiente_horn(dem: np.ndarray, transform, nodata: float = NODATA,
-                            cellsize: float = RESOLUCION_M) -> np.ndarray:
-    """Pendiente en grados (Horn). Usa richdem si esta instalado; si no, numpy."""
+def calcular_pendiente_pct(dem: np.ndarray, transform, nodata: float = NODATA,
+                           cellsize: float = RESOLUCION_M) -> np.ndarray:
+    """Pendiente en PORCENTAJE (Horn). Usa richdem si esta instalado; si no, numpy."""
     try:
         import richdem as rd
         dem_rd = rd.rdarray(dem.astype(np.float64), no_data=nodata)
         dem_rd.geotransform = [transform.c, transform.a, transform.b,
                                transform.f, transform.d, transform.e]
         rd.ResolveFlats(dem_rd, in_place=True)
-        return np.asarray(rd.TerrainAttribute(dem_rd, attrib="slope_degrees"), dtype=np.float32)
+        return np.asarray(rd.TerrainAttribute(dem_rd, attrib="slope_percentage"), dtype=np.float32)
     except ImportError:
-        return _pendiente_horn_numpy(dem, cellsize, nodata)
+        return _pendiente_horn_pct_numpy(dem, cellsize, nodata)
 
 
 def _kernel_anular(radio_ext_celdas: float, radio_int_celdas: float) -> np.ndarray:
@@ -270,16 +273,16 @@ def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
     tpi = calcular_tpi(dem_data, valid, cellsize, radio_ext_m, radio_int_m)
     cost_array = mapeo_coste_tpi(tpi)
 
-    # --- Barrera dura: pendiente del DEM > umbral -> intransitable (nodata) ---
+    # --- Barrera dura: pendiente del DEM (en %) > umbral -> intransitable (nodata) ---
     # El TPI no ve la inclinacion, asi que la barrera se calcula aparte del DEM.
-    slope_deg = calcular_pendiente_horn(dem_data, transform, nodata=dem_nodata, cellsize=cellsize)
-    barrera = np.isfinite(slope_deg) & (slope_deg > UMBRAL_BARRERA_DEG)
+    slope_pct = calcular_pendiente_pct(dem_data, transform, nodata=dem_nodata, cellsize=cellsize)
+    barrera = np.isfinite(slope_pct) & (slope_pct > UMBRAL_BARRERA_PCT)
     n_barreras = int(barrera.sum())
     cost_array[barrera] = NODATA
 
     # Fuera del AOI / sin dato / pendiente no computable -> nodata
     cost_array[~valid] = NODATA
-    cost_array[~np.isfinite(slope_deg)] = NODATA
+    cost_array[~np.isfinite(slope_pct)] = NODATA
     cost_array[~np.isfinite(cost_array)] = NODATA
 
     # --- Paso 5: guardar con el profile del DEM ---
@@ -308,7 +311,7 @@ def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
         f"TPI [{tpi_validos.min():.1f}, {tpi_validos.max():.1f}] m | "
         f"coste [{validos.min():.3f}, {validos.max():.3f}] | "
         f"crestas(<0.25)={n_cresta} valles(>0.75)={n_valle} | "
-        f"barreras(>{UMBRAL_BARRERA_DEG:.0f}°)={n_barreras}"
+        f"barreras(>{UMBRAL_BARRERA_PCT:.0f}%)={n_barreras}"
     )
     return salida
 

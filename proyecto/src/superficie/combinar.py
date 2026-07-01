@@ -39,7 +39,6 @@ def _layer_paths(scenario: str) -> list[Path]:
     return sorted([
         p for p in CAPAS_COSTE.glob(f"*_{s}.tif")
         if not p.stem.startswith("superficie_")
-        and not p.stem.startswith("pendiente_direccion_")  # campo vectorial, no capa de coste
     ])
 
 

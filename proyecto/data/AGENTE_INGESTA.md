@@ -54,6 +54,22 @@ hidrografía IGN u otras fuentes). Si dos capas tienen más de un **70% de
 solapamiento espacial**, imprime un aviso y pregunta al usuario cuál
 conservar antes de guardar.
 
+### Paso 5 — Capa de coste TPI (posición topográfica)
+Al preparar un AOI nuevo (origen+destino), deriva automáticamente la capa de
+coste **TPI** (Topographic Position Index) del DEM ya alineado. El TPI es el
+descriptor del relieve del proyecto (sustituye a la antigua dirección del
+gradiente): coste decreciente con la posición topográfica (cresta barata, valle
+caro) para que el LCP tienda a seguir divisorias.
+
+La transitabilidad se resuelve dentro de esta capa: la pendiente del DEM
+(algoritmo Horn, en **%**) por encima de `umbral_barrera_pct` (70 %, equivalente
+a ~35°) marca las celdas como intransitables (barrera dura).
+
+- Entrada: `dem_aoi_{s}.tif` (DEM alineado en el Paso 3)
+- Salida: `data/processed/Capas_Coste/tpi_{s}.tif`
+- Reutiliza `src/superficie/tpi.py` (`procesar_escenario`); parámetros en
+  `data/config/perfiles.yaml → parametros_capas.tpi`
+
 ---
 
 ## Capas esperadas en `data/raw/`

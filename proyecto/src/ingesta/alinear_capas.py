@@ -5,6 +5,7 @@ Paso 1: Construye el AOI (desde escenario.yaml o desde origen+destino+1 km buffe
 Paso 2: Reproyecta todas las capas a EPSG:25830.
 Paso 3: Remuestrea rasters a la rejilla común; recorta y reproyecta vectores → GeoPackage.
 Paso 4: Detecta solapamientos entre capas vectoriales (umbral: 70 %).
+Paso 5: Deriva la capa de coste TPI (posición topográfica) del DEM ya alineado.
 
 Ejecutar desde la raíz del proyecto (proyecto/):
     python -m src.ingesta.alinear_capas
@@ -706,6 +707,41 @@ def detect_duplicates(
 
 
 # --------------------------------------------------------------------------- #
+# Paso 5: capa de coste TPI derivada del DEM                                    #
+# --------------------------------------------------------------------------- #
+def _generar_tpi(scenario: str, log: logging.Logger) -> None:
+    """Deriva la capa de coste TPI del DEM ya alineado (dem_aoi_{s}.tif).
+
+    Al preparar un AOI nuevo (origen+destino) el relieve se describe con el TPI
+    (posición topográfica), no con la dirección del gradiente. Reutiliza
+    src.superficie.tpi.procesar_escenario, que lee dem_aoi_{s}.tif de
+    Recorte_AOI y escribe tpi_{s}.tif en Capas_Coste/.
+    """
+    dem_path = DATA_RECORTE / f"dem_aoi_{scenario}.tif"
+    if not dem_path.exists():
+        log.warning(
+            f"  ✗ No existe {dem_path.relative_to(PROJECT_ROOT)}; "
+            f"no se puede derivar el TPI (¿faltó el DEM en data/raw/?)."
+        )
+        return
+
+    try:
+        from src.superficie.tpi import procesar_escenario as _procesar_tpi
+    except ImportError:
+        try:
+            from superficie.tpi import procesar_escenario as _procesar_tpi
+        except ImportError as exc:
+            log.warning(f"  ✗ No se pudo importar la capa TPI: {exc}")
+            return
+
+    try:
+        salida = _procesar_tpi(scenario)
+        log.info(f"  ✓ TPI generado: {salida.relative_to(PROJECT_ROOT)}")
+    except Exception as exc:
+        log.error(f"  ✗ error generando el TPI: {exc}")
+
+
+# --------------------------------------------------------------------------- #
 # Punto de entrada                                                              #
 # --------------------------------------------------------------------------- #
 def _parse_args() -> argparse.Namespace:
@@ -897,6 +933,10 @@ def main() -> None:
         detect_duplicates(processed_vectors, DUPLICATE_THRESHOLD, log)
     else:
         log.info("  No hay capas vectoriales procesadas; se omite este paso.")
+
+    # ── Paso 5: Capa de coste TPI (derivada del DEM alineado) ───────────── #
+    log.info("\n─── Paso 5: Capa de coste TPI (posición topográfica) ───────────")
+    _generar_tpi(args.escenario, log)
 
     # ── Resumen ──────────────────────────────────────────────────────────── #
     log.info("\n" + "=" * 62)
