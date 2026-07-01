@@ -270,13 +270,44 @@ def _build_aoi(cfg: dict):
     return line.buffer(_PERP_BUFFER_M, cap_style=2)
 
 
+# Ancla global de la rejilla común: todas las celdas caen sobre una malla
+# universal de paso `res` con origen en (_GRID_ANCHOR_X, _GRID_ANCHOR_Y). Así
+# dos AOIs/escenarios distintos que solapen comparten exactamente los mismos
+# bordes de píxel y son directamente comparables, sin depender de los bounds
+# concretos del AOI.
+_GRID_ANCHOR_X = 0.0
+_GRID_ANCHOR_Y = 0.0
+
+
+def _snap_down(value: float, res: float, anchor: float) -> float:
+    """Baja `value` al múltiplo de `res` (respecto a `anchor`) igual o menor."""
+    return anchor + math.floor((value - anchor) / res) * res
+
+
+def _snap_up(value: float, res: float, anchor: float) -> float:
+    """Sube `value` al múltiplo de `res` (respecto a `anchor`) igual o mayor."""
+    return anchor + math.ceil((value - anchor) / res) * res
+
+
 def _common_transform(xmin: float, ymin: float, xmax: float, ymax: float,
                        res: float):
-    """Calcula el transform, ancho y alto de la rejilla común."""
-    width = math.ceil((xmax - xmin) / res)
-    height = math.ceil((ymax - ymin) / res)
-    # from_origin(west, north, xsize, ysize)
-    transform = from_origin(xmin, ymin + height * res, res, res)
+    """Calcula el transform, ancho y alto de la rejilla común.
+
+    La rejilla se ancla a una malla global de paso `res` (origen en
+    (_GRID_ANCHOR_X, _GRID_ANCHOR_Y)): los bordes de píxel son múltiplos
+    exactos de `res` y por tanto reproducibles entre AOIs y escenarios. El
+    AOI se expande hacia fuera hasta el múltiplo de `res` más cercano para
+    quedar cubierto por completo.
+    """
+    west = _snap_down(xmin, res, _GRID_ANCHOR_X)
+    east = _snap_up(xmax, res, _GRID_ANCHOR_X)
+    south = _snap_down(ymin, res, _GRID_ANCHOR_Y)
+    north = _snap_up(ymax, res, _GRID_ANCHOR_Y)
+    width = round((east - west) / res)
+    height = round((north - south) / res)
+    # from_origin(west, north, xsize, ysize): la esquina noroeste (top-left) de
+    # la rejilla es (west, north); `north` es el borde superior = máx. y ajustado.
+    transform = from_origin(west, north, res, res)
     return transform, width, height
 
 
