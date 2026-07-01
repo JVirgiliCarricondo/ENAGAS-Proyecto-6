@@ -12,39 +12,39 @@ perfiles:
     nombre: "Más corto"
     descripcion: "Minimiza la longitud; tolera más pendiente e impacto ambiental."
     pesos:
-      longitud:     1.5   # distancia muy importante
-      tpi:          0.2   # relieve (posición topográfica)
-      protegida:    0.2
-      inundable:    0.1   # zonas inundables (A=14.25 → ~protegida/2)
-      cruces:       0.3
-      expropiacion: 0.2
-      geotecnia:    0.1
+      longitud:     1.00  # distancia muy importante (normalizado ÷1.5)
+      cruces:       0.20
+      tpi:          0.13  # relieve (posición topográfica)
+      protegida:    0.13
+      expropiacion: 0.13
+      geotecnia:    0.07
+      inundable:    0.07  # zonas inundables (A=14.25 → ~protegida/2)
     nota: "Mejor velocidad de ejecución, pero relieve/impacto mayores"
 
   - id: ambiental
     nombre: "Menor impacto ambiental"
     descripcion: "Evita zonas protegidas (Red Natura 2000) y cruces; aunque alargue el trazado."
     pesos:
-      protegida:    1.5   # evitar zonas protegidas ante todo
-      inundable:    0.75  # zonas inundables (A=14.25 → ~protegida/2)
-      cruces:       0.8   # evitar cruces con infraestructuras
-      expropiacion: 0.5
-      tpi:          0.3   # relieve (posición topográfica)
-      geotecnia:    0.3
-      longitud:     0.3
+      protegida:    1.00  # evitar zonas protegidas ante todo (normalizado ÷1.5)
+      cruces:       0.53  # evitar cruces con infraestructuras
+      inundable:    0.50  # zonas inundables (A=14.25 → ~protegida/2)
+      expropiacion: 0.33
+      tpi:          0.20  # relieve (posición topográfica)
+      geotecnia:    0.20
+      longitud:     0.20
     nota: "Prioriza viabilidad medioambiental"
 
   - id: pendiente
     nombre: "Por relieve (divisorias / TPI)"
     descripcion: "Prioriza la posición topográfica (TPI): tiende a seguir crestas/divisorias y evitar valles y fondos de cauce (mayor estabilidad geotécnica). La barrera de pendiente >70% (≈35°) se conserva dentro de la capa TPI."
     pesos:
-      tpi:          1.5   # fuerte preferencia por el relieve (cresta barata, valle caro)
-      geotecnia:    0.8   # terreno estable
-      protegida:    0.4
-      inundable:    0.2   # zonas inundables (A=14.25 → ~protegida/2)
-      cruces:       0.3
-      expropiacion: 0.3
-      longitud:     0.3
+      tpi:          1.00  # fuerte preferencia por el relieve (normalizado ÷1.5)
+      geotecnia:    0.53  # terreno estable
+      protegida:    0.27
+      cruces:       0.20
+      expropiacion: 0.20
+      longitud:     0.20
+      inundable:    0.13  # zonas inundables (A=14.25 → ~protegida/2)
     nota: "Ruta diferenciada por divisorias; reduce cruces de cauce. (id 'pendiente' conservado por compatibilidad.)"
 
   - id: equilibrio

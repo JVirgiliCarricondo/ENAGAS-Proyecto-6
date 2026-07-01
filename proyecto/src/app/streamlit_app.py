@@ -67,7 +67,7 @@ _CAPAS_PESO: list[tuple[str, str]] = [
     ("expropiacion", "Expropiacion (catastro)"),
     ("geotecnia",    "Geotecnia (litologia)"),
 ]
-_PESO_MIN, _PESO_MAX, _PESO_STEP = 0.0, 1.0, 0.01
+_PESO_MIN, _PESO_MAX, _PESO_STEP = 0, 100, 1
 
 try:
     from streamlit_folium import st_folium as _st_folium
@@ -371,9 +371,8 @@ def _render_editor_pesos() -> list[dict]:
         st.caption(
             "Cada perfil combina las capas como: "
             "**coste = peso_longitud + Σ (peso_capa × capa)**. "
-            "Los valores son indices relativos, no euros. "
-            "Cada peso está acotado a [0, 1]; lo ideal es que la suma de los "
-            "pesos de un perfil sea 1.00 (100%)."
+            "Los valores son índices relativos, no euros. "
+            "Los pesos se expresan en porcentaje (0–100 %)."
         )
 
         pid = st.selectbox(
@@ -394,20 +393,17 @@ def _render_editor_pesos() -> list[dict]:
         for i, (clave, etiqueta) in enumerate(_CAPAS_PESO):
             col = col_a if i % 2 == 0 else col_b
             with col:
-                pesos[clave] = st.slider(
+                pct = st.slider(
                     etiqueta,
                     min_value=_PESO_MIN,
                     max_value=_PESO_MAX,
-                    value=float(pesos.get(clave, 0.0)),
+                    value=int(round(float(pesos.get(clave, 0.0)) * 100)),
                     step=_PESO_STEP,
+                    format="%d%%",
                     key=f"peso_{pid}_{clave}_v{ver}",
                 )
+                pesos[clave] = pct / 100
 
-        suma_pesos = sum(pesos.values())
-        if abs(suma_pesos - 1.0) > 0.01:
-            st.caption(f"Suma de pesos: {suma_pesos:.2f} (recomendado: 1.00)")
-        else:
-            st.caption(f"Suma de pesos: {suma_pesos:.2f} (correcto)")
 
         btn_r, btn_a = st.columns(2)
         with btn_r:
@@ -427,7 +423,8 @@ def _render_editor_pesos() -> list[dict]:
         for p in perfiles:
             row = {"Perfil": _NOMBRE_PERFIL.get(p["id"], p["id"])}
             for clave, etiqueta in _CAPAS_PESO:
-                row[etiqueta.split(" (")[0]] = p.get("pesos", {}).get(clave, 0.0)
+                v = p.get("pesos", {}).get(clave, 0.0)
+                row[etiqueta.split(" (")[0]] = f"{round(v * 100)}%"
             filas.append(row)
         st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
@@ -887,7 +884,8 @@ def _render_results():
             for p in perfiles_usados:
                 row = {"Perfil": _NOMBRE_PERFIL.get(p["id"], p["id"])}
                 for clave, etiqueta in _CAPAS_PESO:
-                    row[etiqueta.split(" (")[0]] = p.get("pesos", {}).get(clave, 0.0)
+                    v = p.get("pesos", {}).get(clave, 0.0)
+                    row[etiqueta.split(" (")[0]] = f"{round(v * 100)}%"
                 filas.append(row)
             st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
