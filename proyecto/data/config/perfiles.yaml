@@ -15,6 +15,7 @@ perfiles:
       longitud:     1.5   # distancia muy importante
       tpi:          0.2   # relieve (posición topográfica)
       protegida:    0.2
+      inundable:    0.1   # zonas inundables (A=14.25 → ~protegida/2)
       cruces:       0.3
       expropiacion: 0.2
       geotecnia:    0.1
@@ -26,6 +27,7 @@ perfiles:
     descripcion: "Evita zonas protegidas (Red Natura 2000) y cruces; aunque alargue el trazado."
     pesos:
       protegida:    1.5   # evitar zonas protegidas ante todo
+      inundable:    0.75  # zonas inundables (A=14.25 → ~protegida/2)
       cruces:       0.8   # evitar cruces con infraestructuras
       expropiacion: 0.5
       tpi:          0.3   # relieve (posición topográfica)
@@ -42,6 +44,7 @@ perfiles:
       traversal:    1.2   # seguir la dirección del gradiente
       geotecnia:    0.8   # terreno estable
       protegida:    0.4
+      inundable:    0.2   # zonas inundables (A=14.25 → ~protegida/2)
       cruces:       0.3
       expropiacion: 0.3
       longitud:     0.3
@@ -53,20 +56,21 @@ perfiles:
     # Pesos alineados con la tabla de Enagás (suman 1.00 = 100 %).
     # Mapeo capa→grupo; el grupo Patrimonio (sin capa en el modelo) se redistribuye
     # entre los 4 grupos con capa, reescalando sus puntos medios dentro de banda:
-    #   Medioambiente 30-40 %  → protegida                  0.37
+    #   Medioambiente 30-40 %  → protegida + inundable        0.37  (2:1 por A-oficial)
     #   Urbanístico   15-25 %  → expropiacion               0.21
     #   Geotecnia     15-25 %  → geotecnia+tpi+traversal    0.21
     #   Construcción  10-20 %  → cruces                     0.16
     #   Otros          5 %     → longitud                   0.05
     pesos:
-      protegida:    0.37   # Medioambiente
+      protegida:    0.25   # Medioambiente: Red Natura 2000 (A=28.5 → 2/3 del grupo)
+      inundable:    0.12   # Medioambiente: zonas inundables (A=14.25 → 1/3 del grupo)
       expropiacion: 0.21   # Urbanístico
       geotecnia:    0.09   # Geotecnia ┐
       tpi:          0.08   # Geotecnia ├ 0.21  (relieve vía TPI)
       traversal:    0.04   # Geotecnia ┘
       cruces:       0.16   # Construcción / cruces
       longitud:     0.05   # Otros (coste-distancia base del LCP)
-    nota: "Pesos alineados con anexo II EV-500 (Enagás); Patrimonio (sin capa) redistribuido."
+    nota: "Pesos alineados con anexo II EV-500 (Enagás); Patrimonio (sin capa) redistribuido; medioambiente repartido entre protegida e inundable."
 
 # ============================================================================
 # PARÁMETROS DE COSTE INTRA-CAPA (calibrables)
@@ -186,6 +190,16 @@ parametros_capas:
   zonas_protegidas:
     valor_protegida: 0.75  # "RED NATURA 2000" oficial (A=28.5 → /38); ZEPA/LIC/ZEC
     valor_fondo: 0.0       # fuera de zona protegida
+
+  # --------------------------------------------------------------------------
+  # P4b — Zonas inundables (src/superficie/zonas_inundables.py)
+  # Variable binaria: dentro de lámina inundable SNCZI (unión T10+T100+T500) = valor_inundable.
+  # Estandarizado al factor oficial "INUNDABILIDAD" (A=14.25):
+  #   14.25 / 38 → 0.375. Comparte escala [0,1] con el resto de capas.
+  # --------------------------------------------------------------------------
+  zonas_inundables:
+    valor_inundable: 0.375  # "Inundabilidad" oficial (A=14.25 → /38)
+    valor_fondo: 0.0        # fuera de zona inundable
 
   # --------------------------------------------------------------------------
   # P5 — Cruces viario + ríos (src/superficie/cruces_viario_rios.py)
