@@ -1,11 +1,15 @@
 """Combinación de capas de coste individuales en una superficie única por escenario.
 
-Lee todas las capas de Capas_Coste/ (excluyendo las propias superficies) y las
-combina con pesos iguales en Trazados/superficie_{s}.tif. El coste base de
+Lee las capas de Capas_Coste/ (excluyendo las propias superficies) y las combina
+con los pesos de un perfil en Trazados/superficie_{s}.tif. El coste base de
 longitud (BASE_LONG) garantiza que la distancia siempre cuente en el LCP.
 
-Primera iteración: pesos iguales (w=1.0 para cada capa, BASE_LONG=1.0).
-Para perfiles diferenciados, ver data/config/perfiles.yaml y combinar_perfiles.py.
+`combinar_pesos()` es la ÚNICA fuente de verdad de la ponderación por perfil:
+la usan tanto `run()` (que escribe la superficie a disco) como
+`trazados.ruta_pendiente.run_perfiles` (que la consume en memoria para el LCP).
+
+Sin argumento `--perfil` se aplican pesos iguales (w=1/n por capa, BASE_LONG=1.0).
+Los perfiles diferenciados viven en data/config/perfiles.yaml.
 """
 
 from __future__ import annotations
@@ -33,6 +37,17 @@ BASE_LONG = 1.0  # coste constante por celda — garantiza que la distancia cuen
 NODATA = -9999.0
 BARRERA_DISCO = 999.0  # valor que representa barrera dura en el TIFF
 
+# Mapeo peso (perfiles.yaml) → nombre de fichero de capa en Capas_Coste/.
+# La clave 'longitud' NO es una capa: escala el coste base por celda (BASE_LONG).
+PESO_A_CAPA = {
+    "tpi": "tpi",
+    "protegida": "protegida",
+    "inundable": "inundable",
+    "cruces": "cruces",
+    "expropiacion": "expropiacion",
+    "geotecnia": "geotecnia",
+}
+
 
 def _layer_paths(scenario: str) -> list[Path]:
     s = scenario.upper()
@@ -48,90 +63,100 @@ def _layer_name(path: Path, scenario: str) -> str:
     return path.stem[: -len(suffix)] if path.stem.endswith(suffix) else path.stem
 
 
-def run(scenario: str, pesos: dict[str, float] | None = None) -> Path:
-    """Genera la superficie de coste combinada.
+def combinar_pesos(
+    scenario: str, pesos: dict[str, float]
+) -> tuple[np.ndarray, rasterio.Affine, object]:
+    """Superficie de coste escalar PONDERADA por los pesos de un perfil.
+
+    Única fuente de verdad de la ponderación por perfil (la reutiliza también
+    `trazados.ruta_pendiente.run_perfiles`). Devuelve el array en memoria, sin
+    escribir a disco.
+
+        superficie = BASE_LONG · peso('longitud') + Σ peso_capa · capa
+
+    Convenio de impasabilidad: NODATA (-9999) e inf → nan. Una celda es
+    impasable (nan) si cualquier capa usada lo es (fuera de AOI o barrera dura);
+    el nan se propaga por la suma. Solo se leen las capas con peso en `pesos`
+    (`PESO_A_CAPA`); la clave 'longitud' escala el coste base por celda.
 
     Args:
         scenario: 'A' o 'B'.
-        pesos:    dict nombre_capa → peso. La clave especial 'longitud' escala
-                  BASE_LONG. Capas no listadas reciben peso 0 (ignoradas).
-                  None → peso igual 1/n para todas las capas encontradas.
+        pesos:    dict nombre_capa → peso, tal como aparece en perfiles.yaml.
     """
     s = scenario.upper()
-    paths = _layer_paths(s)
-    if not paths:
-        raise FileNotFoundError(
-            f"No hay capas de coste para escenario {s} en {CAPAS_COSTE}"
-        )
+    base = BASE_LONG * float(pesos.get("longitud", 1.0))
 
-    if pesos is None:
-        n = len(paths)
-        weights = {_layer_name(p, s): 1.0 / n for p in paths}
-        base = BASE_LONG
-    else:
-        weights = {_layer_name(p, s): float(pesos.get(_layer_name(p, s), 0.0)) for p in paths}
-        base = BASE_LONG * float(pesos.get("longitud", 1.0))
-
-    log.info("[combinar_%s] base=%.2f | capas:", s, base)
-    for p in paths:
-        log.info("[combinar_%s]   %-22s  w=%.3f", s, p.name, weights[_layer_name(p, s)])
-
-    TRAZADOS.mkdir(parents=True, exist_ok=True)
-    out_path = TRAZADOS / f"superficie_{s}.tif"
-
-    # ── Leer profile de referencia ────────────────────────────────────────────
-    with rasterio.open(paths[0]) as src:
-        profile = src.profile.copy()
-        height, width = src.height, src.width
-
-    # ── Apilar capas ─────────────────────────────────────────────────────────
-    arrays: list[np.ndarray] = []
-    layer_weights: list[float] = []
-    for p in paths:
-        with rasterio.open(p) as src:
+    acc: np.ndarray | None = None
+    transform = crs = None
+    for key, w in pesos.items():
+        cap = PESO_A_CAPA.get(key)
+        if cap is None:
+            continue  # 'longitud' u otra clave sin capa raster
+        path = CAPAS_COSTE / f"{cap}_{s}.tif"
+        if not path.exists():
+            log.warning("[combinar_%s] capa ausente para peso '%s': %s", s, key, path.name)
+            continue
+        with rasterio.open(path) as src:
             arr = src.read(1).astype("float64")
-        arr = np.where(arr == NODATA, np.nan, arr)   # fuera del AOI → nan
-        arrays.append(arr)
-        layer_weights.append(weights[_layer_name(p, s)])
+            if acc is None:
+                transform, crs = src.transform, src.crs
+                acc = np.full(arr.shape, base, dtype="float64")
+        arr = np.where(arr == NODATA, np.nan, arr)        # fuera del AOI → nan
+        arr = np.where(np.isposinf(arr), np.nan, arr)     # barrera dura → nan
+        log.info("[combinar_%s]   %-22s  w=%.3f", s, path.name, float(w))
+        acc = acc + float(w) * arr                        # nan se propaga
 
-    stack = np.stack(arrays, axis=0)                          # (n, H, W)
-    wvec = np.array(layer_weights, dtype="float64")[:, None, None]  # broadcast
+    if acc is None:
+        raise FileNotFoundError(
+            f"[{s}] perfil sin capas ponderables en {CAPAS_COSTE}: {pesos}"
+        )
+    return acc, transform, crs
 
-    # Máscara: celda fuera del AOI si cualquier capa es nan
-    outside_aoi = np.any(np.isnan(stack), axis=0)
 
-    # Barrera dura: si alguna capa tiene inf → celda intransitable
-    is_barrier = np.any(np.isposinf(stack), axis=0)
+def run(scenario: str, pesos: dict[str, float] | None = None) -> Path:
+    """Genera la superficie de coste combinada y la escribe en Trazados/.
 
-    # Suma ponderada (inf → nan para el cálculo, barreras se re-aplican después)
-    stack_calc = np.where(np.isposinf(stack), np.nan, stack)
-    weighted_sum = np.nansum(stack_calc * wvec, axis=0)
+    Args:
+        scenario: 'A' o 'B'.
+        pesos:    dict nombre_capa → peso (ver `combinar_pesos`). La clave
+                  especial 'longitud' escala BASE_LONG. Capas no listadas se
+                  ignoran. None → peso igual 1/n para todas las capas halladas.
+    """
+    s = scenario.upper()
+    if pesos is None:
+        paths = _layer_paths(s)
+        if not paths:
+            raise FileNotFoundError(
+                f"No hay capas de coste para escenario {s} en {CAPAS_COSTE}"
+            )
+        n = len(paths)
+        # longitud=1.0 → base=BASE_LONG; cada capa hallada con peso igual 1/n.
+        pesos = {"longitud": 1.0, **{_layer_name(p, s): 1.0 / n for p in paths}}
 
-    # Superficie: base + suma ponderada
-    superficie = base + weighted_sum
-    superficie = np.where(is_barrier, np.inf, superficie)
-    superficie = np.where(outside_aoi, np.nan, superficie)
+    log.info("[combinar_%s] base=%.2f | capas:", s, BASE_LONG * float(pesos.get("longitud", 1.0)))
+    superficie, transform, crs = combinar_pesos(s, pesos)
 
     # ── Estadísticas ─────────────────────────────────────────────────────────
-    valid = superficie[np.isfinite(superficie) & ~np.isnan(superficie)]
+    outside_aoi = np.isnan(superficie)
+    valid = superficie[np.isfinite(superficie)]
     if valid.size:
         log.info(
-            "[combinar_%s] rango válido: [%.4f, %.4f]  |  barreras: %d celdas  |  fuera AOI: %d celdas",
-            s, float(valid.min()), float(valid.max()),
-            int(np.sum(is_barrier)), int(np.sum(outside_aoi)),
+            "[combinar_%s] rango válido: [%.4f, %.4f]  |  fuera AOI/barrera: %d celdas",
+            s, float(valid.min()), float(valid.max()), int(np.sum(outside_aoi)),
         )
 
     # ── Convertir para escritura en disco ─────────────────────────────────────
     out_arr = np.where(np.isposinf(superficie), BARRERA_DISCO, superficie)
     out_arr = np.where(np.isnan(out_arr), NODATA, out_arr).astype("float32")
 
-    profile.update(
+    profile = dict(
         driver="GTiff", dtype="float32", count=1,
-        nodata=NODATA, compress="lzw", tiled=False,
+        height=superficie.shape[0], width=superficie.shape[1],
+        transform=transform, crs=crs, nodata=NODATA, compress="lzw", tiled=False,
     )
-    for key in ("blockxsize", "blockysize"):
-        profile.pop(key, None)
 
+    TRAZADOS.mkdir(parents=True, exist_ok=True)
+    out_path = TRAZADOS / f"superficie_{s}.tif"
     with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(out_arr, 1)
 

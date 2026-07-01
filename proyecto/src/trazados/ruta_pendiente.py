@@ -38,29 +38,21 @@ import rasterio.transform as rt
 import yaml
 from shapely.geometry import LineString
 
+try:
+    from ..superficie.combinar import combinar_pesos
+except ImportError:
+    from superficie.combinar import combinar_pesos
+
 log = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parents[2]
 DATA = _ROOT / "data"
 CONFIG = DATA / "config"
 TRAZADOS = DATA / "processed" / "Trazados"   # superficies escalares (.tif)
-CAPAS = DATA / "processed" / "Capas_Coste"
 RUTAS_DIR = DATA / "processed" / "Rutas"     # rutas LCP (.gpkg)
 
 _NODATA = -9999.0
 _BARRERA_DISCO = 999.0
-
-# Mapeo peso (perfiles.yaml) → fichero de capa escalar en Capas_Coste/.
-# Clave NO listada y con tratamiento especial:
-#   'longitud'  → coste base por celda (no es una capa).
-PESO_A_CAPA = {
-    "tpi": "tpi",
-    "protegida": "protegida",
-    "inundable": "inundable",
-    "cruces": "cruces",
-    "expropiacion": "expropiacion",
-    "geotecnia": "geotecnia",
-}
 
 _VECINOS = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
             (0, 1), (1, -1), (1, 0), (1, 1)]
@@ -195,40 +187,6 @@ def _exportar(celdas, transform, crs, tipo: str, path: Path) -> LineString:
     return linea
 
 
-def _superficie_perfil(
-    s: str, pesos: dict[str, float]
-) -> tuple[np.ndarray, rasterio.Affine, object]:
-    """Superficie escalar PONDERADA por los pesos de un perfil (perfiles.yaml).
-
-    coste = peso_longitud (base por celda) + Σ peso_capa · capa
-    Sigue el convenio de combinar.py: -9999 → nan (celda impasable: fuera de AOI
-    o barrera dura). Una celda es impasable si cualquier capa usada lo es.
-    """
-    base = float(pesos.get("longitud", 1.0))
-
-    transform = crs = None
-    acc = None
-    for key, w in pesos.items():
-        cap = PESO_A_CAPA.get(key)
-        if cap is None:
-            continue  # 'longitud' u otra clave sin capa raster
-        path = CAPAS / f"{cap}_{s}.tif"
-        if not path.exists():
-            log.warning("[%s] capa ausente para peso '%s': %s", s, key, path.name)
-            continue
-        with rasterio.open(path) as src:
-            arr = src.read(1).astype("float64")
-            if transform is None:
-                transform, crs = src.transform, src.crs
-                acc = np.full(arr.shape, base, dtype="float64")
-        arr = np.where(arr == _NODATA, np.nan, arr)
-        acc = acc + float(w) * arr  # nan se propaga → celda impasable
-
-    if acc is None:
-        raise RuntimeError(f"[{s}] perfil sin capas ponderables: {pesos}")
-    return acc, transform, crs
-
-
 def _write_qml(tif_path: Path, vmin: float, vmax: float) -> None:
     """Leyenda verde→amarillo→rojo para QGIS (mismo esquema que combinar.py / main)."""
     mid = (vmin + vmax) / 2
@@ -301,7 +259,7 @@ def run_perfiles(s: str, perfiles_override: list[dict] | None = None) -> None:
     print(f"\n=== Escenario {s}: rutas por perfil ===")
     for perfil in perfiles:
         pid, pesos = perfil["id"], perfil["pesos"]
-        C, transform, crs = _superficie_perfil(s, pesos)
+        C, transform, crs = combinar_pesos(s, pesos)
         _guardar_superficie(C, transform, crs, TRAZADOS / f"superficie_{s}_{pid}.tif")
         origen = _snap_to_valid(*_utm_to_rowcol(*origen_utm, transform), C)
         destino = _snap_to_valid(*_utm_to_rowcol(*destino_utm, transform), C)
