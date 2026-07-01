@@ -62,7 +62,7 @@ SLOPE_REF = 30.0  # grados; normaliza S a [0,1] (= barrera dura de pendiente.py)
 #                 λ (fuerza de la penalización anisótropa). Ver run_perfiles().
 #   'aspecto'   → capa intermedia, no de coste.
 PESO_A_CAPA = {
-    "pendiente": "pendiente",
+    "tpi": "tpi",
     "protegida": "protegida",
     "inundable": "inundable",
     "cruces": "cruces",
@@ -78,7 +78,7 @@ _COLOR_RUTA = {
     "corto":      "31,120,180,255",   # azul
     "equilibrio": "255,127,0,255",    # naranja
     "ambiental":  "51,160,44,255",    # verde
-    "pendiente":  "227,26,28,255",    # rojo
+    "pendiente":  "227,26,28,255",    # rojo (perfil 'pendiente', ahora basado en TPI)
     "anisotropa": "106,61,154,255",   # morado (modo demo)
     "isotropa":   "160,160,160,255",  # gris   (modo demo)
 }

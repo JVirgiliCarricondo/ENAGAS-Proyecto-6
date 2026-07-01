@@ -7,15 +7,16 @@
         zoomedOutResamplingMethod="nearestNeighbour"/>
     </provider>
     <rasterrenderer opacity="1" alphaBand="-1" band="1" type="singlebandpseudocolor"
-      classificationMin="1.5618" classificationMax="2.0313" nodataColor="">
+      classificationMin="0" classificationMax="1" nodataColor="">
       <rasterTransparency/>
       <rastershader>
         <colorrampshader colorRampType="INTERPOLATED" clip="0"
-          minimumValue="1.5618" maximumValue="2.0313"
-          classificationMode="1" labelPrecision="3">
-          <item value="1.5618" color="#1a9850" label="Coste bajo"  alpha="255"/>
-          <item value="1.7965" color="#ffffbf" label="Coste medio" alpha="255"/>
-          <item value="2.0313" color="#d73027" label="Coste alto"  alpha="255"/>
+          minimumValue="0" maximumValue="1" classificationMode="1" labelPrecision="2">
+          <item value="0.00" color="#d7191c" label="Cresta / divisoria (coste bajo)" alpha="255"/>
+          <item value="0.25" color="#fdae61" label="Ladera alta"                     alpha="255"/>
+          <item value="0.50" color="#f7e8c3" label="Llano / ladera"                  alpha="255"/>
+          <item value="0.75" color="#abd9e9" label="Ladera baja"                     alpha="255"/>
+          <item value="1.00" color="#2c7bb6" label="Valle / vaguada (coste alto)"    alpha="255"/>
         </colorrampshader>
       </rastershader>
     </rasterrenderer>
