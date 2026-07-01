@@ -18,6 +18,16 @@ Archivos generados en data/raw/ (sufijo _A o _B según el escenario):
   IGME_{s}.gpkg    → Mapa geológico IGME MAGNA50, WFS / ArcGIS REST fallback
   INUND_{s}.gpkg   → Zonas inundables SNCZI (MITECO), OGC API Features, unión T10+T100+T500
 
+Además se escribe un manifiesto de estado por capa en data/raw/manifiesto_estado.json
+que distingue tres situaciones que antes se confundían en "guardar vacío y seguir":
+
+  - ok      → capa descargada con datos.
+  - empty   → el servicio respondió pero el AOI no tiene cobertura (GPKG vacío
+              legítimo: ausencia CONFIRMADA de datos).
+  - failed  → la descarga falló (servicio caído/timeout/error): NO se escribe un
+              GPKG vacío; no sabemos si hay cobertura. El proceso termina con
+              código de salida ≠ 0 para que el pipeline no continúe a ciegas.
+
 Para verificar los nombres de capa de cada WFS:
   GET {endpoint}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetCapabilities
 
@@ -31,13 +41,16 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import logging
 import math
 import os
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Callable
 
@@ -72,6 +85,29 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]   # proyecto/
 DATA_RAW = PROJECT_ROOT / "data" / "raw"
 CONFIG_ESCENARIO = PROJECT_ROOT / "data" / "config" / "escenario.yaml"
 LOG_PATH = DATA_RAW / "log_descarga.txt"
+MANIFEST_PATH = DATA_RAW / "manifiesto_estado.json"
+
+
+# ──────────────────────────────────────────────────────────────────────────── #
+# Estado de descarga por capa                                                  #
+# ──────────────────────────────────────────────────────────────────────────── #
+class LayerStatus(str, Enum):
+    """Estado del resultado de descarga de una capa en un escenario."""
+    OK = "ok"           # datos descargados y escritos en disco
+    EMPTY = "empty"     # el servicio respondió, pero el AOI no tiene cobertura
+                        #   (GPKG vacío legítimo: ausencia confirmada de datos)
+    FAILED = "failed"   # la descarga falló (servicio caído, timeout, error de
+                        #   parseo…): NO se escribe GPKG vacío, no sabemos si hay
+                        #   cobertura o no
+    SKIPPED = "skipped" # el archivo ya existía y no se solicitó sobrescribir
+
+
+@dataclass
+class LayerResult:
+    """Resultado de descargar una capa: estado + nº de filas + detalle."""
+    status: LayerStatus
+    rows: int = 0
+    detail: str = ""
 
 # ──────────────────────────────────────────────────────────────────────────── #
 # Endpoints de servicios OGC públicos                                          #
@@ -156,23 +192,52 @@ def _to_4326(xmin: float, ymin: float, xmax: float, ymax: float
     return w, s, e, n
 
 
-def _save_vector(
-    gdf: "gpd.GeoDataFrame | None",
+def _write_gpkg(
+    gdf: "gpd.GeoDataFrame",
     out_path: Path,
     log: logging.Logger,
-) -> bool:
-    if gdf is None or gdf.empty:
-        empty = gpd.GeoDataFrame(geometry=gpd.GeoSeries(crs="EPSG:25830"))
-        empty.to_file(out_path, driver="GPKG")
-        log.warning(f"  Sin datos en el AOI → guardado vacío: {out_path.name}")
-        return True
+) -> int:
+    """Escribe un GeoDataFrame (posiblemente vacío, pero válido) reproyectado a
+    EPSG:25830. Devuelve el nº de filas escritas."""
     if gdf.crs is None:
         gdf = gdf.set_crs("EPSG:25830")
     elif gdf.crs.to_epsg() != 25830:
         gdf = gdf.to_crs("EPSG:25830")
     gdf.to_file(out_path, driver="GPKG")
-    log.info(f"  ✓ {out_path.name}  ({len(gdf)} filas)")
-    return True
+    return len(gdf)
+
+
+def _vector_result(
+    gdf: "gpd.GeoDataFrame | None",
+    out_path: Path,
+    log: logging.Logger,
+    source: str,
+) -> LayerResult:
+    """
+    Traduce el resultado de un descargador a LayerResult, distinguiendo los tres
+    estados que antes se colapsaban en "guardar vacío y devolver True":
+
+      - gdf is None  → FAILED: la descarga falló. NO se escribe GPKG vacío; si ya
+        existe un archivo previo se conserva (mejor dato viejo que fabricar un
+        "sin cobertura" falso).
+      - gdf vacío    → EMPTY:  el servicio respondió pero el AOI no tiene cobertura.
+        Se escribe un GPKG vacío (ausencia confirmada, legítima aguas abajo).
+      - gdf con filas → OK:    se escribe con sus geometrías.
+    """
+    if gdf is None:
+        log.error(f"  ✗ descarga fallida ({source}) → no se escribe GPKG "
+                  f"(estado FAILED, se conserva el archivo previo si lo hubiera)")
+        return LayerResult(LayerStatus.FAILED, 0, f"descarga fallida: {source}")
+
+    if gdf.empty:
+        empty = gpd.GeoDataFrame(geometry=gpd.GeoSeries(crs="EPSG:25830"))
+        _write_gpkg(empty, out_path, log)
+        log.warning(f"  ○ AOI sin cobertura ({source}) → GPKG vacío: {out_path.name}")
+        return LayerResult(LayerStatus.EMPTY, 0, f"AOI sin cobertura: {source}")
+
+    rows = _write_gpkg(gdf, out_path, log)
+    log.info(f"  ✓ {out_path.name}  ({rows} filas)")
+    return LayerResult(LayerStatus.OK, rows, source)
 
 
 def _parse_wfs_response(
@@ -298,7 +363,11 @@ def _ogc_features_bbox(
     Descarga una colección OGC API Features (estándar OGC 17-069r3, sucesor del
     WFS clásico) filtrando por bbox. El bbox se da en WGS84 (CRS84), como exige
     el estándar; la respuesta GeoJSON viene en WGS84 y se reproyecta a 25830.
-    Devuelve None si la colección no existe o el servicio no responde.
+
+    Distingue fallo de ausencia de cobertura:
+      - None                → el servicio no respondió o dio un error (FAILED).
+      - GeoDataFrame vacío  → respondió correctamente sin features en el AOI.
+      - GeoDataFrame lleno  → features reproyectadas a EPSG:25830.
     """
     w, s, e, n = _to_4326(*bbox_25830)
     url = (
@@ -315,7 +384,8 @@ def _ogc_features_bbox(
 
     features = data.get("features", [])
     if not features:
-        return None
+        # El servicio respondió bien, pero el AOI no tiene cobertura: vacío ≠ fallo.
+        return gpd.GeoDataFrame(geometry=gpd.GeoSeries(crs="EPSG:25830"))
     gdf = gpd.GeoDataFrame.from_features(features, crs="EPSG:4326")
     return gdf.to_crs("EPSG:25830")
 
@@ -340,10 +410,13 @@ def download_dem(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
     log: logging.Logger,
-) -> bool:
+) -> LayerResult:
     """
     DEM Copernicus GLO-30 (30 m) desde tiles COG en AWS S3.
     Lee solo la ventana del AOI sin descargar el tile completo (~40 MB).
+
+    Un fallo (ningún tile accesible) lanza excepción y se registra como FAILED
+    aguas arriba; nunca se produce un raster vacío que finja "sin cobertura".
     """
     import os
     import rasterio
@@ -425,14 +498,17 @@ def download_dem(
 
     log.info(f"  ✓ {out_path.name}  ({out_path.stat().st_size // 1024} KB)  "
              f"{dst_width}×{dst_height} px @ ~30 m EPSG:25830")
-    return True
+    return LayerResult(
+        LayerStatus.OK, dst_width * dst_height,
+        f"{dst_width}×{dst_height} px @ ~30 m EPSG:25830",
+    )
 
 
 def download_natura2000(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
     log: logging.Logger,
-) -> bool:
+) -> LayerResult:
     """
     Red Natura 2000: intenta WFS IGN INSPIRE; si falla, fallback a Overpass
     (boundary=protected_area) que cubre ZEPA, ZEC, ZEPVN y parques nacionales
@@ -441,7 +517,7 @@ def download_natura2000(
     log.info(f"  WFS IGN INSPIRE → {_WFS_ENP}")
     gdf = _wfs_bbox(_IGN_WFS_ENP, _WFS_ENP, bbox_25830, log, max_features=2_000)
     if gdf is not None and not gdf.empty:
-        return _save_vector(gdf, out_path, log)
+        return _vector_result(gdf, out_path, log, "WFS IGN INSPIRE ENP")
 
     # Fallback: áreas protegidas desde Overpass (OSM boundary=protected_area)
     log.info("  Fallback → Overpass boundary=protected_area")
@@ -484,53 +560,73 @@ def download_natura2000(
             else gpd.GeoDataFrame(geometry=gpd.GeoSeries(crs="EPSG:4326"))
         )
         log.info(f"  Overpass protected_area → {len(gdf_osm)} geometrías (calidad OSM)")
-        return _save_vector(gdf_osm, out_path, log)
+        return _vector_result(gdf_osm, out_path, log, "Overpass protected_area")
 
     except Exception as exc:
+        # El WFS no dio datos Y el fallback Overpass falló: no sabemos si hay
+        # cobertura → FAILED, sin escribir un GPKG vacío engañoso.
         log.warning(f"  Overpass fallback falló: {exc}")
-        return _save_vector(None, out_path, log)
+        return LayerResult(LayerStatus.FAILED, 0, f"WFS sin datos y Overpass falló: {exc}")
 
 
 def download_zonas_inundables(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
     log: logging.Logger,
-) -> bool:
+) -> LayerResult:
     """
     Zonas inundables SNCZI (MITECO) vía OGC API Features: une T10, T100 y T500
     en una sola capa, ya que el modelo de coste solo distingue dentro/fuera
     (sin gradación por periodo de retorno; ver perfiles.yaml
     parametros_capas.zonas_inundables).
+
+    La unión requiere que las colecciones respondan: si TODAS fallan no podemos
+    afirmar que el AOI esté libre de inundables → FAILED. Si al menos una responde
+    (aunque todas vengan vacías), es una ausencia de cobertura legítima → EMPTY.
     """
     log.info(f"  OGC API Features SNCZI/MITECO → {_MITECO_OAFEAT_ZI}")
     partes = []
+    respondidas = 0
     for collection_id in _OAFEAT_ZI:
         gdf_t = _ogc_features_bbox(_MITECO_OAFEAT_ZI, collection_id, bbox_25830, log)
-        if gdf_t is not None and not gdf_t.empty:
+        if gdf_t is None:
+            log.warning(f"    {collection_id} → descarga fallida")
+            continue
+        respondidas += 1
+        if not gdf_t.empty:
             gdf_t["periodo_retorno"] = collection_id.rsplit("_q", 1)[-1]
             partes.append(gdf_t[["geometry", "periodo_retorno"]])
             log.info(f"    {collection_id} → {len(gdf_t)} polígonos")
         else:
-            log.debug(f"    {collection_id} → sin datos en el AOI")
+            log.debug(f"    {collection_id} → sin cobertura en el AOI")
 
-    if not partes:
-        log.warning("  SNCZI sin láminas de inundación en el AOI")
-        return _save_vector(None, out_path, log)
+    if partes:
+        gdf = (
+            partes[0]
+            if len(partes) == 1
+            else gpd.GeoDataFrame(gpd.pd.concat(partes, ignore_index=True), crs=partes[0].crs)
+        )
+        return _vector_result(gdf, out_path, log, "SNCZI/MITECO")
 
-    gdf = (
-        partes[0]
-        if len(partes) == 1
-        else gpd.GeoDataFrame(gpd.pd.concat(partes, ignore_index=True), crs=partes[0].crs)
-    )
-    return _save_vector(gdf, out_path, log)
+    if respondidas == 0:
+        log.error("  ✗ SNCZI: todas las colecciones fallaron → no se escribe GPKG")
+        return LayerResult(LayerStatus.FAILED, 0, "SNCZI: todas las colecciones fallaron")
+
+    # Alguna colección respondió correctamente pero vacía: ausencia confirmada.
+    log.warning("  ○ SNCZI sin láminas de inundación en el AOI")
+    empty = gpd.GeoDataFrame(geometry=gpd.GeoSeries(crs="EPSG:25830"))
+    return _vector_result(empty, out_path, log, "SNCZI/MITECO")
 
 
 def download_osm(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
     log: logging.Logger,
-) -> bool:
-    """Carreteras + ferrocarril vía Overpass API. Salida: GeoPackage de LineStrings."""
+) -> LayerResult:
+    """Carreteras + ferrocarril vía Overpass API. Salida: GeoPackage de LineStrings.
+
+    Un fallo de Overpass lanza excepción (→ FAILED aguas arriba); una respuesta
+    correcta sin vías es una ausencia de cobertura legítima (→ EMPTY)."""
     w, s, e, n = _to_4326(*bbox_25830)
     # Overpass usa orden lat,lon: sur,oeste,norte,este
     bbox_str = f"{s:.6f},{w:.6f},{n:.6f},{e:.6f}"
@@ -569,25 +665,28 @@ def download_osm(
         if features
         else gpd.GeoDataFrame(geometry=gpd.GeoSeries(crs="EPSG:4326"))
     )
-    return _save_vector(gdf, out_path, log)
+    return _vector_result(gdf, out_path, log, "Overpass highway/railway")
 
 
 def download_hidrografia(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
     log: logging.Logger,
-) -> bool:
-    """Hidrografía IGN vía WFS INSPIRE (max 2000 features)."""
+) -> LayerResult:
+    """Hidrografía IGN vía WFS INSPIRE (max 2000 features).
+
+    _wfs_bbox devuelve None si TODOS los intentos WFS fallan (→ FAILED); un WFS
+    que responde sin geometrías produce un GeoDataFrame vacío (→ EMPTY)."""
     log.info(f"  WFS IGN INSPIRE → {_WFS_HID}")
     gdf = _wfs_bbox(_IGN_WFS_HID, _WFS_HID, bbox_25830, log, max_features=2_000)
-    return _save_vector(gdf, out_path, log)
+    return _vector_result(gdf, out_path, log, "WFS IGN INSPIRE hidrografía")
 
 
 def download_igme(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
     log: logging.Logger,
-) -> bool:
+) -> LayerResult:
     """Litologías IGME MAGNA50 vía ArcGIS REST (layer 11: Litologías color)."""
     xmin, ymin, xmax, ymax = bbox_25830
     log.info("  ArcGIS REST IGME_MAGNA_50 → layer 11 (Litologías color)")
@@ -607,11 +706,12 @@ def download_igme(
         gdf = gpd.read_file(io.BytesIO(resp.content))
         if gdf.crs is None:
             gdf = gdf.set_crs("EPSG:4326")
-        return _save_vector(gdf, out_path, log)
+        return _vector_result(gdf, out_path, log, "ArcGIS REST IGME MAGNA50")
     except Exception as exc:
+        # El servicio falló: no sabemos si hay litología en el AOI. No escribir
+        # un GPKG vacío que finja "sin datos" → FAILED.
         log.warning(f"  ArcGIS REST falló: {exc}")
-
-    return _save_vector(None, out_path, log)
+        return LayerResult(LayerStatus.FAILED, 0, f"ArcGIS REST falló: {exc}")
 
 
 # ──────────────────────────────────────────────────────────────────────────── #
@@ -637,8 +737,12 @@ def _run_scenario(
     cfg_s: dict,
     overwrite: bool,
     log: logging.Logger,
-) -> tuple[int, int]:
-    """Descarga todas las fuentes para un escenario. Devuelve (ok, errores)."""
+) -> dict[str, LayerResult]:
+    """Descarga todas las fuentes para un escenario.
+
+    Devuelve un dict {nombre_archivo: LayerResult} con el estado por capa, para
+    alimentar el manifiesto. Una excepción no controlada de un descargador se
+    captura como FAILED (nunca deja el escenario a medias)."""
     xmin, ymin, xmax, ymax = _scenario_aoi(cfg_s)
     bbox = (xmin, ymin, xmax, ymax)
     w, so, e, n = _to_4326(xmin, ymin, xmax, ymax)
@@ -650,7 +754,7 @@ def _run_scenario(
     log.info(f"  AOI WGS84      : S={so:.5f}  W={w:.5f}  N={n:.5f}  E={e:.5f}")
     log.info(f"  Dimensión      : {(xmax - xmin) / 1000:.1f} km × {(ymax - ymin) / 1000:.1f} km")
 
-    ok = errors = 0
+    results: dict[str, LayerResult] = {}
     for label, name_tmpl, fn in SOURCES:
         out_name = name_tmpl.replace("{s}", s)
         out_path = DATA_RAW / out_name
@@ -658,19 +762,55 @@ def _run_scenario(
 
         if out_path.exists() and not overwrite:
             log.info(f"  Ya existe → omitido  (usa -y para sobrescribir)")
-            ok += 1
+            results[out_name] = LayerResult(LayerStatus.SKIPPED, 0, "ya existía")
             continue
 
         try:
-            fn(bbox, out_path, log)
-            ok += 1
+            res = fn(bbox, out_path, log)
+            # Salvaguarda: un descargador que aún devuelva bool no debe romper el manifiesto.
+            if not isinstance(res, LayerResult):
+                res = LayerResult(
+                    LayerStatus.OK if res else LayerStatus.FAILED, 0, str(res)
+                )
+            results[out_name] = res
         except Exception as exc:
             log.error(f"  ✗ {exc}")
-            errors += 1
+            results[out_name] = LayerResult(LayerStatus.FAILED, 0, str(exc))
 
         time.sleep(0.5)   # cortesía con los servidores públicos
 
-    return ok, errors
+    return results
+
+
+# ──────────────────────────────────────────────────────────────────────────── #
+# Manifiesto de estado                                                         #
+# ──────────────────────────────────────────────────────────────────────────── #
+def _write_manifest(
+    all_results: dict[str, dict[str, LayerResult]],
+    log: logging.Logger,
+) -> None:
+    """Persiste el estado por capa y escenario en un JSON legible.
+
+    El manifiesto es la fuente de verdad aguas abajo: un GPKG que existe pero
+    figura como `failed` NO debe usarse como "sin cobertura"; un `empty` sí es
+    una ausencia confirmada."""
+    payload = {
+        "generado": datetime.now().isoformat(timespec="seconds"),
+        "escenarios": {
+            s: {
+                name: {
+                    "status": r.status.value,
+                    "rows": r.rows,
+                    "detail": r.detail,
+                }
+                for name, r in res.items()
+            }
+            for s, res in all_results.items()
+        },
+    }
+    with open(MANIFEST_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    log.info(f"  Manifiesto  → {MANIFEST_PATH.relative_to(PROJECT_ROOT)}")
 
 
 # ──────────────────────────────────────────────────────────────────────────── #
@@ -730,23 +870,43 @@ def main() -> None:
                 return
             overwrite = True
 
-    total_ok = total_err = 0
+    all_results: dict[str, dict[str, LayerResult]] = {}
     for s in escenarios:
         key = f"escenario_{s}"
         if key not in cfg:
             log.error(f"'{key}' no encontrado en escenario.yaml")
             continue
-        ok, err = _run_scenario(s, cfg[key], overwrite, log)
-        total_ok += ok
-        total_err += err
+        all_results[s] = _run_scenario(s, cfg[key], overwrite, log)
+
+    # Recuento por estado a partir de los resultados por capa
+    counts = {st: 0 for st in LayerStatus}
+    failed_layers: list[str] = []
+    for s, res in all_results.items():
+        for name, r in res.items():
+            counts[r.status] += 1
+            if r.status is LayerStatus.FAILED:
+                failed_layers.append(f"{name}: {r.detail}")
+
+    _write_manifest(all_results, log)
 
     log.info(f"\n{'=' * 62}")
     log.info("RESUMEN")
     log.info(f"{'=' * 62}")
-    log.info(f"  Capas OK    : {total_ok}")
-    log.info(f"  Errores     : {total_err}")
+    log.info(f"  OK          : {counts[LayerStatus.OK]}   (con datos)")
+    log.info(f"  Sin cobertura: {counts[LayerStatus.EMPTY]}   (AOI vacío, GPKG vacío legítimo)")
+    log.info(f"  Fallidas    : {counts[LayerStatus.FAILED]}   (descarga fallida, SIN escribir vacío)")
+    log.info(f"  Omitidas    : {counts[LayerStatus.SKIPPED]}   (ya existían)")
+    if failed_layers:
+        log.warning("  Capas fallidas:")
+        for item in failed_layers:
+            log.warning(f"    - {item}")
     log.info(f"  Log         → {LOG_PATH.relative_to(PROJECT_ROOT)}")
     log.info(f"  Salida      → {DATA_RAW.relative_to(PROJECT_ROOT)}/")
+
+    # Salir con código ≠ 0 si alguna descarga falló, para que el pipeline/CI no
+    # continúe silenciosamente con capas ausentes o desactualizadas.
+    if counts[LayerStatus.FAILED]:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
