@@ -13,6 +13,7 @@ Ejecutar desde la raíz del proyecto (proyecto/):
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import math
 import re
@@ -58,6 +59,10 @@ DATA_RECORTE = DATA_PROCESSED / "Recorte_AOI"   # vectores recortados al AOI (.g
 DATA_RASTERS = DATA_PROCESSED / "Rasters_AOI"   # rasters alineados (.tif)
 CONFIG_ESCENARIO = PROJECT_ROOT / "data" / "config" / "escenario.yaml"
 LOG_PATH = DATA_PROCESSED / "log_alineacion.txt"
+# Manifiesto de estado por capa que escribe descargar_capas.py. Es la fuente de
+# verdad sobre si un GPKG de data/raw/ es "sin cobertura" (empty, vacío legítimo)
+# o "descarga fallida" (failed): en este segundo caso NO se debe alinear.
+DOWNLOAD_MANIFEST_PATH = DATA_RAW / "manifiesto_estado.json"
 
 DUPLICATE_THRESHOLD = 0.70  # fracción de solapamiento para avisar de duplicados
 CATASTRO_MUNICIPALITY_RE = re.compile(r"^\d+[ur]A \d+ .+", re.IGNORECASE)
@@ -310,6 +315,32 @@ def _discover_layer_sources(
             log.debug(f"  [{spec.label}] → {hits[0].relative_to(PROJECT_ROOT)}")
             return [hits[0]]
     return []
+
+
+def _load_download_manifest(scenario: str, log: logging.Logger) -> dict[str, dict]:
+    """Lee el manifiesto de estado que escribe descargar_capas.py.
+
+    Devuelve {nombre_archivo_raw: {status, rows, detail}} para el escenario dado,
+    o {} si el manifiesto no existe (p. ej. capas colocadas a mano sin pasar por
+    descargar_capas.py). Un manifiesto ilegible se degrada a {} con aviso: nunca
+    debe impedir la alineación de capas cuyo estado sí conocemos por el disco."""
+    if not DOWNLOAD_MANIFEST_PATH.exists():
+        log.debug("  Sin manifiesto de descarga; se procede solo con lo que hay en disco.")
+        return {}
+    try:
+        data = json.loads(DOWNLOAD_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        log.warning(f"  No se pudo leer el manifiesto de descarga ({exc}); se ignora.")
+        return {}
+    return data.get("escenarios", {}).get(scenario, {})
+
+
+def _scenario_raw_name(spec: "LayerSpec", scenario: str) -> str | None:
+    """Nombre del archivo raw que descargar_capas.py generaría para esta capa y
+    escenario (p. ej. IGME_A.gpkg), o None si la capa no proviene de la descarga
+    automática (RN2000, Catastro… se colocan a mano y no tienen manifiesto)."""
+    tmpl = _SCENARIO_FILES.get(spec.label)
+    return tmpl.replace("{s}", scenario) if tmpl else None
 
 
 def _find_catastro_dir() -> Path | None:
@@ -897,12 +928,31 @@ def main() -> None:
 
     # ── Pasos 2-3: Reproyección y alineación ────────────────────────────── #
     log.info("\n─── Pasos 2-3: Reproyección y alineación ───────────────────────")
+    # Manifiesto de descarga: distingue "sin cobertura" (empty, se alinea vacío)
+    # de "descarga fallida" (failed, NO se alinea).
+    download_manifest = _load_download_manifest(args.escenario, log)
     missing_layers: list[str] = []
+    failed_layers: list[str] = []
     found_layers: list[str] = []
     processed_vectors: list[tuple[str, gpd.GeoDataFrame]] = []
 
     for spec in layers_to_run:
         log.info(f"\n[{spec.label}]")
+
+        # Blindaje: si la descarga de esta capa falló, NO alinear. Un 'failed' no
+        # es "sin cobertura": puede haber datos que no pudimos bajar, y el GPKG en
+        # disco (si existe) es obsoleto o inexistente. Alinearlo produciría un
+        # recorte vacío engañoso. Se re-ejecuta descargar_capas.py en su lugar.
+        raw_name = _scenario_raw_name(spec, args.escenario)
+        entry = download_manifest.get(raw_name) if raw_name else None
+        if entry and entry.get("status") == "failed":
+            detail = entry.get("detail", "sin detalle")
+            log.error(f"  ✗ descarga marcada como FAILED en el manifiesto: {detail}")
+            log.error(f"    → se omite la alineación (re-ejecuta descargar_capas.py "
+                      f"para {raw_name})")
+            failed_layers.append(spec.label)
+            continue
+
         src_paths = _discover_layer_sources(spec, log, scenario=args.escenario)
 
         if not src_paths:
@@ -944,6 +994,13 @@ def main() -> None:
     log.info("=" * 62)
     log.info(f"  Capas encontradas    : {len(found_layers)}/{len(layers_to_run)}")
     log.info(f"  Archivos comprimidos : {len(archives)} (requieren extracción manual)")
+    if failed_layers:
+        log.info(f"  Descargas fallidas   : {len(failed_layers)} (omitidas, NO alineadas)")
+
+    if failed_layers:
+        log.error("  Capas con descarga FALLIDA (según manifiesto de descarga):")
+        for name in failed_layers:
+            log.error(f"    - {name}")
 
     if missing_layers:
         log.warning("  Capas NO encontradas :")
@@ -952,6 +1009,15 @@ def main() -> None:
 
     log.info(f"\n  Log → {LOG_PATH.relative_to(PROJECT_ROOT)}")
     log.info(f"  Salida → {DATA_PROCESSED.relative_to(PROJECT_ROOT)}/")
+
+    if failed_layers:
+        log.error(
+            "\n" + "─" * 62 + "\n"
+            "Hay capas cuya DESCARGA falló; no se han alineado para no producir\n"
+            "recortes vacíos engañosos. Re-ejecuta la descarga antes de continuar:\n"
+            "    python -m src.ingesta.descargar_capas -y --escenario "
+            f"{args.escenario}"
+        )
 
     if missing_layers or archives:
         log.info("\n" + "─" * 62)
@@ -964,6 +1030,11 @@ def main() -> None:
                 "\n  Archivos comprimidos — extrae el contenido antes de re-ejecutar:\n"
                 + "\n".join(f"    {a.relative_to(PROJECT_ROOT)}" for a in archives)
             )
+
+    # Salir con código ≠ 0 si alguna descarga había fallado: el pipeline no debe
+    # continuar con capas ausentes por un fallo de red confundido con "sin datos".
+    if failed_layers:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
