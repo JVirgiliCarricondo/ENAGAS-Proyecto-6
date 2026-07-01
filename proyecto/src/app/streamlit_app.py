@@ -54,19 +54,18 @@ _NOMBRE_PERFIL = {
     "corto":      "Ruta Corta",
     "equilibrio": "Equilibrio",
     "ambiental":  "Ambiental",
-    "pendiente":  "Min. Pendiente",
+    "pendiente":  "Relieve (TPI)",
 }
 
 # Claves de peso en perfiles.yaml → etiqueta en la UI
 _CAPAS_PESO: list[tuple[str, str]] = [
     ("longitud",     "Longitud (distancia)"),
-    ("pendiente",    "Pendiente"),
+    ("tpi",          "Relieve (TPI)"),
     ("protegida",    "Zonas protegidas"),
     ("inundable",    "Zonas inundables"),
     ("cruces",       "Cruces (vias y rios)"),
     ("expropiacion", "Expropiacion (catastro)"),
     ("geotecnia",    "Geotecnia (litologia)"),
-    ("traversal",    "Traversalidad (direccion pendiente)"),
 ]
 _PESO_MIN, _PESO_MAX, _PESO_STEP = 0.0, 1.0, 0.01
 
@@ -471,7 +470,7 @@ def _ejecutar_pipeline(
     for i, s in enumerate(escenarios):
         pct = 0.05 + (0.75 * i / len(escenarios))
         progress_cb(pct, f"Calculando rutas — Escenario {s}...")
-        run_perfiles(s, lam=4.0, perfiles_override=perfiles)
+        run_perfiles(s, perfiles_override=perfiles)
 
     progress_cb(0.85, "Calculando metricas...")
     resultados = calcular_todas(escenarios=escenarios)

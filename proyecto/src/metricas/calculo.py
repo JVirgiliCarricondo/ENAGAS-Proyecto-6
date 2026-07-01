@@ -7,8 +7,7 @@ de conjunto, no por ruta individual).
 
 Módulos integrados:
   · longitud.py            → longitud_km, coste_relativo
-  · pendiente.py           → pendiente_max_pct, pendiente_media_pct,
-                              porcentaje_ruta_sigue_pendiente, km_ruta_sigue_pendiente
+  · pendiente.py           → pendiente_max_pct, pendiente_media_pct
   · zonas_protegidas.py    → km_protegida, pct_protegida
   · zonas_inundables.py    → km_inundable, pct_inundable
   · zonas_urbanas.py       → km_suelo_{urbano,diseminado,rustico,especial}
@@ -82,8 +81,6 @@ class MetricasRuta:
     # Pendiente a lo largo del trazado (pendiente.py)
     pendiente_max_pct: float = 0.0
     pendiente_media_pct: float = 0.0
-    porcentaje_ruta_sigue_pendiente: float = 0.0
-    km_ruta_sigue_pendiente: float = 0.0
 
     # Zonas protegidas Red Natura 2000 (zonas_protegidas.py)
     km_protegida: float = 0.0
@@ -117,8 +114,6 @@ class MetricasRuta:
             "coste_relativo": self.coste_relativo,
             "pendiente_max_pct": self.pendiente_max_pct,
             "pendiente_media_pct": self.pendiente_media_pct,
-            "pct_ruta_sigue_pendiente": self.porcentaje_ruta_sigue_pendiente,
-            "km_ruta_sigue_pendiente": self.km_ruta_sigue_pendiente,
             "km_protegida": self.km_protegida,
             "pct_protegida": self.pct_protegida,
             "km_inundable": self.km_inundable,
@@ -208,8 +203,6 @@ def calcular_metricas_ruta(escenario: str, perfil: str) -> MetricasRuta:
         mp = _calcular_pendiente(celdas, dem_arr, resolucion_m=res_m)
         m.pendiente_max_pct = round(mp.pendiente_max_pct, 2)
         m.pendiente_media_pct = round(mp.pendiente_media_pct, 2)
-        m.porcentaje_ruta_sigue_pendiente = round(mp.porcentaje_ruta_sigue_pendiente, 2)
-        m.km_ruta_sigue_pendiente = round(mp.km_ruta_sigue_pendiente, 3)
     except Exception as exc:
         m.errores["pendiente"] = str(exc)
 

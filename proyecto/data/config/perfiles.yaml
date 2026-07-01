@@ -19,7 +19,6 @@ perfiles:
       cruces:       0.3
       expropiacion: 0.2
       geotecnia:    0.1
-      traversal:    0.1   # poca importancia: solo interesa la longitud
     nota: "Mejor velocidad de ejecución, pero relieve/impacto mayores"
 
   - id: ambiental
@@ -33,15 +32,13 @@ perfiles:
       tpi:          0.3   # relieve (posición topográfica)
       geotecnia:    0.3
       longitud:     0.3
-      traversal:    0.3
     nota: "Prioriza viabilidad medioambiental"
 
   - id: pendiente
     nombre: "Por relieve (divisorias / TPI)"
-    descripcion: "Prioriza la posición topográfica (TPI): tiende a seguir crestas/divisorias y evitar valles y fondos de cauce; sigue la dirección del gradiente (mayor estabilidad geotécnica). La barrera de pendiente >35° se conserva dentro de la capa TPI."
+    descripcion: "Prioriza la posición topográfica (TPI): tiende a seguir crestas/divisorias y evitar valles y fondos de cauce (mayor estabilidad geotécnica). La barrera de pendiente >70% (≈35°) se conserva dentro de la capa TPI."
     pesos:
       tpi:          1.5   # fuerte preferencia por el relieve (cresta barata, valle caro)
-      traversal:    1.2   # seguir la dirección del gradiente
       geotecnia:    0.8   # terreno estable
       protegida:    0.4
       inundable:    0.2   # zonas inundables (A=14.25 → ~protegida/2)
@@ -58,16 +55,15 @@ perfiles:
     # entre los 4 grupos con capa, reescalando sus puntos medios dentro de banda:
     #   Medioambiente 30-40 %  → protegida + inundable        0.37  (2:1 por A-oficial)
     #   Urbanístico   15-25 %  → expropiacion               0.21
-    #   Geotecnia     15-25 %  → geotecnia+tpi+traversal    0.21
+    #   Geotecnia     15-25 %  → geotecnia+tpi              0.21
     #   Construcción  10-20 %  → cruces                     0.16
     #   Otros          5 %     → longitud                   0.05
     pesos:
       protegida:    0.25   # Medioambiente: Red Natura 2000 (A=28.5 → 2/3 del grupo)
       inundable:    0.12   # Medioambiente: zonas inundables (A=14.25 → 1/3 del grupo)
       expropiacion: 0.21   # Urbanístico
-      geotecnia:    0.09   # Geotecnia ┐
-      tpi:          0.08   # Geotecnia ├ 0.21  (relieve vía TPI)
-      traversal:    0.04   # Geotecnia ┘
+      geotecnia:    0.09   # Geotecnia ┐ 0.21  (relieve vía TPI; incluye el peso
+      tpi:          0.12   # Geotecnia ┘        de la antigua dirección del gradiente)
       cruces:       0.16   # Construcción / cruces
       longitud:     0.05   # Otros (coste-distancia base del LCP)
     nota: "Pesos alineados con anexo II EV-500 (Enagás); Patrimonio (sin capa) redistribuido; medioambiente repartido entre protegida e inundable."
@@ -250,10 +246,10 @@ parametros_capas:
   # radio_int_m=0 → disco; >0 → anillo verdadero (formulación de Weiss 2001).
   # CALIBRAR radio sobre el AOI: crestas sobre divisorias reales, valles sobre cauces.
   # BARRERA DURA: el TPI no ve la inclinación, así que la transitabilidad se calcula
-  # aparte (pendiente Horn del DEM); celdas > umbral_barrera_deg → intransitables.
+  # aparte (pendiente Horn del DEM, en %); celdas > umbral_barrera_pct → intransitables.
   # --------------------------------------------------------------------------
   tpi:
     radio_ext_m: 300.0      # radio exterior del vecindario anular (m) ≈ 10 celdas a 30 m
     radio_int_m: 0.0        # radio interior (m); 0 = disco
     sigma_clip: 2.0         # acota el TPI estandarizado a ±2σ antes de mapear a [0, 1]
-    umbral_barrera_deg: 35  # pendiente Horn > este valor → celda intransitable (barrera dura)
+    umbral_barrera_pct: 70  # pendiente Horn en % > este valor → celda intransitable (70 % ≈ 35°)
