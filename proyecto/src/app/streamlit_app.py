@@ -78,6 +78,13 @@ except ImportError:
 # ── CSS estilo Enagás ─────────────────────────────────────────────────────────
 _CSS = """
 <style>
+  /* Quitar el hueco superior por defecto de Streamlit (cabecera oculta) */
+  [data-testid="stMainBlockContainer"],
+  [data-testid="stAppViewBlockContainer"],
+  .block-container {
+    padding-top: 1.1rem !important;
+    padding-bottom: 1.1rem !important;
+  }
   .stApp {
     background-color: #f4f6f9;
     color: #1f2937;
@@ -99,11 +106,11 @@ _CSS = """
     background: white;
     border-top: 4px solid #76B82A;
     border-bottom: 1px solid #dde6ef;
-    padding: 14px 28px;
-    margin-bottom: 18px;
+    padding: 9px 24px;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 18px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.05);
   }
   .header-divider {
@@ -128,31 +135,28 @@ _CSS = """
     margin: 3px 0 0;
   }
 
-  .scenario-card {
+  /* Tarjeta limpia con borde: envuelve de verdad los inputs del escenario */
+  div[data-testid="stVerticalBlockBorderWrapper"] {
     background: white;
+    border: 1px solid #dde6ef;
     border-radius: 8px;
-    padding: 18px 20px 14px;
-    margin-bottom: 14px;
-    border-top: 4px solid #00AEEF;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
   }
-  .scenario-card h3 {
+  .scenario-title {
     color: #002B5C;
-    font-size: 1rem;
+    font-size: 1.02rem;
     font-weight: 700;
-    margin: 0 0 10px;
+    margin: 0 0 4px;
     font-family: 'Segoe UI', Arial, sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
 
   .constraints-box {
     background: #ddeef8;
     border-left: 4px solid #00AEEF;
     border-radius: 0 6px 6px 0;
-    padding: 10px 16px;
-    margin-bottom: 18px;
-    font-size: 0.87rem;
+    padding: 8px 16px;
+    margin-bottom: 10px;
+    font-size: 0.85rem;
     color: #002B5C;
     font-family: 'Segoe UI', Arial, sans-serif;
   }
@@ -657,7 +661,7 @@ def _mapa_resultados(escenarios: list[str] | None = None) -> folium.Map | None:
       <span class="c-corto" style="font-size:1.3em;">&#9644;</span><span> Ruta Corta</span><br>
       <span class="c-equilibrio" style="font-size:1.3em;">&#9644;</span><span> Equilibrio</span><br>
       <span class="c-ambiental" style="font-size:1.3em;">&#9644;</span><span> Ambiental</span><br>
-      <span class="c-pendiente" style="font-size:1.3em;">&#9644;</span><span> Min. Pendiente</span>
+      <span class="c-pendiente" style="font-size:1.3em;">&#9644;</span><span> Relieve (TPI)</span>
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend))
@@ -738,37 +742,36 @@ def _render_input():
                 except ValueError as exc:
                     st.error(str(exc))
 
-        st.markdown(
-            f'<div class="scenario-card"><h3>Escenario {esc_activo}</h3>',
-            unsafe_allow_html=True,
-        )
-        for rol in ("origen", "destino"):
+        with st.container(border=True):
             st.markdown(
-                f'<p class="section-label">{rol.capitalize()}</p>',
+                f'<div class="scenario-title">Escenario {esc_activo}</div>',
                 unsafe_allow_html=True,
             )
-            c1, c2 = st.columns(2)
-            with c1:
-                coords[esc_activo][rol]["x"] = st.number_input(
-                    "X (m)", value=coords[esc_activo][rol]["x"],
-                    step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_x",
+            for rol in ("origen", "destino"):
+                st.markdown(
+                    f'<p class="section-label">{rol.capitalize()}</p>',
+                    unsafe_allow_html=True,
                 )
-            with c2:
-                coords[esc_activo][rol]["y"] = st.number_input(
-                    "Y (m)", value=coords[esc_activo][rol]["y"],
-                    step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_y",
-                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    coords[esc_activo][rol]["x"] = st.number_input(
+                        "X (m)", value=coords[esc_activo][rol]["x"],
+                        step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_x",
+                    )
+                with c2:
+                    coords[esc_activo][rol]["y"] = st.number_input(
+                        "Y (m)", value=coords[esc_activo][rol]["y"],
+                        step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_y",
+                    )
 
-        dist = _dist_m(
-            coords[esc_activo]["origen"]["x"], coords[esc_activo]["origen"]["y"],
-            coords[esc_activo]["destino"]["x"], coords[esc_activo]["destino"]["y"],
-        )
-        if dist > MAX_DIST_M:
-            st.error(f"Distancia: {dist / 1000:.1f} km — supera los {MAX_DIST_M / 1000:.0f} km")
-        else:
-            st.success(f"Distancia: {dist / 1000:.1f} km")
-
-        st.markdown("</div>", unsafe_allow_html=True)
+            dist = _dist_m(
+                coords[esc_activo]["origen"]["x"], coords[esc_activo]["origen"]["y"],
+                coords[esc_activo]["destino"]["x"], coords[esc_activo]["destino"]["y"],
+            )
+            if dist > MAX_DIST_M:
+                st.error(f"Distancia: {dist / 1000:.1f} km — supera los {MAX_DIST_M / 1000:.0f} km")
+            else:
+                st.success(f"Distancia: {dist / 1000:.1f} km")
 
         if len(escenarios) > 1:
             st.caption(
