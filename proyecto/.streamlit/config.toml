@@ -1,0 +1,8 @@
+# Tema base — Enagás Engineering Core (design system de Stitch).
+# Los colores finos y los componentes se afinan por CSS en src/app/streamlit_app.py.
+[theme]
+primaryColor = "#004e7e"            # primary (azul corporativo Enagás)
+backgroundColor = "#f7fafc"         # surface / background
+secondaryBackgroundColor = "#ffffff" # surface-container-lowest (tarjetas, inputs)
+textColor = "#181c1e"               # on-surface
+font = "sans-serif"

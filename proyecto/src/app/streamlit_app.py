@@ -69,32 +69,58 @@ _CAPAS_PESO: list[tuple[str, str]] = [
 ]
 _PESO_MIN, _PESO_MAX, _PESO_STEP = 0, 100, 1
 
-
-def _fila_pesos_pct(perfil: dict) -> dict:
-    """Fila de tabla comparativa: pesos del perfil normalizados a % (suman 100).
-
-    Los pesos se guardan con la capa dominante = 1.0 (identidad del perfil), por
-    lo que su suma varía entre perfiles. Para COMPARARLOS se muestran como cuota
-    relativa dentro de cada perfil (peso / suma_del_perfil), de modo que cada fila
-    suma 100 %. El LCP es invariante al escalado, así que esta normalización es
-    solo de presentación: no altera las rutas.
-    """
-    pesos = perfil.get("pesos", {})
-    total = sum(pesos.values()) or 1.0
-    row = {"Perfil": _NOMBRE_PERFIL.get(perfil["id"], perfil["id"])}
-    for clave, etiqueta in _CAPAS_PESO:
-        row[etiqueta.split(" (")[0]] = f"{round(pesos.get(clave, 0.0) / total * 100)}%"
-    return row
-
 try:
     from streamlit_folium import st_folium as _st_folium
     _HAS_ST_FOLIUM = True
 except ImportError:
     _HAS_ST_FOLIUM = False
 
-# ── CSS estilo Enagás ─────────────────────────────────────────────────────────
+# ── CSS — design system "Enagás Engineering Core" (Stitch) ────────────────────
+# Tokens (paleta Material 3 corporativa Enagás), tipografías (Hanken Grotesk /
+# Inter / JetBrains Mono) y componentes trasladados del diseño de Stitch.
 _CSS = """
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hanken+Grotesk:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
+
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal; font-style: normal;
+    font-size: 20px; line-height: 1; vertical-align: middle;
+    display: inline-block; letter-spacing: normal; text-transform: none;
+    white-space: nowrap; direction: ltr;
+  }
+
+  :root {
+    --primary:            #004e7e;
+    --primary-container:  #0067a3;
+    --on-primary:         #ffffff;
+    --secondary:          #4b6700;
+    --secondary-container:#c3f35c;
+    --tertiary:           #094f7a;
+    --surface:            #f7fafc;
+    --surface-lowest:     #ffffff;
+    --surface-low:        #f1f4f6;
+    --surface-container:  #ebeef0;
+    --surface-high:       #e5e9eb;
+    --surface-highest:    #e0e3e5;
+    --on-surface:         #181c1e;
+    --on-surface-variant: #404750;
+    --outline:            #717881;
+    --outline-variant:    #c0c7d1;
+    --error:              #ba1a1a;
+
+    --font-body: 'Inter', 'Segoe UI', Arial, sans-serif;
+    --font-head: 'Hanken Grotesk', 'Segoe UI', Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    --radius-sm: 4px;
+    --radius:    8px;
+    --radius-xl: 12px;
+    --shadow-card: 0 1px 3px rgba(0,75,118,0.06);
+    --shadow-pop:  0 4px 24px rgba(0,75,118,0.12);
+  }
+
   /* Quitar el hueco superior por defecto de Streamlit (cabecera oculta) */
   [data-testid="stMainBlockContainer"],
   [data-testid="stAppViewBlockContainer"],
@@ -103,128 +129,233 @@ _CSS = """
     padding-bottom: 1.1rem !important;
   }
   .stApp {
-    background-color: #f4f6f9;
-    color: #1f2937;
+    background-color: var(--surface);
+    color: var(--on-surface);
+    font-family: var(--font-body);
   }
   .stApp p, .stApp li, .stApp label {
-    color: #1f2937;
+    color: var(--on-surface);
+    font-family: var(--font-body);
   }
-  div[data-testid="stMarkdownContainer"] * {
-    color: #1f2937;
+  .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
+    font-family: var(--font-head);
+    color: var(--on-surface);
+    letter-spacing: -0.01em;
   }
-  div[data-baseweb="tab"] {
-    color: #1f2937 !important;
-  }
-  div[data-testid="stDataFrame"] * {
-    color: #1f2937 !important;
-  }
+  div[data-testid="stMarkdownContainer"] * { color: var(--on-surface); }
+  div[data-testid="stDataFrame"] * { color: var(--on-surface) !important; }
 
-  .enagas-page-header {
-    background: white;
-    border-top: 4px solid #76B82A;
-    border-bottom: 1px solid #dde6ef;
-    padding: 9px 24px;
-    margin-bottom: 10px;
+  /* ── Barra superior unificada ─────────────────────────────────────────── */
+  .enagas-topnav {
+    background: var(--surface-lowest);
+    border-bottom: 1px solid var(--outline-variant);
+    box-shadow: var(--shadow-card);
+    padding: 12px 28px;
+    margin: -0.4rem 0 14px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 18px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
   }
-  .header-divider {
-    width: 2px;
-    height: 38px;
-    background: #0066B2;
-    border-radius: 2px;
+  .topnav-left { display: flex; align-items: center; gap: 14px; }
+  .topnav-logo { height: 34px; display: block; }
+  .topnav-divider {
+    width: 1px; height: 26px; background: var(--outline-variant); margin: 0 2px;
+  }
+  .topnav-title {
+    font-family: var(--font-head);
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--primary);
+    line-height: 1.15;
+  }
+  .topnav-badge {
+    font-family: var(--font-body);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--on-surface-variant);
+    background: var(--surface-container);
+    border: 1px solid var(--outline-variant);
+    border-radius: 999px;
+    padding: 5px 14px;
+  }
+
+  /* ── Stepper de progreso ──────────────────────────────────────────────── */
+  .enagas-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: rgba(247,250,252,0.7);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-xl);
+    padding: 12px 22px;
+    margin-bottom: 16px;
+  }
+  .step { display: flex; align-items: center; gap: 10px; }
+  .step-num {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-body); font-weight: 700; font-size: 0.85rem;
     flex-shrink: 0;
   }
-  .header-title {
-    font-family: 'Segoe UI', Arial, sans-serif;
-    font-size: 1.38rem;
-    font-weight: 700;
-    color: #002B5C;
-    margin: 0;
-    line-height: 1.2;
+  .step.done   .step-num { background: var(--primary); color: #fff; }
+  .step.active .step-num { background: var(--secondary); color: #fff;
+                           box-shadow: 0 0 0 4px var(--secondary-container); }
+  .step.pending .step-num { background: transparent; color: var(--outline);
+                            border: 2px solid var(--outline); }
+  .step-txt { display: flex; flex-direction: column; line-height: 1.1; }
+  .step-kicker {
+    font-family: var(--font-body); font-size: 0.62rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--outline);
   }
-  .header-subtitle {
-    font-family: 'Segoe UI', Arial, sans-serif;
-    font-size: 0.81rem;
-    color: #6B7D8E;
-    margin: 3px 0 0;
+  .step.active .step-kicker { color: var(--secondary); }
+  .step.done   .step-kicker { color: var(--primary); }
+  .step-name {
+    font-family: var(--font-body); font-size: 0.86rem; font-weight: 700;
+    color: var(--on-surface);
   }
+  .step.pending .step-name { color: var(--on-surface-variant); font-weight: 500; }
+  .step-conn { flex: 1; height: 2px; background: var(--outline-variant); margin: 0 18px; }
+  .step-conn.done { background: var(--primary); }
 
-  /* Tarjeta limpia con borde: envuelve de verdad los inputs del escenario */
+  /* ── Tarjetas con borde (container border=True) ───────────────────────── */
   div[data-testid="stVerticalBlockBorderWrapper"] {
-    background: white;
-    border: 1px solid #dde6ef;
-    border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
   }
   .scenario-title {
-    color: #002B5C;
-    font-size: 1.02rem;
+    font-family: var(--font-head);
+    color: var(--primary);
+    font-size: 1.05rem;
     font-weight: 700;
-    margin: 0 0 4px;
-    font-family: 'Segoe UI', Arial, sans-serif;
+    margin: 0 0 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .scenario-title::before {
+    content: ""; width: 6px; height: 20px;
+    background: var(--secondary-container); border-radius: 999px;
   }
 
+  /* ── Badge de restricciones (info) ────────────────────────────────────── */
   .constraints-box {
-    background: #ddeef8;
-    border-left: 4px solid #00AEEF;
-    border-radius: 0 6px 6px 0;
-    padding: 8px 16px;
-    margin-bottom: 10px;
-    font-size: 0.85rem;
-    color: #002B5C;
-    font-family: 'Segoe UI', Arial, sans-serif;
+    background: rgba(0,103,163,0.06);
+    border: 1px solid rgba(0,103,163,0.22);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    font-size: 0.82rem;
+    color: var(--on-surface-variant);
+    font-family: var(--font-body);
   }
+  .constraints-box b { color: var(--primary); }
 
+  /* ── Etiquetas de sección (label-caps) ────────────────────────────────── */
   .section-label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: #888;
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--on-surface-variant);
     text-transform: uppercase;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.05em;
     margin-bottom: 2px;
-    font-family: 'Segoe UI', Arial, sans-serif;
   }
 
-  div[data-testid="stButton"] > button {
+  /* ── Inputs numéricos / selects: aire técnico + mono en cifras ────────── */
+  div[data-testid="stNumberInput"] input {
+    font-family: var(--font-mono) !important;
+    font-size: 0.85rem !important;
+  }
+  div[data-testid="stNumberInput"] div[data-baseweb="input"],
+  div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+  div[data-testid="stTextInput"] div[data-baseweb="input"] {
+    border-radius: var(--radius-sm) !important;
+    border-color: var(--outline-variant) !important;
+    background: var(--surface-lowest) !important;
+  }
+  div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within,
+  div[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 1px var(--primary) !important;
+  }
+
+  /* ── Sliders con acento primario ──────────────────────────────────────── */
+  div[data-testid="stSlider"] div[role="slider"] {
+    background: var(--primary) !important;
+    border: 2px solid #fff !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25) !important;
+  }
+  div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div {
+    background: var(--primary) !important;
+  }
+
+  /* ── Pestañas: subrayado con acento primario ──────────────────────────── */
+  button[data-baseweb="tab"] {
+    font-family: var(--font-body) !important;
     font-weight: 600 !important;
-    border: 1px solid #9aa9b8 !important;
-    color: #0b1f33 !important;
-    -webkit-text-fill-color: #0b1f33 !important;
+    color: var(--on-surface-variant) !important;
+  }
+  button[data-baseweb="tab"][aria-selected="true"] {
+    color: var(--primary) !important;
+  }
+  div[data-baseweb="tab-highlight"] { background: var(--primary) !important; }
+  div[data-baseweb="tab-border"]    { background: var(--outline-variant) !important; }
+
+  /* ── Tablas (DataFrame): cabecera en versalitas + celdas mono ─────────── */
+  div[data-testid="stDataFrame"] {
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--outline-variant);
+    overflow: hidden;
+  }
+  div[data-testid="stDataFrame"] thead th {
+    background: var(--surface-highest) !important;
+    text-transform: uppercase;
+    font-family: var(--font-body) !important;
+    font-size: 0.68rem !important;
+    letter-spacing: 0.05em;
+    font-weight: 600 !important;
+    color: var(--on-surface-variant) !important;
+  }
+  div[data-testid="stDataFrame"] tbody td {
+    font-family: var(--font-mono) !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* ── Botones ──────────────────────────────────────────────────────────── */
+  div[data-testid="stButton"] > button {
+    font-family: var(--font-body) !important;
+    font-weight: 600 !important;
+    border-radius: var(--radius-sm) !important;
+    border: 1px solid var(--primary) !important;
+    color: var(--primary) !important;
+    -webkit-text-fill-color: var(--primary) !important;
+    background: var(--surface-lowest) !important;
+    transition: background 0.15s, color 0.15s;
   }
   div[data-testid="stButton"] > button p,
   div[data-testid="stButton"] > button span,
   div[data-testid="stButton"] > button div {
-    color: #0b1f33 !important;
-    -webkit-text-fill-color: #0b1f33 !important;
-    border: none !important;
+    color: var(--primary) !important;
+    -webkit-text-fill-color: var(--primary) !important;
     background: transparent !important;
+    border: none !important;
   }
   div[data-testid="stButton"] > button:hover {
-    color: #071523 !important;
-    -webkit-text-fill-color: #071523 !important;
-    border-color: #6d7f91 !important;
+    background: var(--surface-container) !important;
+    border-color: var(--primary-container) !important;
   }
-  div[data-testid="stButton"] > button:hover p,
-  div[data-testid="stButton"] > button:hover span,
-  div[data-testid="stButton"] > button:hover div {
-    color: #071523 !important;
-    -webkit-text-fill-color: #071523 !important;
-  }
-  div[data-testid="stButton"] > button:disabled {
-    color: #4b5d70 !important;
-    -webkit-text-fill-color: #4b5d70 !important;
-    background: #dbe4ec !important;
-    border-color: #b4c2cf !important;
-    opacity: 1 !important;
-  }
+  div[data-testid="stButton"] > button:disabled,
   div[data-testid="stButton"] > button:disabled p,
   div[data-testid="stButton"] > button:disabled span,
   div[data-testid="stButton"] > button:disabled div {
-    color: #4b5d70 !important;
-    -webkit-text-fill-color: #4b5d70 !important;
+    color: var(--outline) !important;
+    -webkit-text-fill-color: var(--outline) !important;
+    background: var(--surface-container) !important;
+    border-color: var(--outline-variant) !important;
+    opacity: 1 !important;
   }
 
   div[data-testid="stButton"] > button[kind="primary"],
@@ -237,25 +368,144 @@ _CSS = """
     border: none !important;
   }
   div[data-testid="stButton"] > button[kind="primary"] {
-    background: linear-gradient(135deg, #002B5C 0%, #005BAA 100%) !important;
-    border-radius: 6px !important;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-    font-size: 1rem !important;
-    letter-spacing: 0.3px !important;
+    background: var(--primary) !important;
+    border-radius: var(--radius-sm) !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.2px !important;
     padding: 12px 28px !important;
+    box-shadow: var(--shadow-card);
   }
-  div[data-testid="stButton"] > button[kind="primary"]:hover,
-  div[data-testid="stButton"] > button[kind="primary"]:hover p,
-  div[data-testid="stButton"] > button[kind="primary"]:hover span,
-  div[data-testid="stButton"] > button[kind="primary"]:hover div,
-  div[data-testid="stButton"] > button[kind="primary"]:hover * {
-    background: transparent !important;
+  div[data-testid="stButton"] > button[kind="primary"]:hover {
+    background: var(--primary-container) !important;
+    filter: brightness(1.05);
+  }
+
+  /* Botón verde (secundario Enagás) — "Comenzar simulación" en bienvenida */
+  .st-key-btn_welcome_start div[data-testid="stButton"] > button {
+    background: var(--secondary) !important;
+    border: 1px solid var(--secondary) !important;
+  }
+  .st-key-btn_welcome_start div[data-testid="stButton"] > button,
+  .st-key-btn_welcome_start div[data-testid="stButton"] > button * {
     color: #ffffff !important;
     -webkit-text-fill-color: #ffffff !important;
   }
-  div[data-testid="stButton"] > button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #001f45 0%, #004f95 100%) !important;
+  .st-key-btn_welcome_start div[data-testid="stButton"] > button:hover {
+    background: #3d5600 !important;
+    border-color: #3d5600 !important;
   }
+
+  /* ── Barra superior: zona derecha (iconos + perfil) ───────────────────── */
+  .topnav-right { display: flex; align-items: center; gap: 14px; }
+  .topnav-icon {
+    color: var(--on-surface-variant);
+    display: flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 50%;
+  }
+  .topnav-user {
+    display: flex; align-items: center; gap: 10px;
+    padding-left: 14px; border-left: 1px solid var(--outline-variant);
+  }
+  .topnav-user-txt { text-align: right; line-height: 1.15; }
+  .topnav-user-name { font-family: var(--font-body); font-weight: 700;
+                      font-size: 0.8rem; color: var(--on-surface); }
+  .topnav-user-role { font-size: 0.6rem; letter-spacing: 0.04em;
+                      text-transform: uppercase; color: var(--on-surface-variant); }
+  .topnav-avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--primary); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-head); font-weight: 700; font-size: 0.85rem;
+    border: 1px solid var(--outline-variant);
+  }
+
+  /* ── Footer técnico ───────────────────────────────────────────────────── */
+  .enagas-footer {
+    margin-top: 26px;
+    background: var(--surface-lowest);
+    border-top: 1px solid var(--outline-variant);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 12px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .enagas-footer .foot-left { display: flex; align-items: center; gap: 14px; }
+  .enagas-footer .foot-brand {
+    font-family: var(--font-body); font-weight: 700; font-size: 0.72rem;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--on-surface-variant);
+  }
+  .enagas-footer .foot-mono,
+  .enagas-footer .foot-links a {
+    font-family: var(--font-mono); font-size: 0.72rem; color: var(--outline);
+    text-decoration: none;
+  }
+  .enagas-footer .foot-links { display: flex; align-items: center; gap: 20px; }
+  .enagas-footer .foot-links a:hover { color: var(--primary); }
+  .enagas-footer .foot-ver {
+    font-family: var(--font-mono); font-size: 0.65rem; color: var(--on-surface-variant);
+    background: var(--surface-highest); border-radius: var(--radius-sm); padding: 2px 8px;
+  }
+  .enagas-footer .foot-green { color: var(--secondary); }
+
+  /* ── Pantalla de bienvenida ───────────────────────────────────────────── */
+  .welcome-wrap { max-width: 940px; margin: 6px auto 0; text-align: center; }
+  .welcome-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--secondary-container); color: var(--secondary);
+    font-family: var(--font-body); font-weight: 700; font-size: 0.72rem;
+    letter-spacing: 0.03em; padding: 6px 16px; border-radius: 999px;
+  }
+  .welcome-title {
+    font-family: var(--font-head); font-size: 2.4rem; font-weight: 800;
+    color: var(--primary); margin: 18px 0 12px; letter-spacing: -0.02em;
+  }
+  .welcome-sub {
+    font-family: var(--font-body); color: var(--on-surface-variant);
+    font-size: 0.98rem; max-width: 640px; margin: 0 auto 6px; line-height: 1.55;
+  }
+  .welcome-card-head { text-align: left; }
+  .welcome-card-icon {
+    width: 48px; height: 48px; border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+  }
+  .welcome-card-icon .material-symbols-outlined { font-size: 26px; }
+  .icon-primary   { background: rgba(0,103,163,0.10); color: var(--primary); }
+  .icon-secondary { background: rgba(75,103,0,0.12);  color: var(--secondary); }
+  .welcome-card-title {
+    font-family: var(--font-head); color: var(--primary);
+    font-size: 1.25rem; font-weight: 700; margin: 0 0 8px;
+  }
+  .welcome-card-txt { color: var(--on-surface-variant); font-size: 0.88rem;
+                      margin: 0 0 4px; line-height: 1.5; }
+
+  /* ── Hero de resultados ───────────────────────────────────────────────── */
+  .results-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-body); font-weight: 700; font-size: 0.72rem;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--primary);
+  }
+  .results-title {
+    font-family: var(--font-head); font-size: 2rem; font-weight: 700;
+    color: var(--on-surface); margin: 6px 0 6px; letter-spacing: -0.02em;
+  }
+  .results-sub { color: var(--on-surface-variant); font-size: 0.9rem; max-width: 640px; }
+  .results-actions { display: flex; gap: 12px; }
+  .btn-ghost, .btn-solid {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--font-body); font-weight: 700; font-size: 0.82rem;
+    padding: 9px 18px; border-radius: var(--radius-sm); cursor: default;
+  }
+  .btn-ghost { border: 1px solid var(--primary); color: var(--primary); background: var(--surface-lowest); }
+  .btn-solid { background: var(--primary); color: #fff; border: 1px solid var(--primary); }
+
+  /* ── Encabezado de sección (Paso 2) ───────────────────────────────────── */
+  .section-h1 {
+    font-family: var(--font-head); font-size: 1.7rem; font-weight: 700;
+    color: var(--primary); margin: 0 0 4px; letter-spacing: -0.02em;
+  }
+  .section-desc { color: var(--on-surface-variant); font-size: 0.88rem;
+                  max-width: 720px; line-height: 1.5; }
 
   footer { display: none; }
   #MainMenu { display: none; }
@@ -384,18 +634,11 @@ def _init_perfiles_session() -> None:
 
 
 def _render_editor_pesos() -> list[dict]:
-    """Editor de pesos por capa; devuelve la lista de perfiles actualizada."""
+    """Editor de pesos por capa (tarjeta). Devuelve la lista de perfiles actualizada."""
     _init_perfiles_session()
     perfiles = st.session_state.perfiles_cfg
 
-    with st.expander("Pesos de capas (perfiles de prioridad)", expanded=False):
-        st.caption(
-            "Cada perfil combina las capas como: "
-            "**coste = peso_longitud + Σ (peso_capa × capa)**. "
-            "Los valores son índices relativos, no euros. "
-            "Los pesos se expresan en porcentaje (0–100 %)."
-        )
-
+    with st.container(border=True):
         pid = st.selectbox(
             "Perfil a ajustar",
             options=PERFILES,
@@ -406,11 +649,16 @@ def _render_editor_pesos() -> list[dict]:
         )
         st.session_state.perfil_pesos_activo = pid
         perfil = _perfil_por_id(perfiles, pid)
-        st.markdown(f"*{perfil.get('descripcion', '')}*")
+        st.markdown(
+            f'<p style="font-style:italic;color:var(--on-surface-variant);'
+            f'font-size:0.85rem;margin:2px 0 12px;">{perfil.get("descripcion", "")}</p>',
+            unsafe_allow_html=True,
+        )
 
-        col_a, col_b = st.columns(2)
+        col_a, col_b = st.columns(2, gap="large")
         pesos = perfil.setdefault("pesos", {})
         ver = st.session_state.pesos_version
+        suma_pct = 0
         for i, (clave, etiqueta) in enumerate(_CAPAS_PESO):
             col = col_a if i % 2 == 0 else col_b
             with col:
@@ -424,7 +672,16 @@ def _render_editor_pesos() -> list[dict]:
                     key=f"peso_{pid}_{clave}_v{ver}",
                 )
                 pesos[clave] = pct / 100
+                suma_pct += pct
 
+        suma_color = "var(--secondary)" if suma_pct == 100 else "var(--error)"
+        st.markdown(
+            f'<p style="font-family:var(--font-mono);font-size:0.82rem;'
+            f'color:var(--on-surface-variant);margin-top:10px;">Suma de pesos: '
+            f'<b style="color:{suma_color};">{suma_pct}%</b>'
+            f'<span style="opacity:0.6;margin-left:6px;">(recomendado: 100%)</span></p>',
+            unsafe_allow_html=True,
+        )
 
         btn_r, btn_a = st.columns(2)
         with btn_r:
@@ -439,17 +696,19 @@ def _render_editor_pesos() -> list[dict]:
                 st.session_state.pesos_version += 1
                 st.rerun()
 
-        # Resumen compacto de los 4 perfiles (comparables: % relativo dentro de cada perfil)
-        st.caption(
-            "Tabla comparativa: cada perfil se muestra normalizado a 100 % "
-            "(cuota relativa de cada capa dentro del perfil), para poder compararlos. "
-            "En los deslizadores de arriba, en cambio, el peso es absoluto (la capa "
-            "que da nombre al perfil está al 100 % = máxima prioridad)."
-        )
-        filas = [_fila_pesos_pct(p) for p in perfiles]
-        st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
-
     return perfiles
+
+
+def _tabla_comparativa_perfiles(perfiles: list[dict]) -> None:
+    """Tabla resumen de los pesos por perfil (en %)."""
+    filas = []
+    for p in perfiles:
+        row = {"Perfil": _NOMBRE_PERFIL.get(p["id"], p["id"])}
+        for clave, etiqueta in _CAPAS_PESO:
+            v = p.get("pesos", {}).get(clave, 0.0)
+            row[etiqueta.split(" (")[0]] = f"{round(v * 100)}%"
+        filas.append(row)
+    st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
 
 def _crear_escenario(cfg: dict, coords: dict, nuevo_id: str, ref_id: str | None) -> str:
@@ -713,44 +972,50 @@ def _mapa_resultados(escenarios: list[str] | None = None) -> folium.Map | None:
     return m
 
 
-# ── Página de entrada ─────────────────────────────────────────────────────────
+# ── Paso 1: Origen y Destino ───────────────────────────────────────────────────
 
-def _render_input():
-    cfg = _leer_cfg()
+def _init_estado_entrada(cfg: dict) -> None:
     ids_cfg = _ids_escenarios(cfg)
-
     if "coords" not in st.session_state:
         st.session_state.coords = _coords_desde_cfg(cfg)
     else:
         for sid in ids_cfg:
             if sid not in st.session_state.coords:
                 st.session_state.coords[sid] = _coords_desde_cfg(cfg)[sid]
-
-    if "escenario_activo" not in st.session_state or st.session_state.escenario_activo not in st.session_state.coords:
+    if ("escenario_activo" not in st.session_state
+            or st.session_state.escenario_activo not in st.session_state.coords):
         st.session_state.escenario_activo = ids_cfg[0] if ids_cfg else "A"
     if "punto_activo_rol" not in st.session_state:
         st.session_state.punto_activo_rol = "origen"
     if "_last_click" not in st.session_state:
         st.session_state._last_click = None
 
+
+def _render_paso1():
+    cfg = _leer_cfg()
+    _init_estado_entrada(cfg)
+
     coords = st.session_state.coords
     escenarios = sorted(coords.keys(), key=lambda x: (len(x), x))
     esc_activo = st.session_state.escenario_activo
 
-    st.markdown(
-        '<div class="constraints-box">'
-        "<b>Restricciones del modelo:</b>"
-        "&nbsp;&nbsp;&middot;&nbsp; Corredor de referencia: <b>2 km de ancho</b> (&plusmn;1 km a cada lado)"
-        "&nbsp;&nbsp;&middot;&nbsp; Distancia maxima origen&ndash;destino: <b>15 km</b>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    col_panel, col_map = st.columns([1, 2], gap="large")
 
-    col_inputs, col_map = st.columns([1, 2], gap="large")
+    with col_panel:
+        with st.container(border=True):
+            st.markdown(
+                '<div class="constraints-box">'
+                '<div style="display:flex;align-items:center;gap:6px;color:var(--primary);'
+                'font-weight:700;margin-bottom:5px;">'
+                '<span class="material-symbols-outlined" style="font-size:18px;">info</span>'
+                '<span style="font-size:0.68rem;letter-spacing:0.05em;text-transform:uppercase;">'
+                'Restricciones del modelo</span></div>'
+                'Corredor de referencia: <b>2 km de ancho</b> (&plusmn;1 km a cada lado).<br>'
+                'Distancia máxima origen&ndash;destino: <b>15 km</b>.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
-    with col_inputs:
-        sel_col, _ = st.columns([2, 1])
-        with sel_col:
             esc_activo = st.selectbox(
                 "Escenario",
                 options=escenarios,
@@ -761,32 +1026,34 @@ def _render_input():
             )
             st.session_state.escenario_activo = esc_activo
 
-        with st.expander("Crear nuevo escenario", expanded=False):
-            propuesto = _siguiente_id_escenario(escenarios)
-            nuevo_id = st.text_input(
-                "Identificador",
-                value=propuesto,
-                help="Letras, numeros, guion o guion bajo. Ej.: C, NORTE, RAMAL_3",
-                key="nuevo_escenario_id",
-            )
-            if st.button("Crear escenario", use_container_width=True, key="btn_crear_escenario"):
-                try:
-                    nuevo = _crear_escenario(cfg, coords, nuevo_id, esc_activo)
-                    st.session_state.escenario_activo = nuevo
-                    st.session_state.punto_activo_rol = "origen"
-                    st.success(f"Escenario {nuevo} creado.")
-                    st.rerun()
-                except ValueError as exc:
-                    st.error(str(exc))
+            with st.expander("＋ Crear nuevo escenario", expanded=False):
+                propuesto = _siguiente_id_escenario(escenarios)
+                nuevo_id = st.text_input(
+                    "Identificador",
+                    value=propuesto,
+                    help="Letras, numeros, guion o guion bajo. Ej.: C, NORTE, RAMAL_3",
+                    key="nuevo_escenario_id",
+                )
+                if st.button("Crear escenario", use_container_width=True, key="btn_crear_escenario"):
+                    try:
+                        nuevo = _crear_escenario(cfg, coords, nuevo_id, esc_activo)
+                        st.session_state.escenario_activo = nuevo
+                        st.session_state.punto_activo_rol = "origen"
+                        st.success(f"Escenario {nuevo} creado.")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
 
-        with st.container(border=True):
             st.markdown(
                 f'<div class="scenario-title">Escenario {esc_activo}</div>',
                 unsafe_allow_html=True,
             )
             for rol in ("origen", "destino"):
+                punto = "#4b6700" if rol == "origen" else "#004e7e"
                 st.markdown(
-                    f'<p class="section-label">{rol.capitalize()}</p>',
+                    f'<p class="section-label" style="display:flex;align-items:center;gap:6px;">'
+                    f'<span style="width:8px;height:8px;border-radius:50%;background:{punto};'
+                    f'display:inline-block;"></span>{rol.capitalize()}</p>',
                     unsafe_allow_html=True,
                 )
                 c1, c2 = st.columns(2)
@@ -805,45 +1072,57 @@ def _render_input():
                 coords[esc_activo]["origen"]["x"], coords[esc_activo]["origen"]["y"],
                 coords[esc_activo]["destino"]["x"], coords[esc_activo]["destino"]["y"],
             )
+            km_txt = f"{dist / 1000:.1f}".replace(".", ",")
             if dist > MAX_DIST_M:
-                st.error(f"Distancia: {dist / 1000:.1f} km — supera los {MAX_DIST_M / 1000:.0f} km")
+                fondo, borde, texto = "rgba(186,26,26,0.10)", "rgba(186,26,26,0.35)", "var(--error)"
+                extra = f" · supera {MAX_DIST_M / 1000:.0f} km"
             else:
-                st.success(f"Distancia: {dist / 1000:.1f} km")
-
-        if len(escenarios) > 1:
-            st.caption(
-                f"{len(escenarios)} escenarios configurados. "
-                f"El mapa muestra todos; el activo ({esc_activo}) resalta en color."
+                fondo, borde, texto = "rgba(75,103,0,0.14)", "rgba(75,103,0,0.30)", "var(--secondary)"
+                extra = ""
+            st.markdown(
+                f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                f'background:{fondo};border:1px solid {borde};border-radius:var(--radius);'
+                f'padding:10px 14px;margin-top:6px;">'
+                f'<span style="color:{texto};font-weight:700;">Distancia total{extra}</span>'
+                f'<span style="font-family:var(--font-mono);font-weight:700;color:{texto};'
+                f'font-size:1.05rem;">{km_txt} km</span></div>',
+                unsafe_allow_html=True,
             )
 
-        if _HAS_ST_FOLIUM:
-            st.markdown("---")
-            st.markdown(f"**Siguiente clic en el mapa establece ({esc_activo}):**")
-            st.session_state.punto_activo_rol = st.radio(
-                "Punto activo",
-                options=["origen", "destino"],
-                format_func=str.capitalize,
-                index=0 if st.session_state.punto_activo_rol == "origen" else 1,
-                label_visibility="collapsed",
-                horizontal=True,
-                key="radio_punto_rol",
-            )
-        else:
-            st.info("Instala `streamlit-folium` para activar el clic en mapa.")
+            if _HAS_ST_FOLIUM:
+                st.markdown(
+                    f'<p class="section-label" style="margin-top:12px;">'
+                    f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
+                    unsafe_allow_html=True,
+                )
+                st.session_state.punto_activo_rol = st.radio(
+                    "Punto activo",
+                    options=["origen", "destino"],
+                    format_func=str.capitalize,
+                    index=0 if st.session_state.punto_activo_rol == "origen" else 1,
+                    label_visibility="collapsed",
+                    horizontal=True,
+                    key="radio_punto_rol",
+                )
 
-    with col_map:
         st.markdown(
-            f"**Mapa — Escenario {esc_activo}**  "
-            f"<span style='color:#27ae60;font-weight:600;'>● Origen</span> &nbsp; "
-            f"<span style='color:#e74c3c;font-weight:600;'>● Destino</span>",
+            '<div style="display:flex;gap:16px;margin-top:10px;font-size:0.78rem;">'
+            '<span style="display:flex;align-items:center;gap:6px;font-weight:600;">'
+            '<span style="width:11px;height:11px;border-radius:50%;background:#4b6700;'
+            'display:inline-block;"></span>Origen (O)</span>'
+            '<span style="display:flex;align-items:center;gap:6px;font-weight:600;">'
+            '<span style="width:11px;height:11px;border-radius:50%;background:#004e7e;'
+            'display:inline-block;"></span>Destino (D)</span></div>',
             unsafe_allow_html=True,
         )
+
+    with col_map:
         m = _mapa_entrada(coords, esc_activo)
         if _HAS_ST_FOLIUM:
             map_data = _st_folium(
                 m,
                 key="mapa_entrada",
-                height=420,
+                height=480,
                 use_container_width=True,
                 returned_objects=["last_clicked"],
             )
@@ -861,10 +1140,7 @@ def _render_input():
             from streamlit.components.v1 import html as _html
             _html(m._repr_html_(), height=560)
 
-    perfiles_cfg = _render_editor_pesos()
-
-    # ── Botón ─────────────────────────────────────────────────────────────────
-    st.markdown("---")
+    # ── Navegación ────────────────────────────────────────────────────────────
     distancias = {
         s: _dist_m(
             coords[s]["origen"]["x"], coords[s]["origen"]["y"],
@@ -872,40 +1148,129 @@ def _render_input():
         )
         for s in escenarios
     }
-    can_run = all(d <= MAX_DIST_M for d in distancias.values())
+    can_next = all(d <= MAX_DIST_M for d in distancias.values())
 
-    btn_col, _ = st.columns([1, 3])
-    with btn_col:
-        if st.button("Procesamiento", type="primary", disabled=not can_run,
-                     use_container_width=True):
+    st.markdown("---")
+    c_back, _, c_next = st.columns([1.2, 2, 1.4])
+    with c_back:
+        if st.button("← Inicio", use_container_width=True, key="btn_p1_inicio"):
+            st.session_state.pantalla = "bienvenida"
+            st.rerun()
+    with c_next:
+        if st.button("Siguiente: Pesos y Perfiles  →", type="primary",
+                     disabled=not can_next, use_container_width=True, key="btn_p1_next"):
             cfg = _aplicar_coords_a_cfg(cfg, coords)
             _guardar_cfg(cfg)
+            st.session_state.pantalla = "paso2"
+            st.rerun()
 
-            bar = st.progress(0, text="Iniciando pipeline...")
-
-            try:
-                resultados = _ejecutar_pipeline(
-                    lambda pct, msg: bar.progress(pct, text=msg),
-                    escenarios=escenarios,
-                    perfiles=copy.deepcopy(perfiles_cfg),
-                )
-                st.session_state.resultados = resultados
-                st.session_state.escenarios_procesados = escenarios
-                st.session_state.perfiles_procesados = copy.deepcopy(perfiles_cfg)
-                st.session_state.pantalla = "resultados"
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Error durante el procesamiento: {exc}")
-
-    if not can_run:
+    if not can_next:
         invalidos = [s for s, d in distancias.items() if d > MAX_DIST_M]
         st.warning(
-            "Corrige las distancias antes de lanzar el procesamiento. "
+            "Corrige las distancias antes de continuar. "
             f"Escenarios fuera de limite: {', '.join(invalidos)}"
         )
 
 
+# ── Paso 2: Pesos y Perfiles ───────────────────────────────────────────────────
+
+def _render_paso2():
+    coords = st.session_state.get("coords") or _coords_desde_cfg(_leer_cfg())
+    escenarios = sorted(coords.keys(), key=lambda x: (len(x), x))
+
+    top = st.container()  # cabecera (título + botón "Generar rutas"), rellenada al final
+
+    col_izq, col_der = st.columns([3, 2], gap="large")
+    with col_izq:
+        perfiles_cfg = _render_editor_pesos()
+    with col_der:
+        st.markdown(
+            '<h3 style="font-family:var(--font-head);color:var(--on-surface);'
+            'font-size:1.05rem;font-weight:700;margin:0 0 8px;">Comparativa de Perfiles</h3>',
+            unsafe_allow_html=True,
+        )
+        _tabla_comparativa_perfiles(perfiles_cfg)
+
+    generar = False
+    with top:
+        h_txt, h_btn = st.columns([3, 1])
+        with h_txt:
+            st.markdown(
+                '<div class="section-h1">Paso 2: Pesos y Perfiles</div>'
+                '<p class="section-desc">Cada perfil combina los pesos de coste, longitud, '
+                'zonas protegidas, relieve y otros criterios. Los valores son índices relativos. '
+                'Cada peso está acotado entre 0 y 1; la suma debe ser 1 (100%).</p>',
+                unsafe_allow_html=True,
+            )
+        with h_btn:
+            generar = st.button("Generar rutas", type="primary",
+                                use_container_width=True, key="btn_generar_rutas")
+        c_back, _ = st.columns([1.2, 3])
+        with c_back:
+            if st.button("← Origen y Destino", use_container_width=True, key="btn_p2_back"):
+                st.session_state.pantalla = "paso1"
+                st.rerun()
+
+    if generar:
+        bar = st.progress(0, text="Iniciando pipeline...")
+        try:
+            resultados = _ejecutar_pipeline(
+                lambda pct, msg: bar.progress(pct, text=msg),
+                escenarios=escenarios,
+                perfiles=copy.deepcopy(perfiles_cfg),
+            )
+            st.session_state.resultados = resultados
+            st.session_state.escenarios_procesados = escenarios
+            st.session_state.perfiles_procesados = copy.deepcopy(perfiles_cfg)
+            st.session_state.pantalla = "resultados"
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Error durante el procesamiento: {exc}")
+
+
 # ── Página de resultados ──────────────────────────────────────────────────────
+
+def _kpis_resumen(resultados: dict, escenarios: list[str]) -> list[tuple[str, str, str]]:
+    """KPIs agregados del escenario primario. Coste como índice relativo (nunca €)."""
+    if not escenarios:
+        return []
+    res = resultados.get(escenarios[0], {})
+    rutas = [r.to_dict() for r in res.get("rutas", [])]
+    if not rutas:
+        return []
+    long_media = sum(r.get("longitud_km", 0.0) for r in rutas) / len(rutas)
+    coste_medio = sum(r.get("coste_relativo", 0.0) for r in rutas) / len(rutas)
+    pend_max = max((r.get("pendiente_max_pct", 0.0) for r in rutas), default=0.0)
+    km_prot = sum(r.get("km_protegida", 0.0) for r in rutas)
+    impacto = "Bajo" if km_prot < 0.5 else ("Medio" if km_prot < 2.0 else "Alto")
+    return [
+        ("route", "Longitud media", f"{long_media:.2f} km".replace(".", ",")),
+        ("stacked_line_chart", "Coste relativo (índice)", f"{coste_medio:.3f}".replace(".", ",")),
+        ("trending_up", "Pendiente máxima", f"{pend_max:.0f} %"),
+        ("eco", "Impacto ambiental", impacto),
+    ]
+
+
+def _render_kpis(resultados: dict, escenarios: list[str]) -> None:
+    kpis = _kpis_resumen(resultados, escenarios)
+    if not kpis:
+        return
+    cols = st.columns(len(kpis), gap="medium")
+    for col, (icon, label, value) in zip(cols, kpis):
+        with col:
+            with st.container(border=True):
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:10px;">'
+                    f'<span class="material-symbols-outlined" style="color:var(--primary);'
+                    f'font-size:22px;background:rgba(0,103,163,0.10);border-radius:8px;'
+                    f'padding:6px;">{icon}</span>'
+                    f'<span style="font-size:0.8rem;color:var(--on-surface-variant);">{label}</span>'
+                    f'</div>'
+                    f'<div style="font-family:var(--font-head);font-size:1.6rem;font-weight:700;'
+                    f'color:var(--on-surface);margin-top:8px;">{value}</div>',
+                    unsafe_allow_html=True,
+                )
+
 
 def _render_results():
     resultados = st.session_state.get("resultados", {})
@@ -913,9 +1278,27 @@ def _render_results():
         "escenarios_procesados", sorted(resultados.keys(), key=lambda x: (len(x), x))
     )
 
-    if st.button("← Volver a configuracion"):
-        st.session_state.pantalla = "input"
+    if st.button("← Volver a configuración", key="btn_back_results"):
+        st.session_state.pantalla = "paso2"
         st.rerun()
+
+    st.markdown(
+        '<div style="display:flex;justify-content:space-between;align-items:flex-end;'
+        'gap:16px;flex-wrap:wrap;margin:2px 0 10px;">'
+        '<div>'
+        '<div class="results-title">Comparativa de Trazados de Ramales H₂</div>'
+        '<p class="results-sub">Visualización métrica de indicadores de rendimiento para la red '
+        'de transporte de hidrógeno renovable. Proyecto H2 Lab 2026.</p>'
+        '</div>'
+        '<div class="results-actions">'
+        '<span class="btn-ghost"><span class="material-symbols-outlined" '
+        'style="font-size:16px;">share</span>Compartir</span>'
+        '<span class="btn-solid"><span class="material-symbols-outlined" '
+        'style="font-size:16px;">download</span>Generar informe PDF</span>'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     # Avisos de preparación: capas de coste que no se pudieron generar para
     # algún escenario nuevo (p. ej. sin cobertura o sin fuente de datos). Se
@@ -934,14 +1317,16 @@ def _render_results():
     perfiles_usados = st.session_state.get("perfiles_procesados")
     if perfiles_usados:
         with st.expander("Pesos de capas usados en este procesamiento", expanded=False):
-            st.caption(
-                "Cada perfil normalizado a 100 % (cuota relativa de cada capa dentro "
-                "del perfil), para poder compararlos entre sí."
-            )
-            filas = [_fila_pesos_pct(p) for p in perfiles_usados]
+            filas = []
+            for p in perfiles_usados:
+                row = {"Perfil": _NOMBRE_PERFIL.get(p["id"], p["id"])}
+                for clave, etiqueta in _CAPAS_PESO:
+                    v = p.get("pesos", {}).get(clave, 0.0)
+                    row[etiqueta.split(" (")[0]] = f"{round(v * 100)}%"
+                filas.append(row)
             st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
-    tab_labels = ["Mapa de rutas"] + [f"Metricas — Escenario {s}" for s in escenarios] + [
+    tab_labels = ["Mapa de rutas"] + [f"Métricas — Escenario {s}" for s in escenarios] + [
         "Diversidad de corredores"
     ]
     tabs = st.tabs(tab_labels)
@@ -1006,6 +1391,9 @@ def _render_results():
                 hide_index=True,
             )
 
+            st.write("")
+            _render_kpis(resultados, [s])
+
     # ── Tab diversidad ────────────────────────────────────────────────────────
     with tab_div:
         for s in escenarios:
@@ -1046,6 +1434,132 @@ def _render_results():
             st.markdown("---")
 
 
+# ── Stepper de progreso ───────────────────────────────────────────────────────
+
+def _stepper(paso: int) -> None:
+    """Barra de pasos (1: Origen y Destino · 2: Pesos y Perfiles · 3: Resultados)."""
+    nombres = ["Origen y Destino", "Pesos y Perfiles", "Resultados"]
+    kicker = {"done": "Completado", "active": "Paso actual", "pending": "Siguiente"}
+    partes = ['<div class="enagas-stepper">']
+    for i, nombre in enumerate(nombres, start=1):
+        estado = "done" if i < paso else ("active" if i == paso else "pending")
+        partes.append(
+            f'<div class="step {estado}">'
+            f'<div class="step-num">{i}</div>'
+            f'<div class="step-txt">'
+            f'<span class="step-kicker">{kicker[estado]}</span>'
+            f'<span class="step-name">{nombre}</span>'
+            f'</div></div>'
+        )
+        if i < len(nombres):
+            partes.append(f'<div class="step-conn {"done" if paso > i else ""}"></div>')
+    partes.append("</div>")
+    st.markdown("".join(partes), unsafe_allow_html=True)
+
+
+def _footer() -> None:
+    """Footer técnico corporativo."""
+    st.markdown(
+        '<div class="enagas-footer">'
+        '<div class="foot-left">'
+        '<span class="foot-brand">© 2024 Enagás S.A.</span>'
+        '<span class="foot-mono">v2.4.1-stable</span>'
+        '</div>'
+        '<div class="foot-links">'
+        '<a href="#">API Metadata</a>'
+        '<a href="#">Documentación</a>'
+        '<span class="foot-green foot-mono">Technical Infrastructure Division</span>'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── Pantalla de bienvenida ─────────────────────────────────────────────────────
+
+def _hero_visual() -> str:
+    """Panel visual derecho de la bienvenida (imagen assets/hero.jpg si existe)."""
+    import base64
+    for nombre in ("hero.jpg", "hero.png", "hero.jpeg"):
+        ruta = Path(__file__).parent / "assets" / nombre
+        if ruta.exists():
+            mime = "jpeg" if ruta.suffix != ".png" else "png"
+            b64 = base64.b64encode(ruta.read_bytes()).decode()
+            return (
+                f'<div style="height:100%;min-height:420px;border-radius:var(--radius-xl);'
+                f'background-image:url(\'data:image/{mime};base64,{b64}\');'
+                f'background-size:cover;background-position:center;'
+                f'border:1px solid var(--outline-variant);"></div>'
+            )
+    # Sin imagen: panel degradado con motivo de red H₂
+    return (
+        '<div style="height:100%;min-height:420px;border-radius:var(--radius-xl);'
+        'border:1px solid var(--outline-variant);overflow:hidden;position:relative;'
+        'background:linear-gradient(135deg,#004e7e 0%,#0067a3 55%,#4b6700 130%);'
+        'display:flex;align-items:center;justify-content:center;">'
+        '<div style="position:absolute;inset:0;opacity:0.15;background-image:'
+        'linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px);'
+        'background-size:32px 32px;"></div>'
+        '<span class="material-symbols-outlined" style="color:rgba(255,255,255,0.92);'
+        'font-size:120px;position:relative;">valve</span>'
+        '</div>'
+    )
+
+
+def _render_bienvenida() -> None:
+    col_left, col_right = st.columns([1.15, 1], gap="large")
+    with col_left:
+        st.markdown(
+            '<div style="font-family:var(--font-body);font-weight:700;font-size:0.72rem;'
+            'letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary);'
+            'margin-bottom:6px;">Hydrogen Infrastructure Tool v2.4</div>'
+            '<div style="font-family:var(--font-head);font-size:2.3rem;font-weight:800;'
+            'color:var(--primary);line-height:1.1;letter-spacing:-0.02em;margin-bottom:14px;">'
+            'Generador de Trazados<br>de Ramales de H₂</div>'
+            '<p class="welcome-sub" style="margin:0 0 6px;text-align:left;">Herramienta avanzada '
+            'para la optimización y diseño de infraestructuras de hidrógeno.</p>'
+            '<p class="welcome-sub" style="text-align:left;">Utilice algoritmos de última '
+            'generación para calcular las rutas más eficientes basadas en criterios geográficos, '
+            'ambientales y de coste.</p>',
+            unsafe_allow_html=True,
+        )
+        st.write("")
+        cc1, cc2 = st.columns(2, gap="medium")
+        with cc1:
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="welcome-card-head">'
+                    '<div class="welcome-card-icon icon-primary">'
+                    '<span class="material-symbols-outlined">play_arrow</span></div>'
+                    '<div class="welcome-card-title">Nueva simulación</div>'
+                    '<p class="welcome-card-txt">Inicie una nueva sesión de diseño. Defina puntos '
+                    'de origen, destino y parámetros para obtener el trazado óptimo.</p>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button("Comenzar simulación  →", type="secondary",
+                             use_container_width=True, key="btn_welcome_start"):
+                    st.session_state.pantalla = "paso1"
+                    st.rerun()
+        with cc2:
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="welcome-card-head">'
+                    '<div class="welcome-card-icon icon-secondary">'
+                    '<span class="material-symbols-outlined">insights</span></div>'
+                    '<div class="welcome-card-title">Documentación técnica</div>'
+                    '<p class="welcome-card-txt">Explore la metodología técnica, algoritmos de '
+                    'cálculo y detalles de implementación de la herramienta.</p>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button("Ver documentación  📖", use_container_width=True,
+                             key="btn_welcome_docs"):
+                    st.toast("Documentación técnica — próximamente.")
+    with col_right:
+        st.markdown(_hero_visual(), unsafe_allow_html=True)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def _main():
@@ -1055,31 +1569,49 @@ def _main():
     import base64
     _LOGO_PATH = Path(__file__).parent / "assets" / "Logo.png"
     _logo_tag = (
-        f'<img src="data:image/png;base64,{base64.b64encode(_LOGO_PATH.read_bytes()).decode()}"'
-        f' height="52" style="display:block;">'
+        f'<img class="topnav-logo" src="data:image/png;base64,'
+        f'{base64.b64encode(_LOGO_PATH.read_bytes()).decode()}">'
         if _LOGO_PATH.exists() else ""
     )
 
     st.markdown(_CSS, unsafe_allow_html=True)
     st.markdown(
-        f'<div class="enagas-page-header">'
-        f'<div>{_logo_tag}</div>'
-        f'<div class="header-divider"></div>'
-        f'<div>'
-        f'<div class="header-title">Generador de Trazados de Ramales H₂</div>'
-        f'<div class="header-subtitle">CI2 Lab 2026 &nbsp;&middot;&nbsp; Enagás</div>'
+        f'<div class="enagas-topnav">'
+        f'<div class="topnav-left">{_logo_tag}</div>'
+        f'<div class="topnav-right">'
+        f'<span class="topnav-icon"><span class="material-symbols-outlined">notifications</span></span>'
+        f'<span class="topnav-icon"><span class="material-symbols-outlined">settings</span></span>'
+        f'<div class="topnav-user">'
+        f'<div class="topnav-user-txt">'
+        f'<div class="topnav-user-name">J. Martínez</div>'
+        f'<div class="topnav-user-role">Data Engineer</div>'
+        f'</div>'
+        f'<div class="topnav-avatar">JM</div>'
+        f'<span class="material-symbols-outlined" style="color:var(--on-surface-variant);'
+        f'font-size:18px;">expand_more</span>'
+        f'</div>'
         f'</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
     if "pantalla" not in st.session_state:
-        st.session_state.pantalla = "input"
+        st.session_state.pantalla = "bienvenida"
 
-    if st.session_state.pantalla == "resultados":
+    pantalla = st.session_state.pantalla
+    if pantalla == "bienvenida":
+        _render_bienvenida()
+    elif pantalla == "paso2":
+        _stepper(2)
+        _render_paso2()
+    elif pantalla == "resultados":
+        _stepper(3)
         _render_results()
-    else:
-        _render_input()
+    else:  # paso1
+        _stepper(1)
+        _render_paso1()
+
+    _footer()
 
 
 _main()
