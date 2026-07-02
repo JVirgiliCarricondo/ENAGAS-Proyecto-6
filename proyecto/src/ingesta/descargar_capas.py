@@ -821,8 +821,9 @@ def _parse_args() -> argparse.Namespace:
         description="Descarga capas GIS por AOI para cada escenario (A y/o B)."
     )
     p.add_argument(
-        "--escenario", choices=["A", "B", "ambos"], default="ambos",
-        help="Escenario a descargar (A, B o ambos; por defecto: ambos).",
+        "--escenario", default="ambos",
+        help="Escenario a descargar: A, B, cualquier otro id definido en "
+             "escenario.yaml (p. ej. C), o 'ambos' (=A y B). Por defecto: ambos.",
     )
     p.add_argument(
         "-y", "--yes", action="store_true",
@@ -847,7 +848,7 @@ def main() -> None:
     log.info("=" * 62)
 
     cfg = _load_yaml(CONFIG_ESCENARIO)
-    escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
+    escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario.upper()]
 
     # Preguntar sobre sobreescritura si hay archivos existentes
     overwrite = args.yes

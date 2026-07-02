@@ -809,8 +809,9 @@ def _generar_tpi(scenario: str, log: logging.Logger) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingesta y alineación de capas GIS al AOI.")
     parser.add_argument(
-        "--escenario", choices=["A", "B"], default="A",
-        help="Escenario a procesar (A o B, según escenario.yaml). Por defecto: A.",
+        "--escenario", default="A",
+        help="Escenario a procesar: A, B o cualquier otro id definido en "
+             "escenario.yaml (p. ej. C). Por defecto: A.",
     )
     parser.add_argument(
         "--only",
@@ -827,6 +828,7 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    args.escenario = args.escenario.upper()
 
     if _MISSING:
         print(
