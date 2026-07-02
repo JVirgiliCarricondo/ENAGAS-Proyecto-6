@@ -23,29 +23,29 @@ perfiles:
 
   - id: ambiental
     nombre: "Menor impacto ambiental"
-    descripcion: "Evita zonas protegidas (Red Natura 2000) y cruces; aunque alargue el trazado."
+    descripcion: "Evita zonas protegidas (Red Natura 2000), inundables y cruces; aunque alargue el trazado. La geotecnia entra con peso alto (evitar terreno inestable): además de criterio de viabilidad, abre un corredor diferenciado donde la capa protegida es plana (p.ej. escenario A)."
     pesos:
-      protegida:    1.00  # evitar zonas protegidas ante todo (normalizado ÷1.5)
-      cruces:       0.53  # evitar cruces con infraestructuras
+      protegida:    1.00  # evitar zonas protegidas ante todo (capa que da nombre → dominante=1)
+      geotecnia:    0.80  # evitar terreno inestable; da contraste donde protegida es plana
+      cruces:       0.50  # evitar cruces con infraestructuras
       inundable:    0.50  # zonas inundables (A=14.25 → ~protegida/2)
-      expropiacion: 0.33
-      tpi:          0.20  # relieve (posición topográfica)
-      geotecnia:    0.20
-      longitud:     0.20
-    nota: "Prioriza viabilidad medioambiental"
+      expropiacion: 0.10
+      tpi:          0.10  # relieve (posición topográfica)
+      longitud:     0.10
+    nota: "Prioriza viabilidad medioambiental; geotecnia alta como evitación de terreno inestable. Todas las capas con peso > 0."
 
   - id: pendiente
     nombre: "Por relieve (divisorias / TPI)"
     descripcion: "Prioriza la posición topográfica (TPI): tiende a seguir crestas/divisorias y evitar valles y fondos de cauce (mayor estabilidad geotécnica). La barrera de pendiente >70% (≈35°) se conserva dentro de la capa TPI."
     pesos:
-      tpi:          1.00  # fuerte preferencia por el relieve (normalizado ÷1.5)
-      geotecnia:    0.53  # terreno estable
-      protegida:    0.27
-      cruces:       0.20
-      expropiacion: 0.20
-      longitud:     0.20
-      inundable:    0.13  # zonas inundables (A=14.25 → ~protegida/2)
-    nota: "Ruta diferenciada por divisorias; reduce cruces de cauce. (id 'pendiente' conservado por compatibilidad.)"
+      tpi:          1.00  # fuerte preferencia por el relieve (capa que da nombre → dominante=1)
+      geotecnia:    0.10  # secundario bajo: cede el nicho geotécnico al perfil ambiental
+      longitud:     0.10
+      protegida:    0.05
+      cruces:       0.05
+      expropiacion: 0.05
+      inundable:    0.05  # zonas inundables (A=14.25 → ~protegida/2)
+    nota: "Ruta diferenciada por divisorias; reduce cruces de cauce. Geotecnia baja para no solapar con el perfil ambiental. Todas las capas con peso > 0. (id 'pendiente' conservado por compatibilidad.)"
 
   - id: equilibrio
     nombre: "Equilibrio (recomendado)"

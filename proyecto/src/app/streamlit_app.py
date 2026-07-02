@@ -69,6 +69,23 @@ _CAPAS_PESO: list[tuple[str, str]] = [
 ]
 _PESO_MIN, _PESO_MAX, _PESO_STEP = 0, 100, 1
 
+
+def _fila_pesos_pct(perfil: dict) -> dict:
+    """Fila de tabla comparativa: pesos del perfil normalizados a % (suman 100).
+
+    Los pesos se guardan con la capa dominante = 1.0 (identidad del perfil), por
+    lo que su suma varía entre perfiles. Para COMPARARLOS se muestran como cuota
+    relativa dentro de cada perfil (peso / suma_del_perfil), de modo que cada fila
+    suma 100 %. El LCP es invariante al escalado, así que esta normalización es
+    solo de presentación: no altera las rutas.
+    """
+    pesos = perfil.get("pesos", {})
+    total = sum(pesos.values()) or 1.0
+    row = {"Perfil": _NOMBRE_PERFIL.get(perfil["id"], perfil["id"])}
+    for clave, etiqueta in _CAPAS_PESO:
+        row[etiqueta.split(" (")[0]] = f"{round(pesos.get(clave, 0.0) / total * 100)}%"
+    return row
+
 try:
     from streamlit_folium import st_folium as _st_folium
     _HAS_ST_FOLIUM = True
@@ -422,14 +439,14 @@ def _render_editor_pesos() -> list[dict]:
                 st.session_state.pesos_version += 1
                 st.rerun()
 
-        # Resumen compacto de los 4 perfiles
-        filas = []
-        for p in perfiles:
-            row = {"Perfil": _NOMBRE_PERFIL.get(p["id"], p["id"])}
-            for clave, etiqueta in _CAPAS_PESO:
-                v = p.get("pesos", {}).get(clave, 0.0)
-                row[etiqueta.split(" (")[0]] = f"{round(v * 100)}%"
-            filas.append(row)
+        # Resumen compacto de los 4 perfiles (comparables: % relativo dentro de cada perfil)
+        st.caption(
+            "Tabla comparativa: cada perfil se muestra normalizado a 100 % "
+            "(cuota relativa de cada capa dentro del perfil), para poder compararlos. "
+            "En los deslizadores de arriba, en cambio, el peso es absoluto (la capa "
+            "que da nombre al perfil está al 100 % = máxima prioridad)."
+        )
+        filas = [_fila_pesos_pct(p) for p in perfiles]
         st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
     return perfiles
@@ -883,13 +900,11 @@ def _render_results():
     perfiles_usados = st.session_state.get("perfiles_procesados")
     if perfiles_usados:
         with st.expander("Pesos de capas usados en este procesamiento", expanded=False):
-            filas = []
-            for p in perfiles_usados:
-                row = {"Perfil": _NOMBRE_PERFIL.get(p["id"], p["id"])}
-                for clave, etiqueta in _CAPAS_PESO:
-                    v = p.get("pesos", {}).get(clave, 0.0)
-                    row[etiqueta.split(" (")[0]] = f"{round(v * 100)}%"
-                filas.append(row)
+            st.caption(
+                "Cada perfil normalizado a 100 % (cuota relativa de cada capa dentro "
+                "del perfil), para poder compararlos entre sí."
+            )
+            filas = [_fila_pesos_pct(p) for p in perfiles_usados]
             st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
     tab_labels = ["Mapa de rutas"] + [f"Metricas — Escenario {s}" for s in escenarios] + [
