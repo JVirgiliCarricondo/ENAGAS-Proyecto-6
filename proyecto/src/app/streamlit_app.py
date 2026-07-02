@@ -464,14 +464,34 @@ def _ejecutar_pipeline(
 
     from trazados.ruta_pendiente import run_perfiles
     from metricas.calculo import calcular_todas
+    from ingesta.preparar_escenario import escenario_preparado, preparar
 
     if not escenarios:
         raise ValueError("No hay escenarios configurados.")
 
+    n = len(escenarios)
+    avisos_prep: dict[str, list[str]] = {}
     for i, s in enumerate(escenarios):
-        pct = 0.05 + (0.75 * i / len(escenarios))
-        progress_cb(pct, f"Calculando rutas — Escenario {s}...")
+        base = 0.05 + 0.75 * i / n
+        span = 0.75 / n
+        # Un escenario nuevo no tiene capas de coste: se auto-preparan
+        # (descarga GIS + alineación + superficies) antes de trazar. Si falla
+        # (sin internet, servicio caído), preparar() lanza PreparacionError con
+        # un mensaje claro que se muestra en la UI.
+        if not escenario_preparado(s):
+            progress_cb(base, f"Preparando escenario {s} (descarga + alineación)…")
+            res_prep = preparar(
+                s,
+                progress_cb=lambda pct, msg, b=base, sp=span: progress_cb(
+                    b + sp * 0.7 * pct, msg
+                ),
+            )
+            if res_prep.get("avisos"):
+                avisos_prep[s] = res_prep["avisos"]
+        progress_cb(base + span * 0.72, f"Calculando rutas — Escenario {s}…")
         run_perfiles(s, perfiles_override=perfiles)
+
+    st.session_state["avisos_preparacion"] = avisos_prep
 
     progress_cb(0.85, "Calculando metricas...")
     resultados = calcular_todas(escenarios=escenarios)
@@ -879,6 +899,20 @@ def _render_results():
     if st.button("← Volver a configuracion"):
         st.session_state.pantalla = "input"
         st.rerun()
+
+    # Avisos de preparación: capas de coste que no se pudieron generar para
+    # algún escenario nuevo (p. ej. sin cobertura o sin fuente de datos). Se
+    # muestran para que el usuario sepa que ese criterio no entró en el coste.
+    avisos_prep = st.session_state.get("avisos_preparacion", {})
+    if avisos_prep:
+        detalle = "\n".join(
+            f"- **Escenario {s}**: " + "; ".join(a for a in avisos)
+            for s, avisos in avisos_prep.items()
+        )
+        st.warning(
+            "Algunas capas de coste no se generaron y **no entraron en el "
+            "cálculo** de las rutas de estos escenarios:\n" + detalle
+        )
 
     perfiles_usados = st.session_state.get("perfiles_procesados")
     if perfiles_usados:
