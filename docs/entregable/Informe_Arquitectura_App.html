@@ -113,7 +113,6 @@
     <li><a href="#contratos">Contratos de datos y configuración</a></li>
     <li><a href="#fuentes">Fuentes de datos y reproducibilidad</a></li>
     <li><a href="#coste">Modelo de coste y ponderación</a></li>
-    <li><a href="#mvp">Encaje con la escalera MVP</a></li>
     <li><a href="#estado">Estado del código y stack</a></li>
   </ol>
 </nav>
@@ -367,7 +366,7 @@ navegación y resultados en memoria de sesión:</p>
       <tr><td>Viario + ferrocarril</td><td>OpenStreetMap (Overpass API)</td><td><span class="tag ok">automática</span></td><td><code>OSM_{s}.gpkg</code></td></tr>
       <tr><td>Hidrografía</td><td>WFS IGN INSPIRE (<code>HY.PhysicalWaters</code>)</td><td><span class="tag ok">automática</span></td><td><code>HID_{s}.gpkg</code></td></tr>
       <tr><td>Geología (litología)</td><td>IGME MAGNA50 (WFS / ArcGIS REST)</td><td><span class="tag ok">automática</span></td><td><code>IGME_{s}.gpkg</code></td></tr>
-      <tr><td>Zonas inundables</td><td>SNCZI MITECO (OGC API, T10+T100+T500)</td><td><span class="tag part">auto + aportada</span></td><td><code>INUND_{s}.gpkg</code></td></tr>
+      <tr><td>Zonas inundables</td><td>SNCZI MITECO (servicio web OGC/WMS, T10+T100+T500)</td><td><span class="tag ok">automática</span></td><td><code>INUND_{s}.gpkg</code></td></tr>
       <tr><td>Red Natura 2000</td><td>Capa nacional (WFS IGN INSPIRE <code>PS.ProtectedSite</code>)</td><td><span class="tag stub">manual</span></td><td><code>RN2000_{s}.gpkg</code></td></tr>
       <tr><td>Catastro (uso del suelo)</td><td>Sede Electrónica del Catastro (<code>PARCELA.shp</code> por municipio)</td><td><span class="tag stub">manual</span></td><td><code>Catastro/…</code></td></tr>
     </tbody>
@@ -378,9 +377,10 @@ navegación y resultados en memoria de sesión:</p>
       <li><b>Red Natura 2000 y Catastro NO se descargan automáticamente.</b> Hay que colocarlos a mano en
           <code>data/raw/RN2000/</code> y <code>data/raw/Catastro/</code>. Si faltan, esas capas se
           <b>omiten con un aviso</b> (no es un error del pipeline) y su criterio no entra en el coste.</li>
-      <li><b>Zonas inundables (SNCZI): el pipeline sí puede descargarlas</b> vía la OGC API de MITECO, pero
-          por <b>fiabilidad</b> del servicio conviene además <b>aportar la capa a mano</b> — cosa que <b>se ha
-          hecho</b> en este proyecto (capa SNCZI integrada y usada por <code>zonas_inundables.py</code>).</li>
+      <li><b>Zonas inundables (SNCZI): el pipeline las descarga automáticamente</b> del servicio web de MITECO
+          (OGC/WMS) y las integra vía <code>zonas_inundables.py</code>. <b>Siguiente paso previsto:</b> permitir
+          además <b>aportar la capa a mano</b> —igual que Red Natura 2000 y Catastro— por fiabilidad del servicio;
+          <b>aún no está implementado</b>.</li>
     </ul>
   </div>
   <p style="font-size:.86rem;margin-top:10px">Para las capas automáticas, escribe un <b>manifiesto de estado</b>
@@ -566,7 +566,7 @@ pip install -r requirements.txt        # en Windows es más cómodo con conda-fo
 # 2. Datos que hay que aportar a mano en data/raw/ (NO se descargan solos):
 #    · Red Natura 2000  → data/raw/RN2000/
 #    · Catastro          → data/raw/Catastro/  (PARCELA.shp por municipio)
-#    · Zonas inundables  → capa SNCZI aportada (recomendado por fiabilidad; ya incluida)
+#    (Zonas inundables SÍ se descargan solas del SNCZI; aportarlas a mano es un paso previsto, aún no implementado)
 
 # 3a. Interfaz web (recomendado):
 streamlit run src/app/streamlit_app.py
@@ -647,60 +647,38 @@ coste del factor de ponderación oficial <code>A</code> con divisor común
       ya refleja la severidad oficial del condicionante.</li>
 </ul>
 
-<!-- ============================================================ -->
-<h2 id="mvp"><span class="n">09</span>Encaje con la escalera MVP</h2>
-
-<p>Enagás define el reto como una <b>escalera de 8 MVP</b> ordenados por madurez de producto (no por
-semanas). Los componentes de esta app cubren el <b>núcleo comprometido (MVP 1–4)</b>; el resto es
-reach / continuidad. Esta es la trazabilidad de cada MVP con el código que lo implementa:</p>
-
-<table style="font-size:.84rem">
-  <thead><tr><th>MVP</th><th>Qué exige</th><th>Dónde vive en la app</th><th>Estado</th></tr></thead>
+<h3>Pesos por perfil — el mecanismo de diferenciación</h3>
+<p style="font-size:.9rem">Sobre las capas ya estandarizadas, cada <b>perfil</b> aplica un vector de pesos
+   distinto. Misma base de coste + pesos distintos ⇒ superficies distintas ⇒ <b>rutas diferenciadas</b>: aquí
+   es donde nacen los 3–5 trazados alternativos. Los perfiles son <b>configuración externa</b>
+   (<code>perfiles.yaml</code>), no código: recalibrar es editar el YAML y re-ejecutar; también se editan en
+   caliente desde la interfaz (sliders del Paso 2) sin tocar el archivo.</p>
+<table style="font-size:.82rem">
+  <thead><tr><th>Capa de coste</th><th>corto</th><th>ambiental</th><th>relieve (TPI)</th><th>equilibrio</th></tr></thead>
   <tbody>
-    <tr><td><b>1 · Datos y condicionantes</b></td>
-        <td>Capas GIS públicas; normalización de CRS/resolución; matriz de condicionantes; validación de vacíos.</td>
-        <td><code>src/ingesta/</code> (descarga + alineación) + manifiesto de estado.</td>
-        <td><span class="tag ok">cubierto</span></td></tr>
-    <tr><td><b>2 · Trazado base automático</b></td>
-        <td>Ráster de coste multicriterio + un trazado por camino de menor coste (A*/Dijkstra).</td>
-        <td><code>src/superficie/</code> + <code>src/trazados/</code> (Dijkstra 8-conexo).</td>
-        <td><span class="tag ok">cubierto</span></td></tr>
-    <tr><td><b>3 · Alternativas de trazado</b></td>
-        <td>3–5 trazados diferenciados por pesos/perfiles; evitar redundancia; diversidad real.</td>
-        <td>4 perfiles en <code>perfiles.yaml</code> + <code>diversidad_corredores.py</code>.</td>
-        <td><span class="tag ok">cubierto</span></td></tr>
-    <tr><td><b>4 · Comparador multicriterio</b></td>
-        <td>Caracterizar cada alternativa; tabla + ponderación + ranking; recomendación; backtesting.</td>
-        <td><code>src/metricas/</code> + tablas/KPIs de resultados. <em>Scoring/ranking formal y backtesting pendientes.</em></td>
-        <td><span class="tag part">parcial</span></td></tr>
-    <tr><td><b>5 · Pre-ingeniería EV-500</b></td>
-        <td>Paquete de la alternativa elegida: exportable GIS, cruces, afección municipal, narrativa.</td>
-        <td>Reach: nuevos formatos de salida de <code>comparacion/</code> y <code>app/</code>.</td>
-        <td><span class="tag stub">no iniciado</span></td></tr>
-    <tr><td><b>6 · Validado (backtesting extendido)</b></td>
-        <td>Comparar alternativas frente a un ramal real; explicar desviaciones; ajuste iterativo del coste.</td>
-        <td>Reach: módulo de validación (en <code>comparacion/</code> o <code>tests/</code>), si Enagás facilita un ramal.</td>
-        <td><span class="tag stub">no iniciado</span></td></tr>
-    <tr><td><b>7 · Herramienta operativa</b></td>
-        <td>Usable por terceros: selección interactiva, salidas (mapas, shapefile, Excel), parametrización.</td>
-        <td>La UI Streamlit ya cubre la selección interactiva y la parametrización de pesos; faltan exportaciones.</td>
-        <td><span class="tag part">parcial</span></td></tr>
-    <tr><td><b>8 · Piloto industrializable</b></td>
-        <td>Versionado de escenarios, trazabilidad de decisiones, alineación completa con EV-500.</td>
-        <td>Base puesta: escenarios versionados en <code>data/config/</code>; requiere disciplina, no rediseño.</td>
-        <td><span class="tag stub">continuidad</span></td></tr>
+    <tr><td>Longitud (distancia base)</td><td><b>1,00</b></td><td>0,10</td><td>0,10</td><td>0,05</td></tr>
+    <tr><td>TPI (relieve)</td><td>0,13</td><td>0,10</td><td><b>1,00</b></td><td>0,12</td></tr>
+    <tr><td>Zonas protegidas (RN2000)</td><td>0,13</td><td><b>1,00</b></td><td>0,05</td><td>0,25</td></tr>
+    <tr><td>Zonas inundables (SNCZI)</td><td>0,07</td><td>0,50</td><td>0,05</td><td>0,12</td></tr>
+    <tr><td>Cruces (viario · ríos · ffcc)</td><td>0,20</td><td>0,50</td><td>0,05</td><td>0,16</td></tr>
+    <tr><td>Expropiación (catastro)</td><td>0,13</td><td>0,10</td><td>0,05</td><td>0,21</td></tr>
+    <tr><td>Geotecnia (litología)</td><td>0,07</td><td>0,80</td><td>0,10</td><td>0,09</td></tr>
   </tbody>
 </table>
-
-<div class="note" style="font-size:.88rem">
-  <b>Alcance del programa (1 jun – 17 jul):</b> núcleo comprometido = MVP 1–4. Validación (MVP 4/6) con
-  backtesting <em>si Enagás facilita un ramal real</em>. MVP 5/7/8 son ambición/continuidad, hoja de ruta de
-  «siguientes pasos». <b>EV-500</b> es un estándar interno de Enagás cuyo alcance exacto debe confirmarse antes
-  de comprometer los MVP 5/8.
-</div>
+<ul class="clean" style="font-size:.88rem">
+  <li><b>corto · ambiental · relieve</b> usan pesos <b>relativos</b>: la capa que da nombre al perfil pesa
+      <code>1,00</code> (dominante) y el resto en proporción — cada uno persigue un corredor claramente
+      sesgado hacia un criterio.</li>
+  <li><b>equilibrio</b> (recomendado) usa pesos <b>normalizados que suman 1,00</b>, mapeando las bandas
+      oficiales de Enagás (anexo II EV-500): medioambiente 30–40 % → protegida + inundable; urbanístico
+      15–25 % → expropiación; geotecnia 15–25 % → geotecnia + TPI; construcción 10–20 % → cruces; resto
+      → longitud.</li>
+  <li>Las siete capas llevan peso &gt; 0 en los cuatro perfiles: ninguna alternativa ignora por completo un
+      criterio, solo cambia su énfasis.</li>
+</ul>
 
 <!-- ============================================================ -->
-<h2 id="estado"><span class="n">10</span>Estado del código y stack tecnológico</h2>
+<h2 id="estado"><span class="n">09</span>Estado del código y stack tecnológico</h2>
 
 <div class="grid2">
   <div class="card">
