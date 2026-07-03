@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline de generación de trazados de ramales de H₂ — Documento técnico</title>
+<style>
+  :root {
+    --blue:        #004e7e;   /* primario Enagás */
+    --blue-dark:   #002b5c;   /* cabeceras / masthead */
+    --blue-mid:    #0067a3;
+    --blue-wash:   #eef3f7;   /* fondo de cabeceras de tabla / callouts */
+    --green:       #4b6700;   /* secundario (uso mínimo) */
+    --green-wash:  #f0f4e6;
+    --ink:         #1b2429;
+    --muted:       #5a6670;
+    --rule:        #d3dde4;
+    --rule-soft:   #e6edf1;
+    --band:        #f5f8fa;
+    --bg:          #ffffff;
+    --barrera:     #9a2a2a;
+    --sans: "Segoe UI", -apple-system, system-ui, Roboto, Arial, sans-serif;
+    --mono: "Cascadia Code", "Consolas", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--band);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .doc {
+    max-width: 860px;
+    margin: 24px auto;
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    box-shadow: 0 1px 2px rgba(0,43,92,0.04);
+  }
+  .pad { padding: 0 54px; }
+  @media (max-width: 640px) { .pad { padding: 0 22px; } .doc { margin: 0; border: none; } }
+
+  /* ── Masthead ─────────────────────────────────────────── */
+  .masthead {
+    background: var(--blue-dark);
+    color: #fff;
+    padding: 18px 54px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  @media (max-width: 640px) { .masthead { padding: 16px 22px; } }
+  .wordmark {
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 0.02em;
+  }
+  .wordmark span { font-weight: 300; opacity: 0.72; }
+  .masthead .unit {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.8;
+    margin-top: 2px;
+  }
+  .classif {
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.45);
+    border-radius: 3px;
+    padding: 5px 11px;
+    white-space: nowrap;
+  }
+
+  /* ── Título del documento ─────────────────────────────── */
+  .titleblock { padding-top: 30px; padding-bottom: 8px; border-bottom: 2px solid var(--blue); }
+  .doctype {
+    font-size: 12px; letter-spacing: 0.13em; text-transform: uppercase;
+    color: var(--blue); font-weight: 600; margin-bottom: 8px;
+  }
+  h1 {
+    font-size: 25px; line-height: 1.22; letter-spacing: -0.01em;
+    color: var(--blue-dark); margin: 0 0 14px; font-weight: 700; text-wrap: balance;
+  }
+
+  /* ── Tabla de metadatos ───────────────────────────────── */
+  .meta {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    border: 1px solid var(--rule); border-radius: 4px; overflow: hidden;
+    margin: 22px 0 6px; font-size: 13px;
+  }
+  @media (max-width: 560px) { .meta { grid-template-columns: 1fr; } }
+  .meta .cell { display: flex; border-bottom: 1px solid var(--rule-soft); }
+  .meta .cell:nth-last-child(-n+1) { border-bottom: none; }
+  .meta .k {
+    width: 128px; flex-shrink: 0; background: var(--band);
+    padding: 8px 12px; font-weight: 600; color: var(--muted);
+    font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+    border-right: 1px solid var(--rule-soft);
+  }
+  .meta .v { padding: 8px 12px; }
+  .meta .v.mono { font-family: var(--mono); font-size: 12.5px; }
+
+  /* ── Secciones ────────────────────────────────────────── */
+  section { padding-top: 30px; padding-bottom: 6px; }
+  h2 {
+    font-size: 18px; color: var(--blue-dark); margin: 0 0 12px;
+    padding-bottom: 7px; border-bottom: 1px solid var(--rule);
+    font-weight: 700; letter-spacing: -0.01em;
+  }
+  h2 .sn { color: var(--blue); font-variant-numeric: tabular-nums; margin-right: 10px; }
+  h3 {
+    font-size: 14.5px; color: var(--blue-dark); margin: 22px 0 8px; font-weight: 700;
+  }
+  h3 .sn { color: var(--blue); font-variant-numeric: tabular-nums; margin-right: 8px; }
+  p { margin: 10px 0; }
+  .lead { color: var(--ink); }
+  .muted { color: var(--muted); }
+  a { color: var(--blue-mid); }
+
+  /* ── Índice ───────────────────────────────────────────── */
+  .toc { background: var(--band); border: 1px solid var(--rule); border-radius: 4px; padding: 16px 20px; margin: 22px 0 4px; }
+  .toc .h { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+  .toc ol { margin: 0; padding-left: 0; list-style: none; counter-reset: toc; }
+  .toc li { counter-increment: toc; padding: 3px 0; font-size: 13.5px; display: flex; gap: 10px; }
+  .toc li::before { content: counter(toc); color: var(--blue); font-family: var(--mono); font-weight: 600; min-width: 16px; }
+  .toc a { text-decoration: none; color: var(--ink); }
+  .toc a:hover { color: var(--blue-mid); text-decoration: underline; }
+
+  /* ── Diagrama de flujo (nodos de proceso encadenados) ─── */
+  .pipe { margin: 22px 0 8px; }
+
+  .pnode-term {
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    background: var(--blue-dark); color: #fff; border-radius: 30px;
+    padding: 14px 26px; text-align: center;
+  }
+  .pnode-term .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 700; opacity: 0.62; white-space: nowrap; }
+  .pnode-term .txt { font-weight: 600; font-size: 14px; }
+  .pnode-term .txt code { font-family: var(--mono); font-size: 12px; opacity: 0.85; }
+
+  .pconn { position: relative; display: flex; justify-content: center; align-items: center; height: 26px; color: var(--blue); }
+  .pconn::before { content: ""; position: absolute; width: 2px; height: 100%; background: var(--rule); }
+  .pconn span { position: relative; background: var(--bg); font-size: 16px; line-height: 1; padding: 3px 0; }
+
+  .pstage { border: 1px solid var(--rule); border-radius: 8px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,43,92,0.06); }
+  .pstage-hd {
+    display: flex; align-items: center; gap: 13px;
+    padding: 12px 18px; background: var(--band);
+    border-bottom: 1px solid var(--rule); border-left: 4px solid var(--blue);
+  }
+  .pstage-hd .badge {
+    width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%;
+    background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-weight: 700; font-size: 15px;
+  }
+  .pstage-hd .icon { color: var(--blue); flex-shrink: 0; display: flex; align-items: center; }
+  .pstage-hd .htext { flex: 1; min-width: 0; }
+  .pstage-hd .t { font-weight: 700; font-size: 15.5px; color: var(--blue-dark); line-height: 1.2; }
+  .pstage-hd .m { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .pstage-bd { padding: 4px 18px 16px; border-left: 4px solid var(--blue); }
+  .pstage-bd > p { font-size: 13.5px; }
+  .pstage-bd > p:first-child { margin-top: 12px; }
+  .mono-inline { font-family: var(--mono); font-size: 12.5px; }
+
+  /* ── Nodo de decisión (escenario nuevo) ───────────────── */
+  .pdecision { border: 1px dashed var(--blue); border-radius: 8px; background: var(--blue-wash); overflow: hidden; }
+  .pd-head {
+    padding: 11px 18px; font-weight: 700; color: var(--blue-dark); font-size: 14px;
+    display: flex; align-items: center; gap: 9px; border-bottom: 1px dashed rgba(0,78,126,0.30);
+  }
+  .pd-head .dia { color: var(--blue); font-size: 15px; }
+  .pd-lanes { display: grid; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 620px) { .pd-lanes { grid-template-columns: 1fr; } }
+  .lane { padding: 12px 18px; background: #fff; }
+  .lane.auto { border-right: 1px dashed rgba(0,78,126,0.22); }
+  @media (max-width: 620px) { .lane.auto { border-right: none; border-bottom: 1px dashed rgba(0,78,126,0.22); } }
+  .lane-h {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
+    margin-bottom: 9px; display: flex; align-items: center; gap: 7px;
+  }
+  .lane.auto .lane-h { color: var(--green); }
+  .lane.manual .lane-h { color: #9a5a00; }
+  .lane ul { margin: 0; padding-left: 17px; font-size: 13px; }
+  .lane li { margin-bottom: 5px; }
+  .lane li b { color: var(--blue-dark); font-weight: 600; }
+  .badge-clave {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+    color: #9a5a00; background: #fbeccb; border: 1px solid #e6c98a; border-radius: 3px;
+    padding: 0 6px; margin-left: 3px; letter-spacing: 0.02em;
+  }
+  .pd-note { padding: 9px 18px; font-size: 12.5px; color: var(--muted); border-top: 1px dashed rgba(0,78,126,0.30); }
+
+  /* ── Compuerta de validación / rama de resultado ──────── */
+  .pcheck { border: 1px solid var(--rule); border-radius: 8px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,43,92,0.06); }
+  .pc-q {
+    padding: 11px 18px; font-weight: 700; color: var(--blue-dark); font-size: 14px;
+    display: flex; align-items: center; gap: 9px; background: var(--band); border-bottom: 1px solid var(--rule);
+  }
+  .pc-q .dia { color: var(--blue); font-size: 15px; }
+  .pc-branches { display: grid; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 620px) { .pc-branches { grid-template-columns: 1fr; } }
+  .branch { padding: 12px 16px 13px; }
+  .pc-branches .branch:first-child { border-right: 1px solid var(--rule); }
+  @media (max-width: 620px) { .pc-branches .branch:first-child { border-right: none; border-bottom: 1px solid var(--rule); } }
+  .branch .bh { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; margin-bottom: 5px; }
+  .branch.pass .bh { color: var(--green); }
+  .branch.fail .bh { color: var(--barrera); }
+  .branch .bd { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+  .branch .bd code { font-family: var(--mono); font-size: 11.5px; }
+
+  /* ── Bloques de fórmula ───────────────────────────────── */
+  figure.formula { margin: 14px 0; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+  figure.formula figcaption {
+    background: var(--blue-wash); color: var(--blue-dark);
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;
+    padding: 7px 14px; border-bottom: 1px solid var(--rule);
+  }
+  figure.formula pre {
+    margin: 0; padding: 13px 16px; font-family: var(--mono); font-size: 13px;
+    line-height: 1.75; color: var(--ink); overflow-x: auto; white-space: pre;
+    border-left: 3px solid var(--blue);
+  }
+  pre .cm { color: var(--muted); }
+  pre .hi { color: var(--blue-dark); font-weight: 600; }
+  pre .stop { color: var(--barrera); font-weight: 600; }
+
+  /* ── Tablas ───────────────────────────────────────────── */
+  .tbl { margin: 14px 0; overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  caption {
+    text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--blue-dark); font-weight: 600; background: var(--blue-wash);
+    padding: 7px 14px; border-bottom: 1px solid var(--rule);
+  }
+  th, td { padding: 7px 14px; text-align: left; border-bottom: 1px solid var(--rule-soft); }
+  thead th { background: var(--band); font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td.mono { font-family: var(--mono); font-size: 12px; }
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .cols2 { grid-template-columns: 1fr; } }
+
+  /* ── Listas ───────────────────────────────────────────── */
+  ul.plain { margin: 10px 0; padding-left: 20px; }
+  ul.plain li { margin-bottom: 7px; }
+  dl.defs { margin: 12px 0; }
+  dl.defs > div { display: grid; grid-template-columns: 150px 1fr; gap: 6px 16px; padding: 7px 0; border-bottom: 1px solid var(--rule-soft); }
+  dl.defs > div:last-child { border-bottom: none; }
+  @media (max-width: 560px) { dl.defs > div { grid-template-columns: 1fr; gap: 2px; } }
+  dl.defs dt { font-weight: 600; color: var(--blue-dark); }
+  dl.defs dd { margin: 0; color: var(--muted); }
+
+  /* ── Avisos de estado ─────────────────────────────────── */
+  .note { border: 1px solid var(--rule); border-left: 3px solid var(--blue); background: var(--band); border-radius: 4px; padding: 12px 16px; margin: 14px 0; font-size: 13.5px; }
+  .note.pending { border-left-color: var(--green); background: var(--green-wash); }
+  .note .lbl { font-weight: 700; color: var(--blue-dark); }
+  .note.pending .lbl { color: var(--green); }
+  .note code { font-family: var(--mono); font-size: 12.5px; }
+
+  .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+  @media (max-width: 620px) { .status-grid { grid-template-columns: 1fr; } }
+  .status-grid .box { border: 1px solid var(--rule); border-radius: 4px; padding: 14px 16px; }
+  .status-grid .box .h { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; }
+  .status-grid .box.ok .h { color: var(--blue-dark); }
+  .status-grid .box.wip .h { color: var(--green); }
+  .status-grid .box ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  .status-grid .box li { margin-bottom: 5px; }
+
+  /* ── Pie ──────────────────────────────────────────────── */
+  .docfoot {
+    margin-top: 30px; border-top: 1px solid var(--rule);
+    padding: 16px 54px 26px; display: flex; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px; font-size: 11.5px; color: var(--muted);
+  }
+  @media (max-width: 640px) { .docfoot { padding: 16px 22px 24px; } }
+  .docfoot .c { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* ── Impresión ────────────────────────────────────────── */
+  @media print {
+    body { background: #fff; font-size: 10.5pt; }
+    .doc { max-width: none; margin: 0; border: none; box-shadow: none; }
+    .masthead { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    section, figure.formula, .tbl, .flow, .status-grid .box { break-inside: avoid; }
+    h2 { break-after: avoid; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <div class="masthead">
+    <div>
+      <div class="wordmark">enagás<span> · CI2 Lab</span></div>
+      <div class="unit">Reto 6 · Grupo 6 · Cátedra de Industria Inteligente (ICAI-Comillas)</div>
+    </div>
+  </div>
+
+  <div class="pad titleblock">
+    <div class="doctype">Documento técnico · Descripción del pipeline</div>
+    <h1>Generación automatizada de trazados de ramales de H₂: algoritmos y modelo de coste</h1>
+  </div>
+
+  <!-- INTRODUCCIÓN -->
+  <section class="pad" style="padding-top:26px;">
+    <p class="lead">El prototipo genera, a partir de un <strong>origen</strong> (planta de H₂), un <strong>destino</strong> (conexión a red troncal) y un <strong>corredor de estudio</strong>, un conjunto de <strong>cuatro trazados alternativos diferenciados</strong> sobre cartografía pública, y los presenta en comparativa multicriterio (longitud, coste relativo, cruces especiales, km en zona protegida e inundable, uso del suelo, pendiente).</p>
+    <p>El objetivo no es una única ruta «óptima», sino un abanico de alternativas comparables para apoyar la decisión de prediseño. Todo coste es un <strong>índice relativo adimensional</strong> normalizado en el intervalo [0, 1]; el sistema <strong>no estima costes económicos en euros</strong>.</p>
+  </section>
+
+  <!-- DIAGRAMA DE FLUJO -->
+  <section class="pad">
+    <h2>Diagrama de flujo del pipeline</h2>
+    <p style="margin-bottom:2px;">Pipeline geoespacial y determinista — <strong>alinear antes de combinar, diferenciar antes de comparar</strong>. Lo orquesta la interfaz Streamlit (<span class="mono-inline">src/app/streamlit_app.py</span>). Cada etapa muestra su algoritmo y su modelo de coste.</p>
+
+    <div class="pipe" aria-label="Diagrama de flujo del pipeline">
+
+      <div class="pnode-term">
+        <span class="lbl">Entrada</span>
+        <span class="txt">Origen · destino (UTM) · pesos por perfil &nbsp;—&nbsp; <code>escenario.yaml · perfiles.yaml</code></span>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <!-- COMPUERTA A: validación de distancia -->
+      <div class="pcheck" aria-label="Validación de distancia">
+        <div class="pc-q"><span class="dia">◆</span> Validación — ¿distancia origen–destino ≤ 15 km?</div>
+        <div class="pc-branches">
+          <div class="branch pass">
+            <div class="bh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Dentro de límite</div>
+            <div class="bd">La generación continúa hacia la preparación del escenario.</div>
+          </div>
+          <div class="branch fail">
+            <div class="bh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg> Supera 15 km</div>
+            <div class="bd">La interfaz <strong>bloquea</strong> la generación: hay que corregir las coordenadas y repetir.</div>
+          </div>
+        </div>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <!-- DECISIÓN: escenario nuevo -->
+      <div class="pdecision" aria-label="Decisión: escenario nuevo">
+        <div class="pd-head">
+          <span class="dia">◆</span>
+          ¿Escenario nuevo? — sin capas en <span class="mono-inline" style="margin-left:5px;">Capas_Coste/</span>
+        </div>
+        <div class="pd-lanes">
+          <div class="lane auto">
+            <div class="lane-h">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M4 20h16"/></svg>
+              Descarga automática
+            </div>
+            <ul>
+              <li>DEM — IGN MDT25 (WCS)</li>
+              <li>OSM — viario y ferrocarril (Overpass)</li>
+              <li>Hidrografía IGN (WFS INSPIRE)</li>
+              <li>Geología IGME MAGNA50 (WFS)</li>
+            </ul>
+          </div>
+          <div class="lane manual">
+            <div class="lane-h">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v5M12 17.5h.01"/></svg>
+              Aporte manual en <span class="mono-inline">data/raw/</span> (previo)
+            </div>
+            <ul>
+              <li><b>Catastro</b> (parcela) <span class="badge-clave">requiere Cl@ve</span></li>
+              <li><b>Zonas inundables</b> — SNCZI (MITECO)</li>
+              <li><b>Red Natura 2000</b> — MITECO</li>
+            </ul>
+          </div>
+        </div>
+        <div class="pd-note">Si el escenario <strong>ya está preparado</strong>, este paso se omite y se pasa directo al cálculo de rutas. Si es <strong>nuevo</strong>, las capas manuales deben colocarse en <span class="mono-inline">data/raw/</span> antes de generar; las demás se descargan solas.</div>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <!-- ETAPA 1 -->
+      <div class="pstage">
+        <div class="pstage-hd">
+          <span class="badge">1</span>
+          <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg></span>
+          <div class="htext"><div class="t">Ingesta y alineación de capas</div><div class="m">ingesta/ · alinear_capas.py</div></div>
+        </div>
+        <div class="pstage-bd">
+          <p>Si el escenario no dispone de capas de coste, se preparan de principio a fin (descarga → alineación → superficies). El área de estudio no es un rectángulo arbitrario, sino un <strong>corredor orientado</strong> construido sobre la línea origen–destino.</p>
+          <figure class="formula">
+            <figcaption>Corredor de estudio y rejilla común</figcaption>
+<pre><span class="hi">AOI</span> = buffer( línea(origen, destino), 1000 m, tapas planas )   <span class="cm">→ corredor de 2 km de ancho</span>
+rejilla anclada a malla global (0,0), paso 30 m           <span class="cm">celdas reproducibles entre escenarios</span>
+reproyección → EPSG:25830   ·   rásteres: bilineal   ·   vectores categóricos: vecino más próximo
+DEM (dem_aoi) = ráster de referencia: define transform, dimensiones y CRS de todas las capas</pre>
+          </figure>
+          <p class="muted" style="font-size:12.5px;">Capas fuente: DEM Copernicus GLO-30, Catastro (parcela), OpenStreetMap, Hidrografía IGN, Red Natura 2000 (MITECO), IGME MAGNA 50 y zonas inundables SNCZI.</p>
+        </div>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <!-- ETAPA 2 -->
+      <div class="pstage">
+        <div class="pstage-hd">
+          <span class="badge">2</span>
+          <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></span>
+          <div class="htext"><div class="t">Capas de coste</div><div class="m">superficie/ · seis capas en [0, 1]</div></div>
+        </div>
+        <div class="pstage-bd">
+          <p>Cada condicionante se traduce en un coste por celda, <strong>anclado al factor de ponderación oficial de Enagás</strong> (<span class="mono-inline">coste = A / 38</span>, A<sub>REF</sub> = 38 = terrenos inestables), lo que preserva la jerarquía oficial y mantiene toda capa en [0, 1]. <strong>No existe capa de pendiente</strong>: el relieve lo describe el índice de posición topográfica (TPI); la inclinación solo actúa como barrera dura.</p>
+          <figure class="formula">
+            <figcaption>Índice de posición topográfica (relieve) — tpi.py</figcaption>
+<pre><span class="hi">TPI(c)</span> = z(c) − media( z en anillo de radio 300 m )     <span class="cm">Weiss (2001)</span>
+estandarización z-score sobre el AOI, acotada a ±2σ → coste decreciente (cresta más barata):
+    cresta (+2σ) → 0.0      llano / ladera → 0.5      valle (−2σ) → 1.0
+<span class="stop">barrera dura independiente</span>: pendiente (Horn) &gt; 70 % (≈ 35°) → celda intransitable</pre>
+          </figure>
+          <div class="cols2">
+            <div class="tbl">
+              <table>
+                <caption>Geotecnia · IGME (campo DLO)</caption>
+                <thead><tr><th>Litología</th><th class="n">Coste</th></tr></thead>
+                <tbody>
+                  <tr><td>Aluvial / terrazas</td><td class="n">0.05</td></tr>
+                  <tr><td>Arenisca compacta</td><td class="n">0.22</td></tr>
+                  <tr><td>Caliza / roca dura</td><td class="n">0.34</td></tr>
+                  <tr><td>Yeso / expansivo</td><td class="n">1.00</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="tbl">
+              <table>
+                <caption>Expropiación · Catastro (campo TIPO)</caption>
+                <thead><tr><th>Tipo</th><th class="n">Coste</th></tr></thead>
+                <tbody>
+                  <tr><td>D — dominio público</td><td class="n">0.03</td></tr>
+                  <tr><td>R — rústico</td><td class="n">0.10</td></tr>
+                  <tr><td>Periurbano (&lt;500 m²)</td><td class="n">0.47</td></tr>
+                  <tr><td>U — urbano</td><td class="n">0.66</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="cols2">
+            <div class="tbl">
+              <table>
+                <caption>Capas binarias (dentro / fuera)</caption>
+                <thead><tr><th>Capa</th><th class="n">Dentro</th></tr></thead>
+                <tbody>
+                  <tr><td>Red Natura 2000</td><td class="n">0.75</td></tr>
+                  <tr><td>Inundable SNCZI (T10∪T100∪T500)</td><td class="n">0.375</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="tbl">
+              <table>
+                <caption>Cruces puntuales · OSM + IGN (máx. por celda)</caption>
+                <thead><tr><th>Elemento</th><th class="n">Coste</th></tr></thead>
+                <tbody>
+                  <tr><td>Río permanente</td><td class="n">0.34</td></tr>
+                  <tr><td>Rambla / no permanente</td><td class="n">0.26</td></tr>
+                  <tr><td>Viario (path → autopista)</td><td class="n">0.2–0.8</td></tr>
+                  <tr><td>Ferrocarril</td><td class="n">0.9</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <!-- ETAPA 3 -->
+      <div class="pstage">
+        <div class="pstage-hd">
+          <span class="badge">3</span>
+          <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2.2" fill="#fff"/><circle cx="15" cy="12" r="2.2" fill="#fff"/><circle cx="8" cy="18" r="2.2" fill="#fff"/></svg></span>
+          <div class="htext"><div class="t">Combinación ponderada por perfil</div><div class="m">superficie/combinar.py · data/config/perfiles.yaml</div></div>
+        </div>
+        <div class="pstage-bd">
+          <p>Las capas se combinan con un vector de pesos; cada perfil produce una superficie distinta y, por tanto, una ruta distinta. El coste base de longitud (<span class="mono-inline">BASE_LONG = 1.0</span>) garantiza que la distancia cuente y que ninguna celda tenga coste nulo.</p>
+          <figure class="formula">
+            <figcaption>Superficie de coste combinada para el perfil p</figcaption>
+<pre><span class="hi">coste_total(i,j)</span> = BASE_LONG        · w_longitud     <span class="cm">'longitud' escala el coste base</span>
+                 + tpi(i,j)          · w_tpi
+                 + geotecnia(i,j)    · w_geotecnia
+                 + expropiacion(i,j) · w_expropiacion
+                 + protegida(i,j)    · w_protegida
+                 + inundable(i,j)    · w_inundable
+                 + cruces(i,j)       · w_cruces</pre>
+          </figure>
+          <div class="tbl">
+            <table>
+              <caption>Perfiles de prioridad (cuatro alternativas diferenciadas)</caption>
+              <thead><tr><th>Perfil</th><th>Criterio dominante</th><th>Pesos destacados</th></tr></thead>
+              <tbody>
+                <tr><td>Ruta Corta <span class="muted">(corto)</span></td><td>Longitud</td><td class="mono">longitud 1.00 · cruces 0.20</td></tr>
+                <tr><td>Ambiental <span class="muted">(ambiental)</span></td><td>Zonas protegidas</td><td class="mono">protegida 1.00 · geotecnia 0.80 · cruces/inundable 0.50</td></tr>
+                <tr><td>Relieve <span class="muted">(pendiente)</span></td><td>Posición topográfica</td><td class="mono">tpi 1.00 · resto ≤ 0.10</td></tr>
+                <tr><td>Equilibrio <span class="muted">(equilibrio)</span></td><td>Multicriterio (bandas EV-500)</td><td class="mono">protegida 0.25 · exprop. 0.21 · cruces 0.16 · tpi+geo 0.21</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <!-- ETAPA 4 -->
+      <div class="pstage">
+        <div class="pstage-hd">
+          <span class="badge">4</span>
+          <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="5" r="2.2"/><path d="M8 19h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></svg></span>
+          <div class="htext"><div class="t">Camino de mínimo coste (LCP)</div><div class="m">trazados/ruta_pendiente.py · Dijkstra 8-conexo</div></div>
+        </div>
+        <div class="pstage-bd">
+          <p>La rejilla se interpreta como un grafo: cada celda es un nodo con aristas a sus ocho vecinos; las celdas barrera no son transitables. Se emplea <strong>Dijkstra 8-conexo isótropo</strong>; sin heurística A* y sin componente anisótropa.</p>
+          <figure class="formula">
+            <figcaption>Coste de transición entre celdas</figcaption>
+<pre><span class="hi">coste(p→q)</span> = d · C_celda
+    d       = 1 (ortogonal)   ·   √2 (diagonal)
+    C_celda = ½ · ( C_p + C_q )      <span class="cm">media del coste de las dos celdas</span>
+
+origen y destino se reubican a la celda válida más próxima (radio ≤ 20) si caen en barrera o nodata
+salida: una ruta por perfil → ruta_{s}_{perfil}.gpkg</pre>
+          </figure>
+        </div>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <!-- ETAPA 5 -->
+      <div class="pstage">
+        <div class="pstage-hd">
+          <span class="badge">5</span>
+          <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="12" r="2.2"/><path d="M6 8.2v7.6M8.2 6h5.6a4 4 0 0 1 4 4v0M8.2 18h5.6a4 4 0 0 0 4-4v0"/></svg></span>
+          <div class="htext"><div class="t">Validación de la diferenciación</div><div class="m">metricas/diversidad_corredores.py</div></div>
+        </div>
+        <div class="pstage-bd">
+          <p>La diferenciación proviene <strong>solo de los perfiles de peso distintos</strong> (no hay penalización de proximidad entre corredores). Este módulo la <strong>verifica a posteriori</strong>: convierte cada ruta en un corredor con un buffer y mide la longitud compartida.</p>
+          <figure class="formula">
+            <figcaption>Solapamiento entre corredores</figcaption>
+<pre><span class="hi">solap(A→B)</span> = long( A ∩ buffer(B, 60 m) ) / long(A) · 100      <span class="cm">%, dirigido</span>
+solap_par(A,B) = máx( solap(A→B), solap(B→A) )
+distancia máxima = distancia de Hausdorff(A, B)
+
+criterio: el conjunto está DIFERENCIADO si ningún par supera el 50 % de solapamiento</pre>
+          </figure>
+        </div>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <!-- RAMA F: resultado de la diferenciación -->
+      <div class="pcheck" aria-label="Resultado de la diferenciación">
+        <div class="pc-q"><span class="dia">◆</span> Comprobación de diferenciación (solapamiento entre corredores)</div>
+        <div class="pc-branches">
+          <div class="branch pass">
+            <div class="bh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Diferenciadas — ningún par ≥ 50 %</div>
+            <div class="bd">Las cuatro alternativas son distintas: el conjunto es válido y continúa a métricas.</div>
+          </div>
+          <div class="branch fail">
+            <div class="bh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg> Redundantes — algún par ≥ 50 %</div>
+            <div class="bd">El conjunto se <strong>reporta como redundante</strong> (revisar los pesos del perfil).</div>
+          </div>
+        </div>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <!-- ETAPA 6 -->
+      <div class="pstage">
+        <div class="pstage-hd">
+          <span class="badge">6</span>
+          <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="5" y="12" width="3.2" height="6"/><rect x="10.4" y="7" width="3.2" height="11"/><rect x="15.8" y="14" width="3.2" height="4"/></svg></span>
+          <div class="htext"><div class="t">Métricas multicriterio por ruta</div><div class="m">metricas/calculo.py → MetricasRuta</div></div>
+        </div>
+        <div class="pstage-bd">
+          <p>Para cada ruta se ensambla la batería de criterios comparables, trazables a su capa de origen. La pendiente se reporta como métrica (Horn a lo largo del trazado) aunque no sea capa de coste.</p>
+          <dl class="defs">
+            <div><dt>Longitud</dt><dd>longitud del trazado (km)</dd></div>
+            <div><dt>Coste relativo</dt><dd>suma del coste de las celdas atravesadas (índice, nunca €)</dd></div>
+            <div><dt>Pendiente</dt><dd>máxima y media a lo largo de la ruta (%)</dd></div>
+            <div><dt>Zona protegida</dt><dd>km y porcentaje dentro de Red Natura 2000</dd></div>
+            <div><dt>Zona inundable</dt><dd>km y porcentaje dentro de lámina SNCZI</dd></div>
+            <div><dt>Uso del suelo</dt><dd>km en suelo urbano, diseminado, rústico y especial (Catastro)</dd></div>
+            <div><dt>Cruces especiales</dt><dd>número de cruces de ríos, carreteras y ferrocarril</dd></div>
+          </dl>
+        </div>
+      </div>
+      <div class="pconn"><span>▼</span></div>
+
+      <div class="pnode-term">
+        <span class="lbl">Salida</span>
+        <span class="txt">KPIs agregados · tabla comparativa multicriterio · mapa de las 4 rutas &nbsp;—&nbsp; <code>GeoPackage · folium</code></span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- PRINCIPIOS -->
+  <section class="pad">
+    <h2>Principios de rigor</h2>
+    <ul class="plain">
+      <li><strong>Alinear antes de combinar.</strong> Toda capa se reproyecta a EPSG:25830 y se remuestrea a la rejilla común de 30 m, anclada a una malla global reproducible. Combinar capas no alineadas produce costes que no representan el terreno.</li>
+      <li><strong>Diferenciar antes de comparar.</strong> Los cuatro perfiles generan corredores distintos; el criterio de solapamiento inferior al 50 % (buffer de 60 m) valida que son alternativas reales y no variaciones de un mismo trazado.</li>
+      <li><strong>Coste relativo, nunca en euros.</strong> Todo valor es un índice adimensional en [0, 1], anclado a los factores oficiales de Enagás (A / 38). Ordena alternativas; no cuantifica coste económico.</li>
+      <li><strong>Umbrales físicos fijos.</strong> La barrera de pendiente (70 %) y las tablas de coste emplean umbrales absolutos, no el mínimo/máximo del AOI, de modo que un mismo terreno cuesta lo mismo en cualquier escenario. El TPI es la excepción consciente: se centra en la media del área de estudio.</li>
+    </ul>
+  </section>
+
+  <div class="docfoot">
+    <span class="c">Enagás · CI2 Lab 2026 · Grupo 6</span>
+    <span>v1.0 · 2026-07-03 · reconstruido desde proyecto/src/</span>
+  </div>
+
+</div>
+</body>
+</html>
