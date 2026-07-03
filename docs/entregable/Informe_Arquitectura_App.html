@@ -378,9 +378,10 @@ navegación y resultados en memoria de sesión:</p>
           <code>data/raw/RN2000/</code> y <code>data/raw/Catastro/</code>. Si faltan, esas capas se
           <b>omiten con un aviso</b> (no es un error del pipeline) y su criterio no entra en el coste.</li>
       <li><b>Zonas inundables (SNCZI): el pipeline las descarga automáticamente</b> del servicio web de MITECO
-          (OGC/WMS) y las integra vía <code>zonas_inundables.py</code>. <b>Siguiente paso previsto:</b> permitir
-          además <b>aportar la capa a mano</b> —igual que Red Natura 2000 y Catastro— por fiabilidad del servicio;
-          <b>aún no está implementado</b>.</li>
+          (OGC/<b>WMS</b>) y las integra vía <code>zonas_inundables.py</code>. Pero el WMS devuelve una
+          <b>imagen aproximada</b> (ráster renderizado, sin atributos). <b>Siguiente paso previsto:</b> permitir
+          que el usuario <b>descargue la capa oficial desde la web del SNCZI (MITECO) y la aporte a mano</b>
+          —igual que Red Natura 2000 y Catastro—, más fiable que la imagen WMS; <b>aún no está implementado</b>.</li>
     </ul>
   </div>
   <p style="font-size:.86rem;margin-top:10px">Para las capas automáticas, escribe un <b>manifiesto de estado</b>
@@ -403,12 +404,13 @@ navegación y resultados en memoria de sesión:</p>
     <li><code>zonas_protegidas.py</code> — binaria dentro/fuera de Red Natura 2000.</li>
     <li><code>zonas_inundables.py</code> — binaria dentro/fuera de lámina SNCZI.</li>
     <li><code>cruces_viario_rios.py</code> — coste puntual de cruce (viario, ferrocarril, ríos).</li>
-    <li><code>tpi.py</code> — relieve: cresta barata / valle caro; barrera dura de pendiente &gt;70 %
-        (que es <b>lo mismo que decir una inclinación &gt; 35°</b>).</li>
+    <li><code>tpi.py</code> — relieve: cresta barata / valle caro; e impone la <b>barrera dura de pendiente</b>
+        (umbral y equivalencia en grados, en el <a href="#coste">§08 Modelo de coste</a>).</li>
   </ul>
   <p style="font-size:.9rem"><b><code>combinar.py → combinar_pesos(s, pesos)</code></b> es la
-     <b>única fuente de verdad</b> de la ponderación:</p>
-  <pre style="font-size:.82rem">superficie = BASE_LONG · peso('longitud') + Σ  peso_capa · capa_coste</pre>
+     <b>única fuente de verdad</b> de la ponderación: suma cada capa de coste multiplicada por su peso de perfil,
+     más un término base de longitud para que la distancia siempre cuente (la fórmula exacta, en el
+     <a href="diagrama_flujo_pipeline.html#algoritmos">diagrama de flujo §03</a>).</p>
   <p style="font-size:.86rem">Convenio de impasabilidad: <code>NODATA (-9999)</code> e <code>inf</code> → <code>nan</code>;
      una celda es intransitable si <em>cualquier</em> capa lo es (el <code>nan</code> se propaga por la suma).
      La misma función la consume el motor LCP en memoria (sin escribir a disco).</p>
@@ -418,8 +420,8 @@ navegación y resultados en memoria de sesión:</p>
   <h4 style="margin-top:0">3 · Motor de trazado (LCP) <span class="pill">src/trazados/ruta_pendiente.py</span></h4>
   <p style="font-size:.9rem"><code>run_perfiles(s, perfiles_override)</code>: por cada perfil obtiene la
      superficie ponderada, <em>snapea</em> origen y destino a la celda válida más cercana, y ejecuta
-     <b>Dijkstra 8-conexo isótropo</b>:</p>
-  <pre style="font-size:.82rem">coste(p→q) = d · media(C_p, C_q)      d = 1 (ortogonal) | √2 (diagonal)</pre>
+     <b>Dijkstra 8-conexo isótropo</b> (coste de transición = distancia × media de las dos celdas; la fórmula, en
+     el <a href="diagrama_flujo_pipeline.html#algoritmos">diagrama §03</a>).</p>
   <p style="font-size:.86rem">La preferencia por el relieve la aporta la capa TPI dentro de la superficie
      escalar (la anisotropía por dirección de gradiente se retiró). Exporta cada ruta a
      <code>Rutas/ruta_{s}_{perfil}.gpkg</code> + estilo QGIS <code>.qml</code>, y guarda la
@@ -459,9 +461,9 @@ navegación y resultados en memoria de sesión:</p>
         (<code>heapq</code>). Al retirarse la anisotropía (dirección del gradiente), el coste depende solo
         de la superficie escalar y Dijkstra da el óptimo sin necesitar heurística. Conviene actualizar el
         diseño para que reflejen lo mismo.</li>
-    <li><b>Coste de transición:</b> <code>coste(p→q) = d · media(C_p, C_q)</code>, con <code>d = 1</code>
-        (paso ortogonal) o <code>√2</code> (diagonal). Promediar el coste de las dos celdas evita sesgos de
-        muestreo en los bordes de las capas.</li>
+    <li><b>Coste de transición (por qué se promedian celdas):</b> el coste de pasar a una celda vecina es la
+        distancia (1 ortogonal, √2 diagonal) por la <b>media</b> del coste de ambas celdas; promediar evita
+        sesgos de muestreo en los bordes de las capas.</li>
     <li><b>Snap de origen/destino:</b> si el punto cae en <code>nodata</code> o barrera, <code>_snap_to_valid</code>
         lo mueve a la celda válida más cercana (radio 20 celdas). Sin esto, un origen sobre un río o zona
         intransitable abortaría el trazado.</li>
@@ -538,18 +540,12 @@ escenario_B:
 </div>
 
 <h4><code>perfiles.yaml</code> — 4 perfiles diferenciados</h4>
-<p style="font-size:.9rem">Cada perfil es un vector de pesos adimensionales sobre las 7 capas.
-   El archivo incluye además <code>parametros_capas</code>: la calibración intra-capa (costes por
-   litología, tipo catastral, tipo de vía…), que los módulos leen al importarse.</p>
-<table style="font-size:.82rem">
-  <thead><tr><th>Perfil</th><th>Prioriza</th><th>Peso dominante</th></tr></thead>
-  <tbody>
-    <tr><td><code>corto</code></td><td>Minimizar longitud</td><td>longitud 1.00</td></tr>
-    <tr><td><code>ambiental</code></td><td>Evitar zonas protegidas / inundables / cruces</td><td>protegida 1.00 · geotecnia 0.80</td></tr>
-    <tr><td><code>pendiente</code></td><td>Seguir crestas/divisorias (relieve, TPI)</td><td>tpi 1.00</td></tr>
-    <tr><td><code>equilibrio</code> <span class="tag ok">recom.</span></td><td>Balance multicriterio calibrado (anexo II EV-500 Enagás)</td><td>pesos normalizados que suman 1.00</td></tr>
-  </tbody>
-</table>
+<p style="font-size:.9rem">Define los <b>4 perfiles</b> (<code>corto</code>, <code>ambiental</code>,
+   <code>pendiente</code>, <code>equilibrio</code>); cada uno es un vector de pesos adimensionales sobre las
+   7 capas. El archivo incluye además <code>parametros_capas</code>: la calibración intra-capa (costes por
+   litología, tipo catastral, tipo de vía…), que los módulos leen al importarse. El <b>detalle de los pesos por
+   perfil</b> —qué prioriza cada uno y con qué valores— está en el
+   <a href="#coste">§08 Modelo de coste y ponderación</a>, para no repetir la tabla.</p>
 
 <!-- ============================================================ -->
 <h2 id="fuentes"><span class="n">07</span>Fuentes de datos, trazabilidad y reproducibilidad</h2>
@@ -566,7 +562,8 @@ pip install -r requirements.txt        # en Windows es más cómodo con conda-fo
 # 2. Datos que hay que aportar a mano en data/raw/ (NO se descargan solos):
 #    · Red Natura 2000  → data/raw/RN2000/
 #    · Catastro          → data/raw/Catastro/  (PARCELA.shp por municipio)
-#    (Zonas inundables SÍ se descargan solas del SNCZI; aportarlas a mano es un paso previsto, aún no implementado)
+#    (Zonas inundables SÍ se descargan solas del SNCZI vía WMS, pero es una imagen aproximada;
+#     que el usuario las descargue de la web del SNCZI y las aporte a mano —como RN2000/Catastro— es un paso previsto, aún no implementado)
 
 # 3a. Interfaz web (recomendado):
 streamlit run src/app/streamlit_app.py
