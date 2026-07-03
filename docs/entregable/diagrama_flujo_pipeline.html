@@ -113,8 +113,8 @@ flowchart TB
   V -- "No · supera 15 km" --> BLK["Bloqueo de la interfaz<br/>corregir coordenadas"]
   V -- "Sí" --> NEW{"¿escenario nuevo?<br/>sin capas en Capas_Coste/"}
   NEW -- "No · ya preparado" --> S3
-  NEW -- "Sí · preparar" --> AUTO["Descarga automática<br/>DEM · OSM · Hidrografía IGN · IGME"]
-  AUTO --> MAN["Aporte manual — data/raw/<br/>Catastro (Cl@ve) · inundables · Red Natura"]
+  NEW -- "Sí · preparar" --> AUTO["Descarga automática<br/>DEM · OSM · Hidrografía IGN · IGME · inundables (aprox. WMS)"]
+  AUTO --> MAN["Aporte manual — data/raw/<br/>Catastro (Cl@ve) · Red Natura 2000"]
   MAN --> S1["1 · INGESTA Y ALINEACIÓN<br/>recorte al corredor · EPSG:25830 · rejilla 30 m"]
   S1 --> S2["2 · CAPAS DE COSTE (6 en 0–1)<br/>tpi · geotecnia · expropiación · protegida · inundable · cruces"]
   S2 --> S3["3 · COMBINACIÓN POR PERFIL<br/>Σ pesoᵢ · capaᵢ + BASE_LONG"]
@@ -131,6 +131,11 @@ flowchart TB
   class V,NEW,DIF,MAN,BLK,RED dec;
   class AUTO auto;
 </div>
+
+<p class="note" style="font-size:.9rem"><b>Zonas inundables:</b> el pipeline las autodescarga vía
+   <b>WMS</b> (SNCZI / MITECO) como imagen ráster — una <b>primera aproximación</b> sin intervención del
+   usuario —, pero al ser una imagen <b>no trae los datos asociados</b> que sí daría un WFS. Por fiabilidad,
+   lo recomendable es <b>aportar la capa a mano</b> (paso previsto, aún no implementado).</p>
 
 <!-- ============================================================ -->
 <h2 id="capas"><span class="n">02</span>Capas de coste y estandarización</h2>
