@@ -448,11 +448,10 @@ navegación y resultados en memoria de sesión:</p>
 <div class="card">
   <h4 style="margin-top:0">Detalles finos de implementación <span class="pill">para quien retome el código</span></h4>
   <ul class="clean" style="font-size:.88rem">
-    <li><b>Dijkstra, no A* (divergencia con el diseño):</b> <code>arquitectura.md</code> proponía <b>A*</b>,
-        pero la implementación final es <b>Dijkstra 8-conexo isótropo</b> con <em>heap</em>
-        (<code>heapq</code>). Al retirarse la anisotropía (dirección del gradiente), el coste depende solo
-        de la superficie escalar y Dijkstra da el óptimo sin necesitar heurística. Conviene actualizar el
-        diseño para que reflejen lo mismo.</li>
+    <li><b>Motor LCP — Dijkstra 8-conexo isótropo:</b> el trazado se resuelve con <b>Dijkstra</b> sobre el
+        grafo de la rejilla (cada celda un nodo, 8 vecinos) usando un <em>heap</em> (<code>heapq</code>).
+        El coste es <b>isótropo</b> (depende solo de la superficie escalar, sin dirección de gradiente), así
+        que Dijkstra encuentra el óptimo sin necesitar heurística; no se emplea A*.</li>
     <li><b>Coste de transición (por qué se promedian celdas):</b> el coste de pasar a una celda vecina es la
         distancia (1 ortogonal, √2 diagonal) por la <b>media</b> del coste de ambas celdas; promediar evita
         sesgos de muestreo en los bordes de las capas.</li>
