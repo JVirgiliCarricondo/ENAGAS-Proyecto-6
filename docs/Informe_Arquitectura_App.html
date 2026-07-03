@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Informe de Arquitectura — App de Trazados de Ramales H₂ (Enagás · CI2 Lab 2026)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hanken+Grotesk:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true, theme: 'base',
+    flowchart: { curve: 'linear', nodeSpacing: 55, rankSpacing: 60, useMaxWidth: true },
+    themeVariables: {
+      primaryColor: '#eef3f7', primaryTextColor: '#181c1e', primaryBorderColor: '#0067a3',
+      lineColor: '#5b6470', fontFamily: 'Inter, Segoe UI, sans-serif', fontSize: '14px'
+    }
+  });
+</script>
+<style>
+  :root{
+    --primary:#004e7e; --primary-c:#0067a3; --secondary:#4b6700; --secondary-c:#c3f35c;
+    --surface:#f7fafc; --surface-low:#f1f4f6; --card:#ffffff; --border:#c0c7d1;
+    --ink:#181c1e; --ink-soft:#404750; --outline:#717881; --error:#ba1a1a;
+    --font-body:'Inter','Segoe UI',Arial,sans-serif;
+    --font-head:'Hanken Grotesk','Segoe UI',Arial,sans-serif;
+    --font-mono:'JetBrains Mono',ui-monospace,'Cascadia Code',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--surface);color:var(--ink);font-family:var(--font-body);
+       line-height:1.6;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 26px 80px}
+  header.hero{background:linear-gradient(135deg,#004e7e 0%,#0067a3 55%,#4b6700 135%);
+       color:#fff;padding:46px 26px 40px;margin-bottom:8px}
+  header.hero .inner{max-width:1080px;margin:0 auto}
+  .kicker{font-weight:700;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
+       color:var(--secondary-c);margin-bottom:10px}
+  header.hero h1{font-family:var(--font-head);font-size:2.2rem;font-weight:800;margin:0 0 10px;
+       letter-spacing:-.02em;line-height:1.12}
+  header.hero p{margin:0;max-width:760px;opacity:.94;font-size:1rem}
+  .meta-badges{margin-top:16px;font-family:var(--font-mono);font-size:.78rem;opacity:.9}
+  .meta-badges span{background:none;border:none;padding:0}
+  .meta-badges span:not(:last-child)::after{content:"   ·   ";opacity:.55}
+  h2{clear:both;font-family:var(--font-head);color:var(--primary);font-size:1.5rem;font-weight:800;
+       margin:44px 0 6px;padding-top:12px;border-top:2px solid var(--border);letter-spacing:-.01em}
+  h2 .n{color:var(--secondary);font-family:var(--font-mono);font-size:1.1rem;margin-right:10px}
+  h3{font-family:var(--font-head);color:var(--ink);font-size:1.15rem;font-weight:700;margin:26px 0 6px}
+  h4{font-family:var(--font-body);color:var(--primary-c);font-size:.98rem;font-weight:700;margin:18px 0 4px}
+  p{margin:8px 0}
+  a{color:var(--primary-c)}
+  /* Texto normal: sin recuadros ni resaltados en palabras, rutas o archivos */
+  code{font-family:var(--font-mono);font-size:.9em;background:none;border:none;padding:0;color:inherit}
+  pre{background:none;color:var(--ink);padding:10px 0 10px 16px;overflow-x:auto;margin:12px 0;
+       border-left:2px solid var(--border);font-family:var(--font-mono);font-size:.8rem;line-height:1.55}
+  pre.ascii{color:var(--ink-soft)}
+  .card{background:none;border:none;border-radius:0;padding:0;margin:12px 0;box-shadow:none}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px 40px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:.88rem}
+  th,td{border:none;border-bottom:1px solid var(--border);padding:8px 12px 8px 0;text-align:left;vertical-align:top}
+  th{text-transform:uppercase;font-size:.68rem;letter-spacing:.05em;color:var(--ink-soft);
+       border-bottom:1.5px solid var(--outline)}
+  .tag{font-family:var(--font-body);font-weight:600;color:var(--ink-soft)}
+  .mermaid{background:none;border:none;padding:8px 0;margin:16px 0;text-align:center}
+  .note{margin:12px 0;font-size:.92rem;color:var(--ink)}
+  .note b{color:var(--primary)}
+  .warn{margin:12px 0;font-size:.92rem;color:var(--ink)}
+  .warn b{color:var(--primary)}
+  ul.clean{margin:8px 0;padding-left:20px}
+  ul.clean li{margin:4px 0}
+  .toc{float:right;width:250px;margin:2px 0 14px 34px;padding:2px 0 2px 18px;
+       border-left:2px solid var(--border)}
+  .toc b{font-size:.82rem;letter-spacing:.03em;text-transform:uppercase}
+  .toc ol{margin:8px 0 0;padding-left:20px;columns:1;font-size:.8rem;line-height:1.45}
+  .toc li{margin:3px 0}
+  .toc a{text-decoration:none;color:var(--ink-soft)}
+  .toc a:hover{color:var(--primary-c)}
+  @media(max-width:820px){.toc{float:none;width:auto;margin:8px 0;border-left:none;padding-left:0}}
+  .lbl{font-family:var(--font-body);font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;
+       color:var(--ink-soft);font-weight:700}
+  .pill{font-family:var(--font-mono);font-size:.82em;color:var(--outline);background:none;padding:0}
+  footer{margin-top:40px;padding:20px 26px;border-top:2px solid var(--border);color:var(--outline);
+       font-size:.8rem;font-family:var(--font-mono);text-align:center}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="inner">
+    <div class="kicker">Enagás · CI2 Lab 2026 · Grupo 6 · Reto 6</div>
+    <h1>Informe de Arquitectura de la Aplicación<br>Generador de Trazados de Ramales de H₂</h1>
+    <p>Documento técnico de la arquitectura <b>frontend</b> (interfaz web Streamlit) y
+       <b>backend</b> (pipeline geoespacial determinista en Python), con el flujo de datos
+       extremo a extremo. Genera 3–5 trazados alternativos diferenciados sobre GIS público
+       y los compara en una tabla multicriterio (coste <em>relativo</em>, nunca €).</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ============================================================ -->
+<h2 id="vision"><span class="n">01</span>Visión general y modelo de ejecución</h2>
+
+<nav class="toc">
+  <b style="font-family:var(--font-head);color:var(--primary)">Índice</b>
+  <ol>
+    <li><a href="#vision">Visión general y modelo de ejecución</a></li>
+    <li><a href="#febe">Frontend y Backend</a></li>
+    <li><a href="#componentes">Mapa de componentes</a></li>
+    <li><a href="#frontend">Frontend — interfaz Streamlit</a></li>
+    <li><a href="#backend">Backend — pipeline geoespacial</a></li>
+    <li><a href="#contratos">Contratos de datos y configuración</a></li>
+    <li><a href="#fuentes">Fuentes de datos y reproducibilidad</a></li>
+    <li><a href="#coste">Modelo de coste y ponderación</a></li>
+    <li><a href="#mvp">Encaje con la escalera MVP</a></li>
+    <li><a href="#estado">Estado del código y stack</a></li>
+  </ol>
+</nav>
+
+<p>La aplicación es un <b>prototipo monolítico en Python</b> que combina una interfaz web
+con un pipeline geoespacial por lotes. No hay una separación cliente/servidor clásica con API
+REST: el <b>frontend Streamlit y el backend comparten el mismo proceso Python</b>. La interfaz
+invoca directamente las funciones del pipeline (importándolas en tiempo de ejecución) y el
+intercambio de datos se hace por <b>archivos en disco</b> (GeoTIFF, GeoPackage, YAML) y por el
+<code>st.session_state</code> de Streamlit.</p>
+
+<p>El <b>frontend</b> es un único archivo, <code>src/app/streamlit_app.py</code> (~1.600 líneas): un
+asistente de 3 pasos con mapas interactivos Folium, editor de pesos y página de resultados, sobre un
+design system propio («Enagás Engineering Core»). Se arranca con
+<code>streamlit run src/app/streamlit_app.py</code>. El <b>backend</b> son los módulos deterministas de
+<code>src/</code> (ingesta · superficie · trazados · métricas): descargan y alinean capas GIS, construyen
+las superficies de coste ponderadas por perfil, calculan el camino de mínimo coste (LCP) y reúnen las
+métricas multicriterio; también son ejecutables por CLI
+(<code>python -m src.trazados.ruta_pendiente</code>).</p>
+
+<div class="note">
+  <b>Principio de diseño rector:</b> <em>alinear antes de combinar, diferenciar antes de comparar.</em>
+  Ninguna capa entra en el cálculo sin estar reproyectada a <b>EPSG:25830</b> y remuestreada a la
+  <b>rejilla común</b>. El coste es siempre un <b>índice adimensional</b>, nunca un valor económico.
+</div>
+
+<h4>Dos vías de orquestación</h4>
+<table>
+  <thead><tr><th>Vía</th><th>Punto de entrada</th><th>Estado</th><th>Notas</th></tr></thead>
+  <tbody>
+    <tr><td>Interfaz web (principal)</td><td><code>streamlit_app.py</code> → <code>_ejecutar_pipeline()</code></td>
+        <td><span class="tag ok">operativa</span></td>
+        <td>Es el orquestador real hoy: encadena preparación + trazado + métricas.</td></tr>
+    <tr><td>CLI de módulo</td><td><code>python -m src.trazados.ruta_pendiente</code> / <code>src.metricas.calculo</code></td>
+        <td><span class="tag part">parcial</span></td>
+        <td>Cada etapa tiene su propio <code>main()</code> ejecutable y reproducible.</td></tr>
+    <tr><td>CLI unificada</td><td><code>src/app/cli.py</code>, <code>src/comparacion/comparador.py</code></td>
+        <td><span class="tag stub">esqueleto</span></td>
+        <td>Planificados para Sprint 5; hoy lanzan <code>NotImplementedError</code>.</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="febe"><span class="n">02</span>Frontend y Backend — separación de responsabilidades</h2>
+
+<p>Aunque comparten proceso, el sistema mantiene una frontera conceptual nítida entre las dos capas.
+Esta es la referencia rápida de <b>qué es frontend y qué es backend</b>, con sus archivos, entradas,
+salidas y tecnologías. La regla práctica: <b>el frontend nunca calcula geometría de coste</b> (solo
+recoge parámetros, lanza el pipeline y pinta resultados); <b>el backend nunca conoce Streamlit</b>
+(se comunica por archivos en disco y valores de retorno).</p>
+
+<table>
+  <thead><tr><th style="width:16%"></th><th style="width:42%">FRONTEND</th><th style="width:42%">BACKEND</th></tr></thead>
+  <tbody>
+    <tr><td><b>Rol</b></td>
+        <td>Interfaz web: capturar origen/destino y pesos, lanzar el cálculo, presentar la comparativa.</td>
+        <td>Motor geoespacial: descargar y alinear datos, construir superficies de coste, trazar y medir rutas.</td></tr>
+    <tr><td><b>Archivos</b></td>
+        <td><code>src/app/streamlit_app.py</code> (~1.600 líneas, único archivo).</td>
+        <td><code>src/ingesta/</code> · <code>src/superficie/</code> · <code>src/trazados/</code> · <code>src/metricas/</code></td></tr>
+    <tr><td><b>Funciones clave</b></td>
+        <td><code>_main</code>, <code>_render_paso1/2</code>, <code>_render_results</code>, <code>_render_editor_pesos</code>, <code>_mapa_entrada/_resultados</code>, <code>_ejecutar_pipeline</code> (orquestador puente).</td>
+        <td><code>descargar_capas</code>, <code>alinear_capas</code>, <code>preparar</code>, <code>combinar_pesos</code>, <code>run_perfiles</code>, <code>dijkstra</code>, <code>calcular_todas</code>.</td></tr>
+    <tr><td><b>Entrada</b></td>
+        <td>Clics e inputs del usuario; lee <code>escenario.yaml</code> y <code>perfiles.yaml</code>.</td>
+        <td>Capas GIS de <code>data/raw/</code>; pesos por perfil; origen/destino en UTM.</td></tr>
+    <tr><td><b>Salida</b></td>
+        <td>HTML/CSS + mapas Folium en el navegador; escribe coordenadas a <code>escenario.yaml</code>.</td>
+        <td>GeoTIFF (rasters, superficies), GeoPackage (rutas), dict <code>MetricasRuta</code>.</td></tr>
+    <tr><td><b>Tecnologías</b></td>
+        <td>Streamlit · folium · streamlit-folium · pyproj · CSS Material 3.</td>
+        <td>rasterio · geopandas · shapely · numpy · requests/urllib · heapq (Dijkstra).</td></tr>
+    <tr><td><b>Estado</b></td>
+        <td>Efímero, en <code>st.session_state</code> (por sesión de navegador).</td>
+        <td>Persistente, en archivos de <code>data/processed/</code> (reutilizable entre ejecuciones).</td></tr>
+    <tr><td><b>Puente</b></td>
+        <td colspan="2"><code>_ejecutar_pipeline()</code> es la <b>única costura</b> entre capas: importa el backend en caliente
+        (tras purgar <code>sys.modules</code>), lo invoca por escenario y traduce el progreso a la barra de Streamlit.
+        Sustituible por la CLI (<code>src/app/cli.py</code>, pendiente) sin tocar el backend.</td></tr>
+  </tbody>
+</table>
+
+<div class="note" style="font-size:.88rem">
+  <b>Implicación para el futuro:</b> como el backend no depende de la interfaz, se puede envolver en una API
+  REST, un job por lotes o un notebook sin reescribir el pipeline. El único acoplamiento a Streamlit vive en
+  <code>streamlit_app.py</code>; todo <code>src/</code> por debajo es reutilizable tal cual.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="componentes"><span class="n">03</span>Mapa de componentes</h2>
+
+<p>Arquitectura en cuatro capas con comunicación descendente. La interfaz solo habla con el motor a
+través del orquestador <code>_ejecutar_pipeline()</code>; el backend y la interfaz intercambian datos
+leyendo y escribiendo archivos en <code>data/</code>. El diagrama sigue el flujo real: la petición baja
+de Frontend a Backend y los resultados suben de vuelta.</p>
+
+<div class="mermaid">
+flowchart TB
+  FE["FRONTEND — Streamlit (streamlit_app.py)<br/>Bienvenida · Origen/Destino · Pesos · Resultados"]
+  OR["ORQUESTADOR — _ejecutar_pipeline()<br/>preparar · run_perfiles · calcular_todas"]
+
+  subgraph BE["BACKEND — pipeline geoespacial (src/)"]
+    direction LR
+    ING["ingesta<br/>descargar · alinear"] --> SUP["superficie<br/>capas de coste · combinar"]
+    SUP --> TRZ["trazados<br/>Dijkstra LCP"]
+    TRZ --> MET["metricas<br/>longitud · pendiente · cruces · diversidad"]
+  end
+
+  DATA["DATOS — data/<br/>config (yaml) · raw (GIS) · processed (rasters · rutas)"]
+
+  FE -->|"Generar rutas"| OR
+  OR -->|"ejecuta por escenario"| BE
+  BE -->|"MetricasRuta + rutas"| OR
+  OR -->|"resultados"| FE
+  BE -->|"lee / escribe GIS"| DATA
+  FE -->|"escenario.yaml"| DATA
+</div>
+
+<p style="font-size:.9rem"><b>Lectura del diagrama:</b> la columna central es el recorrido de una petición
+(Frontend → Orquestador → Backend → Orquestador → Frontend); las dos flechas hacia <code>DATOS</code>
+representan toda la persistencia en disco (config, capas descargadas y salidas del pipeline). El orden
+exacto de las llamadas por escenario se detalla en el <a href="#backend">backend</a> (orquestación de
+<code>_ejecutar_pipeline()</code>).</p>
+
+<!-- ============================================================ -->
+<h2 id="frontend"><span class="n">04</span>Frontend — interfaz Streamlit</h2>
+
+<p>Toda la interfaz vive en <code>src/app/streamlit_app.py</code>. Es una <b>single-page app</b>
+que cambia de «pantalla» según el valor de <code>st.session_state.pantalla</code>. El punto de
+entrada es la función <code>_main()</code>, invocada al final del módulo, que pinta la barra
+superior corporativa, el <em>stepper</em> de progreso y la pantalla activa.</p>
+
+<h3>Navegación de la interfaz</h3>
+<p>La app cambia de pantalla según <code>st.session_state.pantalla</code>. El avance (línea continua)
+valida en cada paso; la vuelta atrás (línea punteada) no recalcula nada.</p>
+<div class="mermaid">
+flowchart LR
+  BV["Bienvenida"] -->|"Comenzar"| P1["Paso 1<br/>Origen / Destino"]
+  P1 -->|"Siguiente (≤ 15 km)"| P2["Paso 2<br/>Pesos y Perfiles"]
+  P2 -->|"Generar rutas"| RS["Resultados<br/>mapa · tablas · diversidad"]
+  P1 -.->|"← Inicio"| BV
+  P2 -.->|"← atrás"| P1
+  RS -.->|"← configuración"| P2
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h4 style="margin-top:0">Paso 1 · Origen y Destino <span class="pill">_render_paso1</span></h4>
+    <ul class="clean" style="font-size:.88rem">
+      <li>Selector de escenario (<code>A</code>, <code>B</code>, …) y creación de escenarios nuevos.</li>
+      <li>Entradas numéricas <code>X/Y</code> en <b>EPSG:25830</b> (metros) para origen y destino.</li>
+      <li>Mapa Folium con ortofoto Esri; un clic fija el punto activo (origen/destino) —
+          convierte lat/lon → UTM con <code>pyproj.Transformer</code>.</li>
+      <li>Valida la distancia máxima <code>MAX_DIST_M = 15 km</code>; bloquea «Siguiente» si se supera.</li>
+      <li>Al avanzar, persiste las coordenadas en <code>data/config/escenario.yaml</code>.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">Paso 2 · Pesos y Perfiles <span class="pill">_render_paso2</span></h4>
+    <ul class="clean" style="font-size:.88rem">
+      <li>Editor de pesos por capa (sliders 0–100 %) para los 4 perfiles:
+          <code>corto</code>, <code>equilibrio</code>, <code>ambiental</code>, <code>pendiente</code>.</li>
+      <li>7 capas ponderables: longitud, TPI (relieve), protegida, inundable, cruces,
+          expropiación, geotecnia.</li>
+      <li>Comprueba que la suma de pesos ≈ 100 %; botones «Restaurar perfil / todos».</li>
+      <li>«Generar rutas» dispara <code>_ejecutar_pipeline()</code> con
+          <code>perfiles_override</code> (los pesos editados en la UI, sin tocar el YAML).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card">
+  <h4 style="margin-top:0">Resultados <span class="pill">_render_results</span></h4>
+  <ul class="clean" style="font-size:.88rem">
+    <li><b>Tab Mapa:</b> <code>_mapa_resultados()</code> lee los <code>ruta_{s}_{perfil}.gpkg</code>,
+        los reproyecta a WGS-84 y los dibuja como <code>FeatureGroup</code> por escenario con
+        <code>LayerControl</code> y leyenda de perfiles.</li>
+    <li><b>Tabs Métricas (por escenario):</b> tabla de <code>MetricasRuta</code> (km, coste rel.,
+        pendiente, km protegida/inundable/urbano, nº cruces) + tarjetas KPI.</li>
+    <li><b>Tab Diversidad:</b> matriz de solapamiento dirigido entre corredores (validación de que
+        las rutas son realmente distintas).</li>
+    <li>Avisos de preparación: capas de coste que no se pudieron generar y por tanto
+        <b>no entraron</b> en el cálculo de ese escenario.</li>
+  </ul>
+</div>
+
+<h3>Estado de sesión (<code>st.session_state</code>)</h3>
+<p>Al no haber base de datos ni backend con estado, la interfaz mantiene todo el contexto de
+navegación y resultados en memoria de sesión:</p>
+<table>
+  <thead><tr><th>Clave</th><th>Contenido</th></tr></thead>
+  <tbody>
+    <tr><td><code>pantalla</code></td><td>Pantalla activa: <code>bienvenida</code> / <code>paso1</code> / <code>paso2</code> / <code>resultados</code>.</td></tr>
+    <tr><td><code>coords</code></td><td>Dict de escenarios → origen/destino en UTM (editable antes de guardar al YAML).</td></tr>
+    <tr><td><code>escenario_activo</code>, <code>punto_activo_rol</code>, <code>_last_click</code></td><td>Estado del selector y del mapa clicable del Paso 1.</td></tr>
+    <tr><td><code>perfiles_cfg</code>, <code>perfil_pesos_activo</code>, <code>pesos_version</code></td><td>Copia editable de los perfiles y su versión (para reiniciar sliders).</td></tr>
+    <tr><td><code>resultados</code>, <code>escenarios_procesados</code>, <code>perfiles_procesados</code></td><td>Salida del pipeline (dict de <code>MetricasRuta</code>) tras «Generar rutas».</td></tr>
+    <tr><td><code>avisos_preparacion</code></td><td>Capas omitidas por falta de datos en escenarios recién preparados.</td></tr>
+  </tbody>
+</table>
+
+<h3>Capa de presentación</h3>
+<ul class="clean">
+  <li><b>Design system «Enagás Engineering Core»</b> (trasladado de un diseño Stitch): paleta
+      Material 3 corporativa vía variables CSS (<code>--primary #004e7e</code>, <code>--secondary #4b6700</code>…),
+      tipografías Hanken Grotesk / Inter / JetBrains Mono e iconos Material Symbols. Se inyecta como
+      un bloque <code>&lt;style&gt;</code> con <code>st.markdown(..., unsafe_allow_html=True)</code>.</li>
+  <li><b>Mapas:</b> <code>folium</code> + <code>streamlit_folium.st_folium</code> (con <em>fallback</em>
+      a HTML embebido si la dependencia no está). Teselas: ortofoto Esri World Imagery.</li>
+  <li><b>Reproyección en la UI:</b> dos <code>pyproj.Transformer</code> cacheados a nivel de módulo
+      convierten 25830 ↔ 4326 para mostrar y para capturar clics.</li>
+  <li><b>Fallback sin <code>streamlit-folium</code>:</b> si la dependencia no está instalada, el mapa se
+      degrada a HTML embebido (no clicable) — la app sigue funcionando en modo solo-lectura de mapa.</li>
+</ul>
+
+<div class="warn" style="font-size:.86rem">
+  <b>Textos de maqueta hardcodeados (limpiar antes de entregar):</b> la barra superior muestra un usuario
+  ficticio («J. Martínez · Data Engineer»), el pie pone «© 2024 Enagás S.A.» y versión «v2.4.1-stable», y la
+  bienvenida rotula «Hydrogen Infrastructure Tool v2.4». Son <em>placeholders</em> del diseño Stitch, no datos
+  reales; conviene parametrizarlos o retirarlos para la demo final.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="backend"><span class="n">05</span>Backend — pipeline geoespacial</h2>
+
+<p>El backend es una cadena de módulos deterministas. El orquestador
+<code>_ejecutar_pipeline()</code> (dentro del frontend) los encadena así, por cada escenario:</p>
+
+<div class="card">
+  <h4 style="margin-top:0">0 · Orquestación <span class="pill">streamlit_app._ejecutar_pipeline</span></h4>
+  <ul class="clean" style="font-size:.9rem">
+    <li>Purga el caché de módulos de <code>sys.modules</code> (para recoger cambios de config en caliente)
+        e importa <code>run_perfiles</code>, <code>calcular_todas</code>, <code>preparar</code>.</li>
+    <li>Si el escenario <b>no está preparado</b> (faltan capas en <code>Capas_Coste/</code>) →
+        llama a <code>preparar()</code> (descarga + alineación + superficies).</li>
+    <li>Traza las rutas (<code>run_perfiles</code>) y calcula las métricas (<code>calcular_todas</code>),
+        reportando progreso a la barra de Streamlit vía <code>progress_cb</code>.</li>
+  </ul>
+</div>
+
+<h3>Etapas del pipeline</h3>
+
+<div class="card">
+  <h4 style="margin-top:0">1 · Ingesta y alineación <span class="pill">src/ingesta/</span></h4>
+  <p style="font-size:.9rem"><b><code>descargar_capas.py</code></b> — descarga por bbox del AOI de cada
+     escenario, vía servicios espaciales públicos:</p>
+  <table style="font-size:.8rem">
+    <thead><tr><th>Capa</th><th>Fuente / servicio</th><th>Descarga</th><th>Salida</th></tr></thead>
+    <tbody>
+      <tr><td>DEM (25 m)</td><td>MDT25 IGN (WCS)</td><td><span class="tag ok">automática</span></td><td><code>DEM_{s}.tif</code></td></tr>
+      <tr><td>Viario + ferrocarril</td><td>OpenStreetMap (Overpass API)</td><td><span class="tag ok">automática</span></td><td><code>OSM_{s}.gpkg</code></td></tr>
+      <tr><td>Hidrografía</td><td>WFS IGN INSPIRE (<code>HY.PhysicalWaters</code>)</td><td><span class="tag ok">automática</span></td><td><code>HID_{s}.gpkg</code></td></tr>
+      <tr><td>Geología (litología)</td><td>IGME MAGNA50 (WFS / ArcGIS REST)</td><td><span class="tag ok">automática</span></td><td><code>IGME_{s}.gpkg</code></td></tr>
+      <tr><td>Zonas inundables</td><td>SNCZI MITECO (OGC API, T10+T100+T500)</td><td><span class="tag part">auto + aportada</span></td><td><code>INUND_{s}.gpkg</code></td></tr>
+      <tr><td>Red Natura 2000</td><td>Capa nacional (WFS IGN INSPIRE <code>PS.ProtectedSite</code>)</td><td><span class="tag stub">manual</span></td><td><code>RN2000_{s}.gpkg</code></td></tr>
+      <tr><td>Catastro (uso del suelo)</td><td>Sede Electrónica del Catastro (<code>PARCELA.shp</code> por municipio)</td><td><span class="tag stub">manual</span></td><td><code>Catastro/…</code></td></tr>
+    </tbody>
+  </table>
+  <div class="warn" style="font-size:.86rem;margin-top:10px">
+    <b>Qué se descarga solo y qué hay que aportar a mano:</b>
+    <ul class="clean" style="margin:6px 0 0">
+      <li><b>Red Natura 2000 y Catastro NO se descargan automáticamente.</b> Hay que colocarlos a mano en
+          <code>data/raw/RN2000/</code> y <code>data/raw/Catastro/</code>. Si faltan, esas capas se
+          <b>omiten con un aviso</b> (no es un error del pipeline) y su criterio no entra en el coste.</li>
+      <li><b>Zonas inundables (SNCZI): el pipeline sí puede descargarlas</b> vía la OGC API de MITECO, pero
+          por <b>fiabilidad</b> del servicio conviene además <b>aportar la capa a mano</b> — cosa que <b>se ha
+          hecho</b> en este proyecto (capa SNCZI integrada y usada por <code>zonas_inundables.py</code>).</li>
+    </ul>
+  </div>
+  <p style="font-size:.86rem;margin-top:10px">Para las capas automáticas, escribe un <b>manifiesto de estado</b>
+     (<code>manifiesto_estado.json</code>) con contrato <code>ok</code> / <code>empty</code> /
+     <code>failed</code>: <code>failed</code> <b>no</b> escribe un GPKG vacío y devuelve código ≠ 0
+     para que el pipeline no avance a ciegas (distingue «sin cobertura confirmada» de «descarga fallida»).</p>
+  <p style="font-size:.9rem"><b><code>alinear_capas.py</code></b> — construye el AOI, reproyecta todo a
+     <b>EPSG:25830</b>, remuestrea rasters a la rejilla común, recorta/reproyecta vectores a GeoPackage,
+     detecta solapamientos (umbral 70 %) y <b>deriva la capa de coste TPI</b> del DEM alineado.</p>
+</div>
+
+<div class="card">
+  <h4 style="margin-top:0">2 · Superficies de coste <span class="pill">src/superficie/</span></h4>
+  <p style="font-size:.9rem">Un módulo por criterio convierte cada capa alineada en un
+     <b>coste por celda</b> estandarizado en <code>[0, 1]</code>, y lo deposita en
+     <code>Capas_Coste/{capa}_{s}.tif</code>:</p>
+  <ul class="clean" style="font-size:.88rem">
+    <li><code>geotecnia.py</code> — coste por litología (campo DLO del IGME).</li>
+    <li><code>expropiacion.py</code> — coste por tipo catastral (urbano / rústico / dominio público).</li>
+    <li><code>zonas_protegidas.py</code> — binaria dentro/fuera de Red Natura 2000.</li>
+    <li><code>zonas_inundables.py</code> — binaria dentro/fuera de lámina SNCZI.</li>
+    <li><code>cruces_viario_rios.py</code> — coste puntual de cruce (viario, ferrocarril, ríos).</li>
+    <li><code>tpi.py</code> — relieve: cresta barata / valle caro; barrera dura de pendiente &gt;70 %
+        (que es <b>lo mismo que decir una inclinación &gt; 35°</b>).</li>
+  </ul>
+  <p style="font-size:.9rem"><b><code>combinar.py → combinar_pesos(s, pesos)</code></b> es la
+     <b>única fuente de verdad</b> de la ponderación:</p>
+  <pre style="font-size:.82rem">superficie = BASE_LONG · peso('longitud') + Σ  peso_capa · capa_coste</pre>
+  <p style="font-size:.86rem">Convenio de impasabilidad: <code>NODATA (-9999)</code> e <code>inf</code> → <code>nan</code>;
+     una celda es intransitable si <em>cualquier</em> capa lo es (el <code>nan</code> se propaga por la suma).
+     La misma función la consume el motor LCP en memoria (sin escribir a disco).</p>
+</div>
+
+<div class="card">
+  <h4 style="margin-top:0">3 · Motor de trazado (LCP) <span class="pill">src/trazados/ruta_pendiente.py</span></h4>
+  <p style="font-size:.9rem"><code>run_perfiles(s, perfiles_override)</code>: por cada perfil obtiene la
+     superficie ponderada, <em>snapea</em> origen y destino a la celda válida más cercana, y ejecuta
+     <b>Dijkstra 8-conexo isótropo</b>:</p>
+  <pre style="font-size:.82rem">coste(p→q) = d · media(C_p, C_q)      d = 1 (ortogonal) | √2 (diagonal)</pre>
+  <p style="font-size:.86rem">La preferencia por el relieve la aporta la capa TPI dentro de la superficie
+     escalar (la anisotropía por dirección de gradiente se retiró). Exporta cada ruta a
+     <code>Rutas/ruta_{s}_{perfil}.gpkg</code> + estilo QGIS <code>.qml</code>, y guarda la
+     superficie del perfil en <code>Trazados/superficie_{s}_{pid}.tif</code>.</p>
+  <p class="note" style="font-size:.86rem"><b>Diferenciación de rutas:</b> se logra por
+     <b>perfiles con pesos distintos</b> → superficies de coste distintas → corredores distintos.
+     La validación posterior se hace midiendo el solapamiento (métrica de diversidad).</p>
+</div>
+
+<div class="card">
+  <h4 style="margin-top:0">4 · Métricas multicriterio <span class="pill">src/metricas/calculo.py</span></h4>
+  <p style="font-size:.9rem"><code>calcular_todas()</code> reúne, por cada ruta, las métricas parciales de
+     módulos independientes en un <code>MetricasRuta</code> (dataclass). Un módulo que falla por falta de
+     datos no aborta el cálculo: registra el error en <code>MetricasRuta.errores</code> y deja el campo a 0.</p>
+  <table style="font-size:.8rem">
+    <thead><tr><th>Módulo</th><th>Métrica</th></tr></thead>
+    <tbody>
+      <tr><td><code>longitud.py</code></td><td>longitud_km · coste_relativo (índice)</td></tr>
+      <tr><td><code>pendiente.py</code></td><td>pendiente_max_pct · pendiente_media_pct (Horn sobre el DEM)</td></tr>
+      <tr><td><code>zonas_protegidas.py</code></td><td>km_protegida · pct_protegida</td></tr>
+      <tr><td><code>zonas_inundables.py</code></td><td>km_inundable · pct_inundable</td></tr>
+      <tr><td><code>zonas_urbanas.py</code></td><td>km de suelo urbano / diseminado / rústico / especial (catastro)</td></tr>
+      <tr><td><code>cruces.py</code></td><td>nº cruces de ríos / carreteras / ferrocarril</td></tr>
+      <tr><td><code>diversidad_corredores.py</code></td><td>matriz de solapamiento dirigido; veredicto diferenciadas/redundantes</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:.86rem;margin-top:8px">La <b>diversidad</b> se calcula una vez por escenario:
+     engorda cada ruta a un corredor (buffer 60 m) y mide qué % de la longitud de A discurre dentro del
+     corredor de B (asimétrico). Un par es redundante si supera el <b>umbral 50 %</b>.</p>
+</div>
+
+<div class="card">
+  <h4 style="margin-top:0">Detalles finos de implementación <span class="pill">para quien retome el código</span></h4>
+  <ul class="clean" style="font-size:.88rem">
+    <li><b>Dijkstra, no A* (divergencia con el diseño):</b> <code>arquitectura.md</code> proponía <b>A*</b>,
+        pero la implementación final es <b>Dijkstra 8-conexo isótropo</b> con <em>heap</em>
+        (<code>heapq</code>). Al retirarse la anisotropía (dirección del gradiente), el coste depende solo
+        de la superficie escalar y Dijkstra da el óptimo sin necesitar heurística. Conviene actualizar el
+        diseño para que reflejen lo mismo.</li>
+    <li><b>Coste de transición:</b> <code>coste(p→q) = d · media(C_p, C_q)</code>, con <code>d = 1</code>
+        (paso ortogonal) o <code>√2</code> (diagonal). Promediar el coste de las dos celdas evita sesgos de
+        muestreo en los bordes de las capas.</li>
+    <li><b>Snap de origen/destino:</b> si el punto cae en <code>nodata</code> o barrera, <code>_snap_to_valid</code>
+        lo mueve a la celda válida más cercana (radio 20 celdas). Sin esto, un origen sobre un río o zona
+        intransitable abortaría el trazado.</li>
+    <li><b>Convención de valores especiales:</b> en disco <code>-9999</code> = fuera de AOI (<code>nodata</code>)
+        y <code>999</code> = barrera dura; en memoria pasan a <code>nan</code> e <code>inf</code>
+        respectivamente. Una celda es intransitable si <em>cualquier</em> capa lo es (el <code>nan</code> se
+        propaga por la suma ponderada).</li>
+    <li><b>Recarga de configuración en caliente:</b> <code>_ejecutar_pipeline</code> borra de
+        <code>sys.modules</code> los módulos <code>trazados/metricas/superficie/ingesta</code> antes de
+        importarlos, para que un cambio en los YAML de config surta efecto sin reiniciar Streamlit.</li>
+    <li><b>Coste base de longitud (<code>BASE_LONG = 1.0</code>):</b> garantiza que la distancia siempre
+        cuente en el LCP aunque el peso de todas las capas sea 0; el peso <code>longitud</code> del perfil lo
+        escala.</li>
+    <li><b>Tolerancia a fallos por métrica:</b> cada métrica se calcula en su propio <code>try/except</code>;
+        si una capa falta, se registra en <code>MetricasRuta.errores</code> y su campo queda a 0, sin abortar
+        el resto. <code>n_cruces_ferrocarril = None</code> significa «no comprobable» (la capa OSM no traía
+        <code>railway</code>), distinto de <code>0</code> = «comprobado, no cruza».</li>
+    <li><b>Rejilla vs. fuente:</b> la rejilla común de trabajo es de <b>30 m</b> (<code>resolucion_m</code>);
+        el DEM de origen (MDT25 IGN) llega a 25 m y se remuestrea a esa rejilla. Cambiar la resolución afecta
+        al coste computacional del LCP (crece ~cuadráticamente con el nº de celdas).</li>
+  </ul>
+</div>
+
+<div class="warn" style="font-size:.88rem">
+  <b>Comparación/scoring formal:</b> los módulos <code>src/comparacion/comparador.py</code> y
+  <code>src/app/cli.py</code> son <b>esqueletos</b> (Sprint 5). Hoy la comparativa y el ranking se
+  construyen directamente en la página de resultados de Streamlit (DataFrames + KPIs + matriz de diversidad),
+  no en un módulo de scoring dedicado.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="contratos"><span class="n">06</span>Contratos de datos y configuración</h2>
+
+<h3>Estructura de <code>data/</code></h3>
+<table>
+  <thead><tr><th>Carpeta</th><th>Contenido</th><th>Versionado</th></tr></thead>
+  <tbody>
+    <tr><td><code>data/config/</code></td><td><code>escenario.yaml</code> (AOI, origen/destino) · <code>perfiles.yaml</code> (pesos)</td><td><span class="tag ok">sí</span></td></tr>
+    <tr><td><code>data/raw/</code></td><td>Descargas GIS originales + <code>manifiesto_estado.json</code></td><td><span class="tag stub">no</span></td></tr>
+    <tr><td><code>data/processed/Rasters_AOI/</code></td><td>DEM y rasters alineados a la rejilla común</td><td><span class="tag stub">no</span></td></tr>
+    <tr><td><code>data/processed/Capas_Coste/</code></td><td>Coste por celda de cada capa (<code>{capa}_{s}.tif</code>)</td><td><span class="tag stub">no</span></td></tr>
+    <tr><td><code>data/processed/Trazados/</code></td><td>Superficies de coste combinadas por perfil</td><td><span class="tag stub">no</span></td></tr>
+    <tr><td><code>data/processed/Rutas/</code></td><td>Rutas finales <code>ruta_{s}_{perfil}.gpkg</code> (+ .qml)</td><td><span class="tag part">salida</span></td></tr>
+  </tbody>
+</table>
+
+<div class="grid2">
+  <div>
+    <h4><code>escenario.yaml</code> (caso de estudio)</h4>
+    <pre style="font-size:.78rem">crs_trabajo: "EPSG:25830"
+resolucion_m: 30
+escenario_A:
+  origen:  {nombre: A_ini, x: 740000, y: 4560000}
+  destino: {nombre: A_fin, x: 741000, y: 4561000}
+escenario_B:
+  origen:  {...}
+  destino: {...}</pre>
+  </div>
+  <div>
+    <h4><code>MetricasRuta.to_dict()</code> (salida por ruta)</h4>
+    <pre style="font-size:.78rem">{
+  "escenario": "A", "perfil": "ambiental",
+  "longitud_km": 0.0,
+  "coste_relativo": 0.0,        # índice, NUNCA €
+  "pendiente_max_pct": 0.0,
+  "pendiente_media_pct": 0.0,
+  "km_protegida": 0.0, "km_inundable": 0.0,
+  "km_suelo_urbano": 0.0,
+  "n_cruces_rios": 0,
+  "n_cruces_carreteras": 0,
+  "n_cruces_ferrocarril": 0      # None = no comprobable
+}</pre>
+  </div>
+</div>
+
+<h4><code>perfiles.yaml</code> — 4 perfiles diferenciados</h4>
+<p style="font-size:.9rem">Cada perfil es un vector de pesos adimensionales sobre las 7 capas.
+   El archivo incluye además <code>parametros_capas</code>: la calibración intra-capa (costes por
+   litología, tipo catastral, tipo de vía…), que los módulos leen al importarse.</p>
+<table style="font-size:.82rem">
+  <thead><tr><th>Perfil</th><th>Prioriza</th><th>Peso dominante</th></tr></thead>
+  <tbody>
+    <tr><td><code>corto</code></td><td>Minimizar longitud</td><td>longitud 1.00</td></tr>
+    <tr><td><code>ambiental</code></td><td>Evitar zonas protegidas / inundables / cruces</td><td>protegida 1.00 · geotecnia 0.80</td></tr>
+    <tr><td><code>pendiente</code></td><td>Seguir crestas/divisorias (relieve, TPI)</td><td>tpi 1.00</td></tr>
+    <tr><td><code>equilibrio</code> <span class="tag ok">recom.</span></td><td>Balance multicriterio calibrado (anexo II EV-500 Enagás)</td><td>pesos normalizados que suman 1.00</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="fuentes"><span class="n">07</span>Fuentes de datos, trazabilidad y reproducibilidad</h2>
+
+<p>Esta sección reúne todo lo necesario para <b>reproducir</b> una ejecución, <b>auditar</b> de dónde
+sale cada número y <b>retomar o mejorar</b> el sistema en el futuro.</p>
+
+<h3>Cómo reproducir una ejecución</h3>
+<pre style="font-size:.8rem"># 1. Entorno (desde proyecto/)
+python -m venv .venv
+.venv\Scripts\Activate.ps1            # Windows PowerShell
+pip install -r requirements.txt        # en Windows es más cómodo con conda-forge
+
+# 2. Datos que hay que aportar a mano en data/raw/ (NO se descargan solos):
+#    · Red Natura 2000  → data/raw/RN2000/
+#    · Catastro          → data/raw/Catastro/  (PARCELA.shp por municipio)
+#    · Zonas inundables  → capa SNCZI aportada (recomendado por fiabilidad; ya incluida)
+
+# 3a. Interfaz web (recomendado):
+streamlit run src/app/streamlit_app.py
+
+# 3b. O por línea de comandos, etapa a etapa (mismo resultado, reproducible):
+python -m src.ingesta.descargar_capas   --escenario A -y
+python -m src.ingesta.alinear_capas      --escenario A
+python -m src.ingesta.preparar_escenario --escenario A     # descarga+alinea+superficies
+python -m src.trazados.ruta_pendiente    --escenario A     # rutas por perfil
+python -m src.metricas.calculo           --escenario A     # métricas + diversidad</pre>
+
+<div class="note" style="font-size:.88rem">
+  <b>Determinismo:</b> el pipeline es determinista — mismos datos de entrada + mismos pesos ⇒ mismas rutas.
+  El único origen de variación es la <b>capa descargada</b> (los servicios GIS pueden actualizarse); por eso
+  el manifiesto de estado y las capas aportadas a mano son clave para congelar una ejecución reproducible.
+</div>
+
+<h3>Trazabilidad: de la fuente al número final</h3>
+<p>Cada métrica se puede rastrear hacia atrás por esta cadena de artefactos en disco:</p>
+<pre class="ascii" style="font-size:.78rem">Fuente GIS ──▶ data/raw/{CAPA}_{s}          (descarga cruda + manifiesto_estado.json)
+           ──▶ Rasters_AOI/ · Recorte_AOI/  (alineado a EPSG:25830 + rejilla común)
+           ──▶ Capas_Coste/{capa}_{s}.tif   (coste/celda [0,1], estandarizado A/38)
+           ──▶ Trazados/superficie_{s}_{perfil}.tif  (Σ peso·capa, por perfil)
+           ──▶ Rutas/ruta_{s}_{perfil}.gpkg (LCP Dijkstra)  ──▶  MetricasRuta</pre>
+<p style="font-size:.88rem">Los pesos que produjeron cada superficie quedan registrados en
+<code>perfiles.yaml</code> (o, si se editaron en la UI, en <code>st.session_state.perfiles_procesados</code>,
+mostrados en la página de resultados en «Pesos de capas usados en este procesamiento»). Los estilos
+<code>.qml</code> acompañan a cada raster/ruta para inspección directa en QGIS.</p>
+
+<h3>Puntos de calibración (para mejora futura)</h3>
+<table style="font-size:.84rem">
+  <thead><tr><th>Qué ajustar</th><th>Dónde</th></tr></thead>
+  <tbody>
+    <tr><td>Pesos por perfil (mezcla de criterios)</td><td><code>perfiles.yaml → perfiles[*].pesos</code></td></tr>
+    <tr><td>Coste intra-capa (litología, tipo catastral, tipo de vía, ríos)</td><td><code>perfiles.yaml → parametros_capas</code></td></tr>
+    <tr><td>Barrera de pendiente, radio y clip del TPI</td><td><code>parametros_capas.tpi</code></td></tr>
+    <tr><td>Umbral de diversidad y semiancho de corredor</td><td><code>diversidad_corredores.py</code> (<code>UMBRAL_PCT</code>, <code>BUFFER_M</code>)</td></tr>
+    <tr><td>Resolución de la rejilla y CRS de trabajo</td><td><code>escenario.yaml</code> (<code>resolucion_m</code>, <code>crs_trabajo</code>)</td></tr>
+    <tr><td>Distancia máxima origen–destino (validación UI)</td><td><code>streamlit_app.py</code> (<code>MAX_DIST_M</code>)</td></tr>
+  </tbody>
+</table>
+
+<div class="note" style="font-size:.88rem">
+  <b>Reglas no negociables (heredadas del diseño):</b> (1) toda capa <b>alineada</b> a EPSG:25830 y rejilla
+  común antes de combinarse; (2) rutas <b>demostrablemente diferenciadas</b>, no el mismo corredor con ruido;
+  (3) todo coste es <b>índice relativo, nunca €</b>; (4) las claves de descarga, si las hubiera, solo en
+  <code>.env</code> (nunca versionado).
+</div>
+
+<!-- ============================================================ -->
+<h2 id="coste"><span class="n">08</span>Modelo de coste y ponderación</h2>
+
+<p>Toda capa se estandariza a <code>[0, 1]</code> antes de combinarse, para que la suma ponderada
+sea comparable. Las capas con condicionante en la <b>metodología oficial de Enagás</b> derivan su
+coste del factor de ponderación oficial <code>A</code> con divisor común
+<code>A_REF = 38</code> (el mayor factor, «terrenos inestables»):</p>
+
+<p style="font-family:var(--font-mono);font-size:.9rem;margin:10px 0">coste_celda = A_oficial / 38</p>
+
+<table style="max-width:640px;font-size:.86rem">
+  <thead><tr><th>Condicionante</th><th>Factor oficial (A)</th><th>Coste estandarizado</th></tr></thead>
+  <tbody>
+    <tr><td>Red Natura 2000</td><td>28,5</td><td>0,75</td></tr>
+    <tr><td>Urbano alta densidad</td><td>25,25</td><td>0,66</td></tr>
+    <tr><td>Inundabilidad</td><td>14,25</td><td>0,375</td></tr>
+    <tr><td>Roca dura / río permanente</td><td>13</td><td>0,34</td></tr>
+    <tr><td>Yeso / arcilla expansiva (barrera de mayor coste)</td><td>38</td><td>1,00</td></tr>
+  </tbody>
+</table>
+
+<ul class="clean" style="font-size:.9rem">
+  <li>El <b>TPI (relieve)</b> queda fuera del esquema A/38 (no es un condicionante de la tabla):
+      se normaliza por z-score sobre el AOI y se acota a ±2σ → cresta 0.0 / valle 1.0.</li>
+  <li>Existe una <b>barrera dura</b> de transitabilidad: pendiente (Horn) <b>&gt; 70 %, que es lo mismo
+      que decir una inclinación &gt; 35°</b> → celda intransitable (<code>inf</code> → <code>nan</code>),
+      independiente del coste.</li>
+  <li>El peso por perfil (en <code>perfiles.yaml</code>) modula el énfasis; el valor base de cada capa
+      ya refleja la severidad oficial del condicionante.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="mvp"><span class="n">09</span>Encaje con la escalera MVP</h2>
+
+<p>Enagás define el reto como una <b>escalera de 8 MVP</b> ordenados por madurez de producto (no por
+semanas). Los componentes de esta app cubren el <b>núcleo comprometido (MVP 1–4)</b>; el resto es
+reach / continuidad. Esta es la trazabilidad de cada MVP con el código que lo implementa:</p>
+
+<table style="font-size:.84rem">
+  <thead><tr><th>MVP</th><th>Qué exige</th><th>Dónde vive en la app</th><th>Estado</th></tr></thead>
+  <tbody>
+    <tr><td><b>1 · Datos y condicionantes</b></td>
+        <td>Capas GIS públicas; normalización de CRS/resolución; matriz de condicionantes; validación de vacíos.</td>
+        <td><code>src/ingesta/</code> (descarga + alineación) + manifiesto de estado.</td>
+        <td><span class="tag ok">cubierto</span></td></tr>
+    <tr><td><b>2 · Trazado base automático</b></td>
+        <td>Ráster de coste multicriterio + un trazado por camino de menor coste (A*/Dijkstra).</td>
+        <td><code>src/superficie/</code> + <code>src/trazados/</code> (Dijkstra 8-conexo).</td>
+        <td><span class="tag ok">cubierto</span></td></tr>
+    <tr><td><b>3 · Alternativas de trazado</b></td>
+        <td>3–5 trazados diferenciados por pesos/perfiles; evitar redundancia; diversidad real.</td>
+        <td>4 perfiles en <code>perfiles.yaml</code> + <code>diversidad_corredores.py</code>.</td>
+        <td><span class="tag ok">cubierto</span></td></tr>
+    <tr><td><b>4 · Comparador multicriterio</b></td>
+        <td>Caracterizar cada alternativa; tabla + ponderación + ranking; recomendación; backtesting.</td>
+        <td><code>src/metricas/</code> + tablas/KPIs de resultados. <em>Scoring/ranking formal y backtesting pendientes.</em></td>
+        <td><span class="tag part">parcial</span></td></tr>
+    <tr><td><b>5 · Pre-ingeniería EV-500</b></td>
+        <td>Paquete de la alternativa elegida: exportable GIS, cruces, afección municipal, narrativa.</td>
+        <td>Reach: nuevos formatos de salida de <code>comparacion/</code> y <code>app/</code>.</td>
+        <td><span class="tag stub">no iniciado</span></td></tr>
+    <tr><td><b>6 · Validado (backtesting extendido)</b></td>
+        <td>Comparar alternativas frente a un ramal real; explicar desviaciones; ajuste iterativo del coste.</td>
+        <td>Reach: módulo de validación (en <code>comparacion/</code> o <code>tests/</code>), si Enagás facilita un ramal.</td>
+        <td><span class="tag stub">no iniciado</span></td></tr>
+    <tr><td><b>7 · Herramienta operativa</b></td>
+        <td>Usable por terceros: selección interactiva, salidas (mapas, shapefile, Excel), parametrización.</td>
+        <td>La UI Streamlit ya cubre la selección interactiva y la parametrización de pesos; faltan exportaciones.</td>
+        <td><span class="tag part">parcial</span></td></tr>
+    <tr><td><b>8 · Piloto industrializable</b></td>
+        <td>Versionado de escenarios, trazabilidad de decisiones, alineación completa con EV-500.</td>
+        <td>Base puesta: escenarios versionados en <code>data/config/</code>; requiere disciplina, no rediseño.</td>
+        <td><span class="tag stub">continuidad</span></td></tr>
+  </tbody>
+</table>
+
+<div class="note" style="font-size:.88rem">
+  <b>Alcance del programa (1 jun – 17 jul):</b> núcleo comprometido = MVP 1–4. Validación (MVP 4/6) con
+  backtesting <em>si Enagás facilita un ramal real</em>. MVP 5/7/8 son ambición/continuidad, hoja de ruta de
+  «siguientes pasos». <b>EV-500</b> es un estándar interno de Enagás cuyo alcance exacto debe confirmarse antes
+  de comprometer los MVP 5/8.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="estado"><span class="n">10</span>Estado del código y stack tecnológico</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h4 style="margin-top:0">Madurez por componente</h4>
+    <table style="font-size:.82rem">
+      <tbody>
+        <tr><td>Interfaz Streamlit (3 pasos + resultados)</td><td><span class="tag ok">operativa</span></td></tr>
+        <tr><td>Ingesta + alineación</td><td><span class="tag ok">operativa</span></td></tr>
+        <tr><td>Superficies de coste + combinar</td><td><span class="tag ok">operativa</span></td></tr>
+        <tr><td>Motor LCP (Dijkstra)</td><td><span class="tag ok">operativa</span></td></tr>
+        <tr><td>Métricas + diversidad</td><td><span class="tag ok">operativa</span></td></tr>
+        <tr><td>Comparador / scoring (módulo)</td><td><span class="tag stub">esqueleto</span></td></tr>
+        <tr><td>CLI unificada</td><td><span class="tag stub">esqueleto</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">Stack</h4>
+    <ul class="clean" style="font-size:.86rem">
+      <li><b>Lenguaje:</b> Python 3.11+ (código en inglés, docs en español).</li>
+      <li><b>Geoespacial:</b> rasterio · geopandas · shapely · pyproj · numpy.</li>
+      <li><b>Descarga:</b> requests / urllib · osmnx-Overpass (WFS/WCS/OGC API).</li>
+      <li><b>UI y mapas:</b> Streamlit · folium · streamlit-folium.</li>
+      <li><b>Algoritmo LCP:</b> Dijkstra 8-conexo isótropo con heap (implementación propia).</li>
+      <li><b>CRS de trabajo:</b> ETRS89 / UTM 30N (EPSG:25830); vista en WGS-84.</li>
+      <li><b>Formatos:</b> GeoTIFF (raster) · GeoPackage (vector) · YAML (config) · JSON (manifiesto).</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  Informe técnico de arquitectura · App Generador de Trazados de Ramales H₂ · Enagás × CI2 Lab 2026 · Grupo 6 (Reto 6)<br>
+  Generado a partir del código en <code>proyecto/src/</code> · Documento vivo — actualizar al cierre de cada sprint.
+</footer>
+
+</div>
+</body>
+</html>
