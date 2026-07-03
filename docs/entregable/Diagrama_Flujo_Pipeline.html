@@ -82,10 +82,7 @@
     <h1>Diagrama de Flujo del Pipeline<br>Generador de Trazados de Ramales de H₂</h1>
     <p>Flujo de proceso extremo a extremo del prototipo geoespacial determinista: de un origen,
        un destino y unos pesos por perfil a <b>cuatro trazados alternativos diferenciados</b>,
-       con sus algoritmos y su modelo de coste (índice <em>relativo</em>, nunca €).</p>
-    <div class="meta-badges">
-      <span>EPSG:25830</span><span>rejilla 30 m</span><span>Dijkstra 8-conexo</span><span>reconstruido desde proyecto/src/</span>
-    </div>
+       con sus algoritmos y su modelo de coste.</p>
   </div>
 </header>
 
@@ -109,9 +106,7 @@
 %%{init: {'flowchart': {'curve': 'linear'}}}%%
 flowchart TB
   E(["ENTRADA — origen · destino (UTM) · pesos por perfil"])
-  E --> V{"¿distancia origen–destino ≤ 15 km?"}
-  V -- "No · supera 15 km" --> BLK["Bloqueo de la interfaz<br/>corregir coordenadas"]
-  V -- "Sí" --> NEW{"¿escenario nuevo?<br/>sin capas en Capas_Coste/"}
+  E --> NEW{"¿escenario nuevo?<br/>sin capas en Capas_Coste/"}
   NEW -- "No · ya preparado" --> S3
   NEW -- "Sí · preparar" --> AUTO["Descarga automática<br/>DEM · OSM · Hidrografía IGN · IGME · inundables (aprox. WMS)"]
   AUTO --> MAN["Aporte manual — data/raw/<br/>Catastro (Cl@ve) · Red Natura 2000"]
@@ -128,7 +123,7 @@ flowchart TB
   classDef dec fill:#fbeccb,stroke:#b4791a,color:#5a3d00;
   classDef auto fill:#eef3f7,stroke:#0067a3,color:#181c1e;
   class E,OUT term;
-  class V,NEW,DIF,MAN,BLK,RED dec;
+  class NEW,DIF,MAN,RED dec;
   class AUTO auto;
 </div>
 
