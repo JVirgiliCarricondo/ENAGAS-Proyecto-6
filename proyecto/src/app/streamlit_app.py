@@ -19,6 +19,9 @@ import pandas as pd
 import streamlit as st
 import yaml
 from pyproj import Transformer
+from shapely.geometry import LineString
+from shapely.geometry import box as _shp_box
+from shapely.ops import unary_union
 
 # Page config — DEBE ser la primera llamada a Streamlit
 st.set_page_config(
@@ -80,7 +83,7 @@ except ImportError:
 # Inter / JetBrains Mono) y componentes trasladados del diseño de Stitch.
 _CSS = """
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hanken+Grotesk:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hanken+Grotesk:wght@600;700;800&family=Lora:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
   @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
 
   .material-symbols-outlined {
@@ -112,6 +115,7 @@ _CSS = """
 
     --font-body: 'Inter', 'Segoe UI', Arial, sans-serif;
     --font-head: 'Hanken Grotesk', 'Segoe UI', Arial, sans-serif;
+    --font-serif: 'Lora', Georgia, 'Times New Roman', serif;
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
     --radius-sm: 4px;
@@ -839,6 +843,16 @@ def _mapa_entrada(coords: dict, escenario_activo: str) -> folium.Map:
         attr="Esri WorldImagery",
     )
 
+    # Cursor de puntería sobre el mapa: al fijar origen/destino el usuario ve una
+    # cruz precisa en vez de la manita de arrastre. La marca de mira sigue al raton.
+    m.get_root().header.add_child(folium.Element("""
+    <style>
+      .leaflet-container, .leaflet-grab, .leaflet-interactive,
+      .leaflet-container.leaflet-grab { cursor: crosshair !important; }
+      .leaflet-container:active { cursor: crosshair !important; }
+    </style>
+    """))
+
     for s in coords:
         activo = s == escenario_activo
         color = _color_escenario(s)
@@ -955,6 +969,124 @@ def _mapa_resultados(escenarios: list[str] | None = None) -> folium.Map | None:
     return m
 
 
+# ── Disponibilidad de capas para el AOI elegido ────────────────────────────────
+#
+# Al mover origen/destino el AOI se recalcula (mismo criterio que la ingesta:
+# corredor de 1 km a cada lado de la linea origen-destino). Casi todas las capas
+# se obtienen automaticamente por bbox (DEM, hidrografia, geologia, viario, RN2000
+# via WFS, inundables SNCZI). La excepcion es CATASTRO: se descarga por municipios
+# a mano (Sede Catastro INSPIRE), asi que aqui comprobamos de verdad si el AOI
+# nuevo cae dentro de lo ya preparado (recortes catastro_aoi_*.gpkg).
+
+_AOI_BUFFER_M = 1000.0  # 1 km a cada lado — mismo valor que src.ingesta.descargar_capas
+
+
+def _aoi_bounds(coords_esc: dict) -> tuple[float, float, float, float]:
+    """(xmin, ymin, xmax, ymax) del corredor actual en EPSG:25830."""
+    line = LineString([
+        (coords_esc["origen"]["x"], coords_esc["origen"]["y"]),
+        (coords_esc["destino"]["x"], coords_esc["destino"]["y"]),
+    ])
+    return line.buffer(_AOI_BUFFER_M, cap_style=2).bounds
+
+
+@st.cache_data(show_spinner=False)
+def _catastro_cobertura_wkt(recorte_dir: str) -> str | None:
+    """Envolvente (WKT) de la cobertura de catastro ya preparada (recortes A/B, …).
+
+    Se cachea porque implica leer los GPKG. Devolvemos WKT para que el valor sea
+    hasheable/serializable por st.cache_data.
+    """
+    cajas = []
+    for p in sorted(Path(recorte_dir).glob("catastro_aoi_*.gpkg")):
+        try:
+            b = gpd.read_file(p).total_bounds  # xmin, ymin, xmax, ymax
+        except Exception:
+            continue
+        if b is not None and not any(np.isnan(b)):
+            cajas.append(_shp_box(*b))
+    if not cajas:
+        return None
+    return unary_union(cajas).wkt
+
+
+def _estado_datos_aoi(coords_esc: dict) -> list[dict]:
+    """Estado por capa para el corredor actual.
+
+    Cada item: {nombre, estado ∈ {ok, warn, rec}, detalle}. 'ok' verde (se tiene
+    o se descarga sola), 'warn' ambar (verificar / aportar a mano), 'rec' azul
+    (recomendado incluir).
+    """
+    from shapely import wkt as _wkt
+
+    xmin, ymin, xmax, ymax = _aoi_bounds(coords_esc)
+    aoi = _shp_box(xmin, ymin, xmax, ymax)
+
+    # Catastro — comprobacion real de cobertura contra lo ya descargado/preparado
+    cob_wkt = _catastro_cobertura_wkt(str(_ROOT / "data" / "processed" / "Recorte_AOI"))
+    frac = 0.0
+    if cob_wkt and aoi.area > 0:
+        try:
+            frac = aoi.intersection(_wkt.loads(cob_wkt)).area / aoi.area
+        except Exception:
+            frac = 0.0
+    if frac >= 0.99:
+        cat = ("ok", "Cubierto por lo ya descargado")
+    elif frac > 0.01:
+        cat = ("warn", f"Cobertura parcial (~{frac * 100:.0f}%) · completar en Sede Catastro INSPIRE")
+    else:
+        cat = ("warn", "Fuera de lo descargado · aportar a mano (Sede Catastro INSPIRE)")
+
+    return [
+        {"nombre": "Catastro (expropiación)", "estado": cat[0], "detalle": cat[1]},
+        {"nombre": "Red Natura 2000", "estado": "warn",
+         "detalle": "Obtenible por zona (WFS IDEE); recomendado fichero nacional MITECO"},
+        {"nombre": "Zonas inundables (SNCZI)", "estado": "rec",
+         "detalle": "Obtenibles por zona · se recomienda incluirlas en el coste"},
+        {"nombre": "DEM · Hidrografía · Geología · Viario (OSM)", "estado": "ok",
+         "detalle": "Se descargan automáticamente por zona (bbox)"},
+    ]
+
+
+def _render_estado_datos(coords_esc: dict) -> None:
+    """Tarjeta de disponibilidad de capas para el corredor origen-destino actual."""
+    try:
+        items = _estado_datos_aoi(coords_esc)
+    except Exception:
+        return  # ante cualquier fallo (ficheros/shapely) no romper el Paso 1
+
+    _ICONO = {
+        "ok":   ("check_circle", "var(--secondary)"),
+        "warn": ("warning",      "#b26a00"),
+        "rec":  ("lightbulb",    "var(--primary)"),
+    }
+    filas = ""
+    for it in items:
+        icono, color = _ICONO[it["estado"]]
+        filas += (
+            f'<div style="display:flex;align-items:flex-start;gap:9px;padding:6px 0;'
+            f'border-top:1px solid var(--surface-high);">'
+            f'<span class="material-symbols-outlined" style="font-size:18px;color:{color};'
+            f'line-height:1.15;flex:none;">{icono}</span>'
+            f'<div style="line-height:1.25;">'
+            f'<span style="font-family:var(--font-body);font-weight:700;font-size:0.78rem;'
+            f'color:var(--on-surface);">{it["nombre"]}</span><br>'
+            f'<span style="font-family:var(--font-body);font-size:0.7rem;'
+            f'color:var(--on-surface-variant);">{it["detalle"]}</span></div></div>'
+        )
+    st.markdown(
+        f'<div style="background:var(--surface-lowest);border:1px solid var(--outline-variant);'
+        f'border-radius:14px;box-shadow:var(--shadow-card);padding:12px 16px 8px;margin-top:10px;">'
+        f'<div style="display:flex;align-items:center;gap:6px;color:var(--primary);'
+        f'font-weight:700;margin-bottom:2px;">'
+        f'<span class="material-symbols-outlined" style="font-size:18px;">dataset</span>'
+        f'<span style="font-size:0.68rem;letter-spacing:0.05em;text-transform:uppercase;">'
+        f'Datos para esta zona</span></div>'
+        f'{filas}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 # ── Paso 1: Origen y Destino ───────────────────────────────────────────────────
 
 def _init_estado_entrada(cfg: dict) -> None:
@@ -1031,6 +1163,23 @@ def _render_paso1():
                 f'<div class="scenario-title">Escenario {esc_activo}</div>',
                 unsafe_allow_html=True,
             )
+            # Sembrar el estado de cada widget una sola vez desde coords. A partir
+            # de aqui el session_state del widget (clave f"{esc}_{rol}_{eje}") es la
+            # fuente de verdad: asi el clic en el mapa puede escribir en el sin que
+            # el number_input revierta al valor previo en el siguiente rerun.
+            for rol in ("origen", "destino"):
+                for eje in ("x", "y"):
+                    k = f"{esc_activo}_{rol}_{eje}"
+                    if k not in st.session_state:
+                        st.session_state[k] = int(coords[esc_activo][rol][eje])
+
+            # Aplicar un clic pendiente del mapa ANTES de instanciar los number_input
+            # (Streamlit prohibe modificar la clave de un widget ya instanciado).
+            pend = st.session_state.pop("_pending_click", None)
+            if pend is not None:
+                st.session_state[f"{pend['esc']}_{pend['rol']}_x"] = pend["x"]
+                st.session_state[f"{pend['esc']}_{pend['rol']}_y"] = pend["y"]
+
             for rol in ("origen", "destino"):
                 punto = "#4b6700" if rol == "origen" else "#004e7e"
                 st.markdown(
@@ -1041,36 +1190,49 @@ def _render_paso1():
                 )
                 c1, c2 = st.columns(2)
                 with c1:
-                    coords[esc_activo][rol]["x"] = st.number_input(
-                        "X (m)", value=coords[esc_activo][rol]["x"],
-                        step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_x",
+                    st.number_input(
+                        "X (m)", step=1, format="%d", key=f"{esc_activo}_{rol}_x",
                     )
                 with c2:
-                    coords[esc_activo][rol]["y"] = st.number_input(
-                        "Y (m)", value=coords[esc_activo][rol]["y"],
-                        step=1.0, format="%.0f", key=f"{esc_activo}_{rol}_y",
+                    st.number_input(
+                        "Y (m)", step=1, format="%d", key=f"{esc_activo}_{rol}_y",
                     )
+                coords[esc_activo][rol]["x"] = st.session_state[f"{esc_activo}_{rol}_x"]
+                coords[esc_activo][rol]["y"] = st.session_state[f"{esc_activo}_{rol}_y"]
 
             dist = _dist_m(
                 coords[esc_activo]["origen"]["x"], coords[esc_activo]["origen"]["y"],
                 coords[esc_activo]["destino"]["x"], coords[esc_activo]["destino"]["y"],
             )
             km_txt = f"{dist / 1000:.1f}".replace(".", ",")
-            if dist > MAX_DIST_M:
-                fondo, borde, texto = "rgba(186,26,26,0.10)", "rgba(186,26,26,0.35)", "var(--error)"
-                extra = f" · supera {MAX_DIST_M / 1000:.0f} km"
-            else:
-                fondo, borde, texto = "rgba(75,103,0,0.14)", "rgba(75,103,0,0.30)", "var(--secondary)"
-                extra = ""
+            supera = dist > MAX_DIST_M
+            acento = "var(--error)" if supera else "var(--primary)"
+            nota = (
+                f'<span style="color:var(--error);font-weight:700;font-size:0.62rem;'
+                f'letter-spacing:0;text-transform:none;margin-left:8px;">'
+                f'· supera {MAX_DIST_M / 1000:.0f} km</span>'
+            ) if supera else ""
             st.markdown(
-                f'<div style="display:flex;align-items:center;justify-content:space-between;'
-                f'background:{fondo};border:1px solid {borde};border-radius:var(--radius);'
-                f'padding:10px 14px;margin-top:6px;">'
-                f'<span style="color:{texto};font-weight:700;">Distancia total{extra}</span>'
-                f'<span style="font-family:var(--font-mono);font-weight:700;color:{texto};'
-                f'font-size:1.05rem;">{km_txt} km</span></div>',
+                f'<div style="display:flex;align-items:stretch;gap:14px;'
+                f'background:var(--surface-lowest);border:1px solid var(--outline-variant);'
+                f'border-radius:14px;box-shadow:var(--shadow-card);'
+                f'padding:15px 20px;margin-top:8px;">'
+                f'<div style="width:5px;flex:none;border-radius:99px;background:{acento};"></div>'
+                f'<div style="flex:1;display:flex;align-items:center;justify-content:space-between;gap:10px;">'
+                f'<span style="font-family:var(--font-body);color:var(--outline);font-weight:700;'
+                f'font-size:0.72rem;letter-spacing:0.07em;text-transform:uppercase;">'
+                f'Distancia total{nota}</span>'
+                f'<span style="font-family:var(--font-serif);font-weight:700;color:{acento};'
+                f'font-size:1.35rem;line-height:1;font-variant-numeric:tabular-nums;'
+                f'display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap;">'
+                f'{km_txt}<span style="font-family:var(--font-serif);font-size:0.85rem;'
+                f'font-weight:500;color:var(--outline);font-style:italic;">km</span>'
+                f'</span></div></div>',
                 unsafe_allow_html=True,
             )
+
+            # Comprobacion de disponibilidad de capas para el corredor elegido
+            _render_estado_datos(coords[esc_activo])
 
             if _HAS_ST_FOLIUM:
                 st.markdown(
@@ -1116,8 +1278,12 @@ def _render_paso1():
                     st.session_state._last_click = click_key
                     rol = st.session_state.punto_activo_rol
                     x_utm, y_utm = _latlon_to_utm(click["lat"], click["lng"])
-                    coords[esc_activo][rol]["x"] = round(x_utm)
-                    coords[esc_activo][rol]["y"] = round(y_utm)
+                    # Guardar el clic como pendiente: se aplica al estado de los
+                    # widgets al inicio del proximo run, antes de instanciarlos.
+                    st.session_state._pending_click = {
+                        "esc": esc_activo, "rol": rol,
+                        "x": round(x_utm), "y": round(y_utm),
+                    }
                     st.rerun()
         else:
             from streamlit.components.v1 import html as _html
