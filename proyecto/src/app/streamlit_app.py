@@ -21,9 +21,10 @@ import yaml
 from pyproj import Transformer
 
 # Page config — DEBE ser la primera llamada a Streamlit
+_ICON_PATH = Path(__file__).resolve().parent / "assets" / "Logo.png"
 st.set_page_config(
-    page_title="Enagás — Trazados de Ramales H₂",
-    page_icon=":large_blue_circle:",
+    page_title="Trazados de Ramales de H₂",
+    page_icon=str(_ICON_PATH) if _ICON_PATH.exists() else ":droplet:",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -489,6 +490,41 @@ _CSS = """
   }
   .section-desc { color: var(--on-surface-variant); font-size: 0.88rem;
                   max-width: 720px; line-height: 1.5; }
+
+  /* ── Bienvenida: tarjetas de igual altura ─────────────────────────────── */
+  /* Suelo común (por encima de la caja más alta) + estirado flex robusto: la
+     fila estira ambas columnas a la más alta y las tarjetas la rellenan. */
+  div[data-testid="stHorizontalBlock"]:has(.st-key-wcard_sim) { align-items: stretch; }
+  div[data-testid="stColumn"]:has(.st-key-wcard_sim),
+  div[data-testid="stColumn"]:has(.st-key-wcard_docs) {
+    display: flex;
+  }
+  div[data-testid="stColumn"]:has(.st-key-wcard_sim) > div,
+  div[data-testid="stColumn"]:has(.st-key-wcard_docs) > div {
+    width: 100%;
+    height: 100%;
+  }
+  .st-key-wcard_sim,
+  .st-key-wcard_docs {
+    height: 100%;
+  }
+
+  /* ── Bienvenida: hero derecho a toda la altura (con centrado de reserva) ── */
+  div[data-testid="stHorizontalBlock"]:has(.st-key-hero_col) { align-items: stretch; }
+  div[data-testid="stColumn"]:has(.st-key-hero_col) > div[data-testid="stVerticalBlock"] {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .st-key-hero_col,
+  .st-key-hero_col > div[data-testid="stVerticalBlock"],
+  .st-key-hero_col div[data-testid="stElementContainer"],
+  .st-key-hero_col div[data-testid="stMarkdownContainer"],
+  .st-key-hero_col div[data-testid="stMarkdownContainer"] > div {
+    height: 100%;
+    width: 100%;
+  }
 
   footer { display: none; }
   #MainMenu { display: none; }
@@ -1466,14 +1502,14 @@ def _hero_visual() -> str:
             mime = "jpeg" if ruta.suffix != ".png" else "png"
             b64 = base64.b64encode(ruta.read_bytes()).decode()
             return (
-                f'<div style="height:100%;min-height:420px;border-radius:var(--radius-xl);'
+                f'<div style="height:100%;min-height:480px;border-radius:var(--radius-xl);'
                 f'background-image:url(\'data:image/{mime};base64,{b64}\');'
                 f'background-size:cover;background-position:center;'
                 f'border:1px solid var(--outline-variant);"></div>'
             )
     # Sin imagen: panel degradado con motivo de red H₂
     return (
-        '<div style="height:100%;min-height:420px;border-radius:var(--radius-xl);'
+        '<div style="height:100%;min-height:480px;border-radius:var(--radius-xl);'
         'border:1px solid var(--outline-variant);overflow:hidden;position:relative;'
         'background:linear-gradient(135deg,#004e7e 0%,#0067a3 55%,#4b6700 130%);'
         'display:flex;align-items:center;justify-content:center;">'
@@ -1486,13 +1522,73 @@ def _hero_visual() -> str:
     )
 
 
+def _docs_buttons() -> None:
+    """Dos botones que abren, en una pestaña nueva, el diagrama de flujo y el
+    informe de arquitectura (HTML de docs/entregable/)."""
+    import base64
+    from streamlit.components.v1 import html as _html
+
+    docs_dir = _ROOT.parent / "docs" / "entregable"
+    botones = [
+        ("Ver diagrama de flujo", "Diagrama_Flujo_Pipeline.html"),
+        ("Ver informe de arquitectura", "Informe_Arquitectura_App.html"),
+    ]
+    items = []
+    for i, (label, fname) in enumerate(botones):
+        ruta = docs_dir / fname
+        if ruta.exists():
+            b64 = base64.b64encode(ruta.read_bytes()).decode()
+            items.append((f"doc{i}", label, b64))
+
+    if not items:
+        st.toast("Documentos no encontrados.")
+        return
+
+    botones_html = "".join(
+        f'<button class="docbtn" onclick="openDoc(\'{key}\')">'
+        f'<span>{label}</span><span>&#128196;</span></button>'
+        for key, label, _ in items
+    )
+    data_scripts = "".join(
+        f'<script type="text/plain" id="{key}">{b64}</script>'
+        for key, _, b64 in items
+    )
+    snippet = f"""
+    <style>
+      body {{ margin:0; }}
+      .docwrap {{ display:flex; flex-direction:column; gap:10px; }}
+      .docbtn {{
+        display:flex; align-items:center; justify-content:center; gap:8px;
+        width:100%; padding:10px 16px; cursor:pointer;
+        font-family:'Inter','Segoe UI',Arial,sans-serif; font-weight:600; font-size:0.9rem;
+        color:#004e7e; background:#ffffff; border:1px solid #004e7e; border-radius:4px;
+        transition:background .15s;
+      }}
+      .docbtn:hover {{ background:#ebeef0; }}
+    </style>
+    <div class="docwrap">{botones_html}</div>
+    {data_scripts}
+    <script>
+      function openDoc(id) {{
+        var b64 = document.getElementById(id).textContent;
+        var bin = atob(b64);
+        var arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        var blob = new Blob([arr], {{type: 'text/html'}});
+        window.open(URL.createObjectURL(blob), '_blank');
+      }}
+    </script>
+    """
+    _html(snippet, height=len(items) * 54 + 12)
+
+
 def _render_bienvenida() -> None:
     col_left, col_right = st.columns([1.15, 1], gap="large")
     with col_left:
         st.markdown(
             '<div style="font-family:var(--font-body);font-weight:700;font-size:0.72rem;'
             'letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary);'
-            'margin-bottom:6px;">Hydrogen Infrastructure Tool v2.4</div>'
+            'margin-bottom:6px;">Hydrogen Infrastructure Tool</div>'
             '<div style="font-family:var(--font-head);font-size:2.3rem;font-weight:800;'
             'color:var(--primary);line-height:1.1;letter-spacing:-0.02em;margin-bottom:14px;">'
             'Generador de Trazados<br>de Ramales de H₂</div>'
@@ -1505,7 +1601,7 @@ def _render_bienvenida() -> None:
         st.write("")
         cc1, cc2 = st.columns(2, gap="medium")
         with cc1:
-            with st.container(border=True):
+            with st.container(border=True, key="wcard_sim"):
                 st.markdown(
                     '<div class="welcome-card-head">'
                     '<div class="welcome-card-icon icon-primary">'
@@ -1521,7 +1617,7 @@ def _render_bienvenida() -> None:
                     st.session_state.pantalla = "paso1"
                     st.rerun()
         with cc2:
-            with st.container(border=True):
+            with st.container(border=True, key="wcard_docs"):
                 st.markdown(
                     '<div class="welcome-card-head">'
                     '<div class="welcome-card-icon icon-secondary">'
@@ -1532,11 +1628,10 @@ def _render_bienvenida() -> None:
                     '</div>',
                     unsafe_allow_html=True,
                 )
-                if st.button("Ver documentación  📖", use_container_width=True,
-                             key="btn_welcome_docs"):
-                    st.toast("Documentación técnica — próximamente.")
+                _docs_buttons()
     with col_right:
-        st.markdown(_hero_visual(), unsafe_allow_html=True)
+        with st.container(key="hero_col"):
+            st.markdown(_hero_visual(), unsafe_allow_html=True)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
