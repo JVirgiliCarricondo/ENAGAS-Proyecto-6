@@ -6,3 +6,6 @@ backgroundColor = "#f7fafc"         # surface / background
 secondaryBackgroundColor = "#ffffff" # surface-container-lowest (tarjetas, inputs)
 textColor = "#181c1e"               # on-surface
 font = "sans-serif"
+
+[client]
+toolbarMode = "minimal"  # oculta el botón Deploy / menú (incluye "Iniciar sesión")

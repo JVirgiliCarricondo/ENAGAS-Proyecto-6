@@ -402,23 +402,6 @@ _CSS = """
     display: flex; align-items: center; justify-content: center;
     width: 34px; height: 34px; border-radius: 50%;
   }
-  .topnav-user {
-    display: flex; align-items: center; gap: 10px;
-    padding-left: 14px; border-left: 1px solid var(--outline-variant);
-  }
-  .topnav-user-txt { text-align: right; line-height: 1.15; }
-  .topnav-user-name { font-family: var(--font-body); font-weight: 700;
-                      font-size: 0.8rem; color: var(--on-surface); }
-  .topnav-user-role { font-size: 0.6rem; letter-spacing: 0.04em;
-                      text-transform: uppercase; color: var(--on-surface-variant); }
-  .topnav-avatar {
-    width: 38px; height: 38px; border-radius: 50%;
-    background: var(--primary); color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--font-head); font-weight: 700; font-size: 0.85rem;
-    border: 1px solid var(--outline-variant);
-  }
-
   /* ── Footer técnico ───────────────────────────────────────────────────── */
   .enagas-footer {
     margin-top: 26px;
@@ -1462,12 +1445,9 @@ def _footer() -> None:
     st.markdown(
         '<div class="enagas-footer">'
         '<div class="foot-left">'
-        '<span class="foot-brand">© 2024 Enagás S.A.</span>'
-        '<span class="foot-mono">v2.4.1-stable</span>'
+        '<span class="foot-brand">2026 Enagás</span>'
         '</div>'
         '<div class="foot-links">'
-        '<a href="#">API Metadata</a>'
-        '<a href="#">Documentación</a>'
         '<span class="foot-green foot-mono">Technical Infrastructure Division</span>'
         '</div>'
         '</div>',
@@ -1581,15 +1561,6 @@ def _main():
         f'<div class="topnav-right">'
         f'<span class="topnav-icon"><span class="material-symbols-outlined">notifications</span></span>'
         f'<span class="topnav-icon"><span class="material-symbols-outlined">settings</span></span>'
-        f'<div class="topnav-user">'
-        f'<div class="topnav-user-txt">'
-        f'<div class="topnav-user-name">J. Martínez</div>'
-        f'<div class="topnav-user-role">Data Engineer</div>'
-        f'</div>'
-        f'<div class="topnav-avatar">JM</div>'
-        f'<span class="material-symbols-outlined" style="color:var(--on-surface-variant);'
-        f'font-size:18px;">expand_more</span>'
-        f'</div>'
         f'</div>'
         f'</div>',
         unsafe_allow_html=True,
