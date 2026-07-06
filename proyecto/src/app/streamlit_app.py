@@ -1141,7 +1141,7 @@ def _render_paso1():
             st.markdown(
                 f'<div style="display:flex;align-items:center;justify-content:space-between;'
                 f'background:{fondo};border:1px solid {borde};border-radius:var(--radius);'
-                f'padding:10px 14px;margin-top:6px;">'
+                f'padding:10px 14px;margin:6px 0 10px;">'
                 f'<span style="color:{texto};font-weight:700;">Distancia total{extra}</span>'
                 f'<span style="font-family:var(--font-mono);font-weight:700;color:{texto};'
                 f'font-size:1.05rem;">{km_txt} km</span></div>',
@@ -1169,14 +1169,15 @@ def _render_paso1():
                     coords[esc_activo][rol]["y"] = round(y_utm)
                     st.rerun()
 
-            # Debajo del mapa, alineado a la derecha: selector de punto activo + leyenda
-            _, sel_col = st.columns([1, 1])
-            with sel_col:
+            # Debajo del mapa, en una sola línea: etiqueta + selector de punto activo
+            _, lbl_col, rad_col = st.columns([0.5, 1.5, 1], vertical_alignment="center")
+            with lbl_col:
                 st.markdown(
-                    f'<p class="section-label" style="margin-top:6px;text-align:right;">'
+                    f'<p class="section-label" style="margin:0;text-align:right;">'
                     f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
                     unsafe_allow_html=True,
                 )
+            with rad_col:
                 st.session_state.punto_activo_rol = st.radio(
                     "Punto activo",
                     options=["origen", "destino"],
