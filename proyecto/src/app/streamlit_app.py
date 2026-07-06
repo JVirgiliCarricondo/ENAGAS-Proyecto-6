@@ -146,16 +146,15 @@ _CSS = """
   div[data-testid="stDataFrame"] * { color: var(--on-surface) !important; }
 
   /* ── Barra superior unificada ─────────────────────────────────────────── */
-  .enagas-topnav {
+  div[class*="st-key-topnav"] {
     background: var(--surface-lowest);
     border-bottom: 1px solid var(--outline-variant);
     box-shadow: var(--shadow-card);
-    padding: 12px 28px;
+    padding: 6px 28px;
     margin: -0.4rem 0 14px;
-    display: flex;
+  }
+  div[class*="st-key-topnav"] [data-testid="stHorizontalBlock"] {
     align-items: center;
-    justify-content: space-between;
-    gap: 18px;
   }
   .topnav-left { display: flex; align-items: center; gap: 14px; }
   .topnav-logo { height: 34px; display: block; }
@@ -395,12 +394,19 @@ _CSS = """
     border-color: #3d5600 !important;
   }
 
-  /* ── Barra superior: zona derecha (iconos + perfil) ───────────────────── */
-  .topnav-right { display: flex; align-items: center; gap: 14px; }
-  .topnav-icon {
+  /* ── Barra superior: botón de modo noche ──────────────────────────────── */
+  div[class*="st-key-topnav"] button {
+    background: transparent;
+    border: none;
     color: var(--on-surface-variant);
-    display: flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px; border-radius: 50%;
+    border-radius: 50%;
+    width: 34px; height: 34px;
+    padding: 0;
+    float: right;
+  }
+  div[class*="st-key-topnav"] button:hover {
+    background: var(--surface-container);
+    color: var(--primary);
   }
   /* ── Footer técnico ───────────────────────────────────────────────────── */
   .enagas-footer {
@@ -493,6 +499,32 @@ _CSS = """
   footer { display: none; }
   #MainMenu { display: none; }
   header[data-testid="stHeader"] { display: none; }
+</style>
+"""
+
+# Sobrescribe las variables de _CSS con la paleta oscura — se inyecta después
+# de _CSS, así que gana en la cascada sin duplicar el resto de reglas.
+_CSS_DARK = """
+<style>
+  :root {
+    --primary:            #6cb7e8;
+    --primary-container:  #004f7d;
+    --on-primary:         #00344f;
+    --secondary:          #a8d65a;
+    --secondary-container:#3a4d00;
+    --tertiary:           #7ecbfa;
+    --surface:            #101418;
+    --surface-lowest:     #0b0e11;
+    --surface-low:        #15191d;
+    --surface-container:  #1b2024;
+    --surface-high:       #23282c;
+    --surface-highest:    #2a2f33;
+    --on-surface:         #e2e6e9;
+    --on-surface-variant: #b8c0c7;
+    --outline:            #8b939b;
+    --outline-variant:    #3c4247;
+    --error:              #ffb4a9;
+  }
 </style>
 """
 
@@ -1553,17 +1585,21 @@ def _main():
         if _LOGO_PATH.exists() else ""
     )
 
+    st.session_state.setdefault("modo_noche", False)
+
     st.markdown(_CSS, unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="enagas-topnav">'
-        f'<div class="topnav-left">{_logo_tag}</div>'
-        f'<div class="topnav-right">'
-        f'<span class="topnav-icon"><span class="material-symbols-outlined">notifications</span></span>'
-        f'<span class="topnav-icon"><span class="material-symbols-outlined">settings</span></span>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    if st.session_state.modo_noche:
+        st.markdown(_CSS_DARK, unsafe_allow_html=True)
+
+    with st.container(key="topnav"):
+        col_logo, col_toggle = st.columns([8, 1])
+        with col_logo:
+            st.markdown(f'<div class="topnav-left">{_logo_tag}</div>', unsafe_allow_html=True)
+        with col_toggle:
+            icono = ":material/light_mode:" if st.session_state.modo_noche else ":material/dark_mode:"
+            if st.button(icono, key="btn_modo_noche", help="Modo noche"):
+                st.session_state.modo_noche = not st.session_state.modo_noche
+                st.rerun()
 
     if "pantalla" not in st.session_state:
         st.session_state.pantalla = "bienvenida"
