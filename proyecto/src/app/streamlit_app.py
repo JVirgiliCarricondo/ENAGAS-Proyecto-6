@@ -1496,11 +1496,10 @@ def _render_bienvenida() -> None:
             '<div style="font-family:var(--font-head);font-size:2.3rem;font-weight:800;'
             'color:var(--primary);line-height:1.1;letter-spacing:-0.02em;margin-bottom:14px;">'
             'Generador de Trazados<br>de Ramales de H₂</div>'
-            '<p class="welcome-sub" style="margin:0 0 6px;text-align:left;">Herramienta avanzada '
-            'para la optimización y diseño de infraestructuras de hidrógeno.</p>'
-            '<p class="welcome-sub" style="text-align:left;">Utilice algoritmos de última '
-            'generación para calcular las rutas más eficientes basadas en criterios geográficos, '
-            'ambientales y de coste.</p>',
+            '<p class="welcome-sub" style="text-align:justify;">Herramienta avanzada '
+            'para la optimización y diseño de infraestructuras de hidrógeno. Utilice algoritmos '
+            'de última generación para calcular las rutas más eficientes basadas en criterios '
+            'geográficos, ambientales y de coste.</p>',
             unsafe_allow_html=True,
         )
         st.write("")
