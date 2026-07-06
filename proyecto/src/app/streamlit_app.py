@@ -245,9 +245,9 @@ _CSS = """
     background: rgba(0,103,163,0.06);
     border: 1px solid rgba(0,103,163,0.22);
     border-radius: var(--radius);
-    padding: 10px 16px;
+    padding: 10px 14px;
     margin-bottom: 12px;
-    font-size: 0.82rem;
+    font-size: 0.76rem;
     color: var(--on-surface-variant);
     font-family: var(--font-body);
   }
@@ -852,45 +852,49 @@ def _marcador_punto(
     activo: bool,
     coords: dict,
 ) -> None:
-    """Marca origen/destino con circulo visible y etiqueta O/D."""
+    """Marca origen/destino con un badge; el color identifica el escenario."""
     es_origen = rol == "origen"
-    fill = "#27ae60" if es_origen else "#e74c3c"
+    # Mismo tipo de punto para origen y destino: lo que distingue los escenarios
+    # es el color (cada escenario tiene el suyo). La letra O/D marca el rol.
+    fill = _color_escenario(escenario)
     letra = "O" if es_origen else "D"
-    radio = 14 if activo else 9
-    opacidad = 1.0 if activo else 0.45
     tooltip = f"Escenario {escenario} — {rol.capitalize()}"
     popup_html = (
-        f"<b style='color:#002B5C'>{tooltip}</b><br>"
+        f"<b style='color:{fill}'>{tooltip}</b><br>"
         f"X: {coords[escenario][rol]['x']:.0f} m<br>"
         f"Y: {coords[escenario][rol]['y']:.0f} m<br>"
         f"<small>({lat:.5f}, {lon:.5f})</small>"
     )
-    folium.CircleMarker(
-        location=[lat, lon],
-        radius=radio,
-        color="#ffffff",
-        weight=3 if activo else 2,
-        fill=True,
-        fill_color=fill,
-        fill_opacity=opacidad,
-        tooltip=tooltip,
-        popup=folium.Popup(popup_html, max_width=240),
-    ).add_to(m)
     if activo:
+        size = 26
+        badge = (
+            f'<div style="font-family:Inter,\'Segoe UI\',sans-serif;font-size:13px;'
+            f'font-weight:700;color:#fff;background:{fill};'
+            f'width:{size}px;height:{size}px;line-height:{size}px;text-align:center;'
+            f'border-radius:50%;border:2px solid #fff;'
+            f'box-shadow:0 2px 6px rgba(0,0,0,0.30);">{letra}</div>'
+        )
         folium.Marker(
             location=[lat, lon],
             icon=folium.DivIcon(
-                html=(
-                    f'<div style="font-family:Segoe UI,sans-serif;font-size:13px;'
-                    f"font-weight:700;color:#fff;background:{fill};"
-                    f'width:22px;height:22px;line-height:22px;text-align:center;'
-                    f'border-radius:50%;border:2px solid #fff;'
-                    f'box-shadow:0 1px 4px rgba(0,0,0,0.45);">{letra}</div>'
-                ),
-                icon_size=(22, 22),
-                icon_anchor=(11, 11),
+                html=badge,
+                icon_size=(size, size),
+                icon_anchor=(size // 2, size // 2),
             ),
             tooltip=tooltip,
+            popup=folium.Popup(popup_html, max_width=240),
+        ).add_to(m)
+    else:
+        folium.CircleMarker(
+            location=[lat, lon],
+            radius=7,
+            color="#ffffff",
+            weight=2,
+            fill=True,
+            fill_color=fill,
+            fill_opacity=0.55,
+            tooltip=tooltip,
+            popup=folium.Popup(popup_html, max_width=240),
         ).add_to(m)
 
 
@@ -935,14 +939,20 @@ def _mapa_entrada(coords: dict, escenario_activo: str) -> folium.Map:
         [lat_max + dlat, lon_max + dlon],
     ])
 
+    filas_leyenda = "".join(
+        f'<span style="color:{_color_escenario(s)};font-weight:700;'
+        f'font-size:1.15em;">&#9679;</span> '
+        f'{"<b>" if s == escenario_activo else ""}Escenario {s}'
+        f'{" (activo)</b>" if s == escenario_activo else ""}<br>'
+        for s in sorted(coords, key=lambda x: (len(x), x))
+    )
     leyenda = f"""
     <div style="position:fixed;top:12px;right:12px;z-index:1000;background:#fff;
                 padding:10px 14px;border-radius:8px;font-family:'Segoe UI',sans-serif;
                 font-size:12px;color:#1f2937;box-shadow:0 2px 8px rgba(0,0,0,0.2);
                 border-top:3px solid {_color_escenario(escenario_activo)};">
-      <b style="color:#002B5C;">Escenario {escenario_activo}</b><br>
-      <span style="color:#27ae60;font-weight:700;">&#9679;</span> Origen (O)<br>
-      <span style="color:#e74c3c;font-weight:700;">&#9679;</span> Destino (D)
+      <b style="color:#004e7e;">Escenarios</b><br>
+      {filas_leyenda}
     </div>
     """
     m.get_root().html.add_child(folium.Element(leyenda))
@@ -1049,7 +1059,7 @@ def _render_paso1():
     escenarios = sorted(coords.keys(), key=lambda x: (len(x), x))
     esc_activo = st.session_state.escenario_activo
 
-    col_panel, col_map = st.columns([1, 2], gap="large")
+    col_panel, col_map = st.columns([1.15, 2], gap="small")
 
     with col_panel:
         with st.container(border=True):
@@ -1060,8 +1070,7 @@ def _render_paso1():
                 '<span class="material-symbols-outlined" style="font-size:18px;">info</span>'
                 '<span style="font-size:0.68rem;letter-spacing:0.05em;text-transform:uppercase;">'
                 'Restricciones del modelo</span></div>'
-                'Corredor de referencia: <b>2 km de ancho</b> (&plusmn;1 km a cada lado).<br>'
-                'Distancia máxima origen&ndash;destino: <b>15 km</b>.'
+                'Corredor de referencia: <b>2 km de ancho</b> (&plusmn;1 km a cada lado).'
                 '</div>',
                 unsafe_allow_html=True,
             )
@@ -1139,33 +1148,6 @@ def _render_paso1():
                 unsafe_allow_html=True,
             )
 
-            if _HAS_ST_FOLIUM:
-                st.markdown(
-                    f'<p class="section-label" style="margin-top:12px;">'
-                    f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
-                    unsafe_allow_html=True,
-                )
-                st.session_state.punto_activo_rol = st.radio(
-                    "Punto activo",
-                    options=["origen", "destino"],
-                    format_func=str.capitalize,
-                    index=0 if st.session_state.punto_activo_rol == "origen" else 1,
-                    label_visibility="collapsed",
-                    horizontal=True,
-                    key="radio_punto_rol",
-                )
-
-        st.markdown(
-            '<div style="display:flex;gap:16px;margin-top:10px;font-size:0.78rem;">'
-            '<span style="display:flex;align-items:center;gap:6px;font-weight:600;">'
-            '<span style="width:11px;height:11px;border-radius:50%;background:#4b6700;'
-            'display:inline-block;"></span>Origen (O)</span>'
-            '<span style="display:flex;align-items:center;gap:6px;font-weight:600;">'
-            '<span style="width:11px;height:11px;border-radius:50%;background:#004e7e;'
-            'display:inline-block;"></span>Destino (D)</span></div>',
-            unsafe_allow_html=True,
-        )
-
     with col_map:
         m = _mapa_entrada(coords, esc_activo)
         if _HAS_ST_FOLIUM:
@@ -1186,6 +1168,24 @@ def _render_paso1():
                     coords[esc_activo][rol]["x"] = round(x_utm)
                     coords[esc_activo][rol]["y"] = round(y_utm)
                     st.rerun()
+
+            # Debajo del mapa, alineado a la derecha: selector de punto activo + leyenda
+            _, sel_col = st.columns([1, 1])
+            with sel_col:
+                st.markdown(
+                    f'<p class="section-label" style="margin-top:6px;text-align:right;">'
+                    f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
+                    unsafe_allow_html=True,
+                )
+                st.session_state.punto_activo_rol = st.radio(
+                    "Punto activo",
+                    options=["origen", "destino"],
+                    format_func=str.capitalize,
+                    index=0 if st.session_state.punto_activo_rol == "origen" else 1,
+                    label_visibility="collapsed",
+                    horizontal=True,
+                    key="radio_punto_rol",
+                )
         else:
             from streamlit.components.v1 import html as _html
             _html(m._repr_html_(), height=560)
@@ -1201,13 +1201,13 @@ def _render_paso1():
     can_next = all(d <= MAX_DIST_M for d in distancias.values())
 
     st.markdown("---")
-    c_back, _, c_next = st.columns([1.2, 2, 1.4])
+    c_back, _, c_next = st.columns([1.4, 2, 1.4])
     with c_back:
         if st.button("← Inicio", use_container_width=True, key="btn_p1_inicio"):
             st.session_state.pantalla = "bienvenida"
             st.rerun()
     with c_next:
-        if st.button("Siguiente: Pesos y Perfiles  →", type="primary",
+        if st.button("Pesos y Perfiles  →", type="primary",
                      disabled=not can_next, use_container_width=True, key="btn_p1_next"):
             cfg = _aplicar_coords_a_cfg(cfg, coords)
             _guardar_cfg(cfg)
