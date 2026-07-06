@@ -99,9 +99,6 @@
 
 <div class="wrap">
 
-<!-- ============================================================ -->
-<h2 id="vision"><span class="n">01</span>Visión general y modelo de ejecución</h2>
-
 <nav class="toc">
   <b style="font-family:var(--font-head);color:var(--primary)">Índice</b>
   <ol>
@@ -117,12 +114,15 @@
   </ol>
 </nav>
 
+<!-- ============================================================ -->
+<h2 id="vision"><span class="n">01</span>Visión general y modelo de ejecución</h2>
+
 <p>La aplicación combina una <b>interfaz web</b> y un <b>pipeline geoespacial por lotes</b> que
 comparten el mismo proceso Python. La interfaz importa e invoca directamente las funciones del
 pipeline; el intercambio de datos se hace por <b>archivos en disco</b> (GeoTIFF, GeoPackage, YAML)
 y por el <code>st.session_state</code> de Streamlit.</p>
 
-<p>El <b>frontend</b> es un único archivo, <code>src/app/streamlit_app.py</code> (~1.600 líneas),
+<p>El <b>frontend</b> es un único archivo, <code>src/app/streamlit_app.py</code>,
 que se arranca con <code>streamlit run</code>: un asistente de 3 pasos con mapas Folium, editor de
 pesos y página de resultados. El <b>backend</b> son los módulos deterministas de <code>src/</code>
 (ingesta · superficie · trazados · métricas), que descargan y alinean las capas GIS, construyen las
@@ -145,9 +145,6 @@ multicriterio.</p>
     <tr><td>CLI de módulo</td><td><code>python -m src.trazados.ruta_pendiente</code> / <code>src.metricas.calculo</code></td>
         <td><span class="tag part">parcial</span></td>
         <td>Cada etapa tiene su propio <code>main()</code> ejecutable y reproducible.</td></tr>
-    <tr><td>CLI unificada</td><td><code>src/app/cli.py</code>, <code>src/comparacion/comparador.py</code></td>
-        <td><span class="tag stub">esqueleto</span></td>
-        <td>Pendientes de implementar; hoy lanzan <code>NotImplementedError</code>.</td></tr>
   </tbody>
 </table>
 
@@ -472,14 +469,14 @@ navegación y resultados en memoria de sesión:</p>
 
 <h3>Estructura de <code>data/</code></h3>
 <table>
-  <thead><tr><th>Carpeta</th><th>Contenido</th><th>Versionado</th></tr></thead>
+  <thead><tr><th>Carpeta</th><th>Contenido</th></tr></thead>
   <tbody>
-    <tr><td><code>data/config/</code></td><td><code>escenario.yaml</code> (AOI, origen/destino) · <code>perfiles.yaml</code> (pesos)</td><td><span class="tag ok">sí</span></td></tr>
-    <tr><td><code>data/raw/</code></td><td>Descargas GIS originales + <code>manifiesto_estado.json</code></td><td><span class="tag stub">no</span></td></tr>
-    <tr><td><code>data/processed/Rasters_AOI/</code></td><td>DEM y rasters alineados a la rejilla común</td><td><span class="tag stub">no</span></td></tr>
-    <tr><td><code>data/processed/Capas_Coste/</code></td><td>Coste por celda de cada capa (<code>{capa}_{s}.tif</code>)</td><td><span class="tag stub">no</span></td></tr>
-    <tr><td><code>data/processed/Trazados/</code></td><td>Superficies de coste combinadas por perfil</td><td><span class="tag stub">no</span></td></tr>
-    <tr><td><code>data/processed/Rutas/</code></td><td>Rutas finales <code>ruta_{s}_{perfil}.gpkg</code> (+ .qml)</td><td><span class="tag part">salida</span></td></tr>
+    <tr><td><code>data/config/</code></td><td><code>escenario.yaml</code> (AOI, origen/destino) · <code>perfiles.yaml</code> (pesos)</td></tr>
+    <tr><td><code>data/raw/</code></td><td>Descargas GIS originales + <code>manifiesto_estado.json</code></td></tr>
+    <tr><td><code>data/processed/Rasters_AOI/</code></td><td>DEM y rasters alineados a la rejilla común</td></tr>
+    <tr><td><code>data/processed/Capas_Coste/</code></td><td>Coste por celda de cada capa (<code>{capa}_{s}.tif</code>)</td></tr>
+    <tr><td><code>data/processed/Trazados/</code></td><td>Superficies de coste combinadas por perfil</td></tr>
+    <tr><td><code>data/processed/Rutas/</code></td><td>Rutas finales <code>ruta_{s}_{perfil}.gpkg</code> (+ .qml)</td></tr>
   </tbody>
 </table>
 
@@ -518,7 +515,7 @@ escenario_B:
    7 capas. El archivo incluye además <code>parametros_capas</code>: la calibración intra-capa (costes por
    litología, tipo catastral, tipo de vía…), que los módulos leen al importarse. El <b>detalle de los pesos por
    perfil</b> —qué prioriza cada uno y con qué valores— está en el
-   <a href="#coste">§08 Modelo de coste y ponderación</a>, para no repetir la tabla.</p>
+   <a href="#coste">§08 Modelo de coste y ponderación</a>.</p>
 
 <!-- ============================================================ -->
 <h2 id="fuentes"><span class="n">07</span>Fuentes de datos, trazabilidad y reproducibilidad</h2>
@@ -620,7 +617,7 @@ coste del factor de ponderación oficial <code>A</code> con divisor común
 <h3>Pesos por perfil — el mecanismo de diferenciación</h3>
 <p style="font-size:.9rem">Sobre las capas ya estandarizadas, cada <b>perfil</b> aplica un vector de pesos
    distinto. Misma base de coste + pesos distintos ⇒ superficies distintas ⇒ <b>rutas diferenciadas</b>: aquí
-   es donde nacen los 3–5 trazados alternativos. Los perfiles son <b>configuración externa</b>
+   es donde nacen los 4 trazados alternativos. Los perfiles son <b>configuración externa</b>
    (<code>perfiles.yaml</code>), no código: recalibrar es editar el YAML y re-ejecutar; también se editan en
    caliente desde la interfaz (sliders del Paso 2) sin tocar el archivo.</p>
 <table style="font-size:.82rem">
@@ -650,22 +647,7 @@ coste del factor de ponderación oficial <code>A</code> con divisor común
 <!-- ============================================================ -->
 <h2 id="estado"><span class="n">09</span>Estado del código y stack tecnológico</h2>
 
-<div class="grid2">
-  <div class="card">
-    <h4 style="margin-top:0">Madurez por componente</h4>
-    <table style="font-size:.82rem">
-      <tbody>
-        <tr><td>Interfaz Streamlit (3 pasos + resultados)</td><td><span class="tag ok">operativa</span></td></tr>
-        <tr><td>Ingesta + alineación</td><td><span class="tag ok">operativa</span></td></tr>
-        <tr><td>Superficies de coste + combinar</td><td><span class="tag ok">operativa</span></td></tr>
-        <tr><td>Motor LCP (Dijkstra)</td><td><span class="tag ok">operativa</span></td></tr>
-        <tr><td>Métricas + diversidad</td><td><span class="tag ok">operativa</span></td></tr>
-        <tr><td>Comparador / scoring (módulo)</td><td><span class="tag stub">esqueleto</span></td></tr>
-        <tr><td>CLI unificada</td><td><span class="tag stub">esqueleto</span></td></tr>
-      </tbody>
-    </table>
-  </div>
-  <div class="card">
+<div class="card">
     <h4 style="margin-top:0">Stack</h4>
     <ul class="clean" style="font-size:.86rem">
       <li><b>Lenguaje:</b> Python 3.11+ (código en inglés, docs en español).</li>
@@ -677,11 +659,9 @@ coste del factor de ponderación oficial <code>A</code> con divisor común
       <li><b>Formatos:</b> GeoTIFF (raster) · GeoPackage (vector) · YAML (config) · JSON (manifiesto).</li>
     </ul>
   </div>
-</div>
 
 <footer>
-  Informe técnico de arquitectura · App Generador de Trazados de Ramales H₂ · Enagás × CI2 Lab 2026 · Grupo 6 (Reto 6)<br>
-  Generado a partir del código en <code>proyecto/src/</code> · Documento vivo — actualizar al cierre de cada sprint.
+  Informe técnico de arquitectura · App Generador de Trazados de Ramales H₂ · Enagás × CI2 Lab 2026 · Grupo 6 (Reto 6)
 </footer>
 
 </div>
