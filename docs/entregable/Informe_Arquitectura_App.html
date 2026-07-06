@@ -117,21 +117,17 @@
   </ol>
 </nav>
 
-<p>La aplicación es un <b>prototipo monolítico en Python</b> que combina una interfaz web
-con un pipeline geoespacial por lotes. No hay una separación cliente/servidor clásica con API
-REST: el <b>frontend Streamlit y el backend comparten el mismo proceso Python</b>. La interfaz
-invoca directamente las funciones del pipeline (importándolas en tiempo de ejecución) y el
-intercambio de datos se hace por <b>archivos en disco</b> (GeoTIFF, GeoPackage, YAML) y por el
-<code>st.session_state</code> de Streamlit.</p>
+<p>La aplicación combina una <b>interfaz web</b> y un <b>pipeline geoespacial por lotes</b> que
+comparten el mismo proceso Python. La interfaz importa e invoca directamente las funciones del
+pipeline; el intercambio de datos se hace por <b>archivos en disco</b> (GeoTIFF, GeoPackage, YAML)
+y por el <code>st.session_state</code> de Streamlit.</p>
 
-<p>El <b>frontend</b> es un único archivo, <code>src/app/streamlit_app.py</code> (~1.600 líneas): un
-asistente de 3 pasos con mapas interactivos Folium, editor de pesos y página de resultados, sobre un
-design system propio («Enagás Engineering Core»). Se arranca con
-<code>streamlit run src/app/streamlit_app.py</code>. El <b>backend</b> son los módulos deterministas de
-<code>src/</code> (ingesta · superficie · trazados · métricas): descargan y alinean capas GIS, construyen
-las superficies de coste ponderadas por perfil, calculan el camino de mínimo coste (LCP) y reúnen las
-métricas multicriterio; también son ejecutables por CLI
-(<code>python -m src.trazados.ruta_pendiente</code>).</p>
+<p>El <b>frontend</b> es un único archivo, <code>src/app/streamlit_app.py</code> (~1.600 líneas),
+que se arranca con <code>streamlit run</code>: un asistente de 3 pasos con mapas Folium, editor de
+pesos y página de resultados. El <b>backend</b> son los módulos deterministas de <code>src/</code>
+(ingesta · superficie · trazados · métricas), que descargan y alinean las capas GIS, construyen las
+superficies de coste por perfil, calculan el camino de mínimo coste (LCP) y reúnen las métricas
+multicriterio.</p>
 
 <div class="note">
   <b>Principio de diseño rector:</b> <em>alinear antes de combinar, diferenciar antes de comparar.</em>
@@ -139,7 +135,7 @@ métricas multicriterio; también son ejecutables por CLI
   <b>rejilla común</b>. El coste es siempre un <b>índice adimensional</b>, nunca un valor económico.
 </div>
 
-<h4>Dos vías de orquestación</h4>
+<h4>Cómo se ejecuta el pipeline</h4>
 <table>
   <thead><tr><th>Vía</th><th>Punto de entrada</th><th>Estado</th><th>Notas</th></tr></thead>
   <tbody>
@@ -151,27 +147,21 @@ métricas multicriterio; también son ejecutables por CLI
         <td>Cada etapa tiene su propio <code>main()</code> ejecutable y reproducible.</td></tr>
     <tr><td>CLI unificada</td><td><code>src/app/cli.py</code>, <code>src/comparacion/comparador.py</code></td>
         <td><span class="tag stub">esqueleto</span></td>
-        <td>Planificados para Sprint 5; hoy lanzan <code>NotImplementedError</code>.</td></tr>
+        <td>Pendientes de implementar; hoy lanzan <code>NotImplementedError</code>.</td></tr>
   </tbody>
 </table>
 
 <!-- ============================================================ -->
 <h2 id="febe"><span class="n">02</span>Frontend y Backend — separación de responsabilidades</h2>
 
-<p>Aunque comparten proceso, el sistema mantiene una frontera conceptual nítida entre las dos capas.
-Esta es la referencia rápida de <b>qué es frontend y qué es backend</b>, con sus archivos, entradas,
-salidas y tecnologías. La regla práctica: <b>el frontend nunca calcula geometría de coste</b> (solo
-recoge parámetros, lanza el pipeline y pinta resultados); <b>el backend nunca conoce Streamlit</b>
-(se comunica por archivos en disco y valores de retorno).</p>
+<p>Referencia rápida de <b>qué incluye cada capa</b>: archivos, funciones, entradas, salidas,
+tecnologías y estado, más la costura que las une.</p>
 
 <table>
   <thead><tr><th style="width:16%"></th><th style="width:42%">FRONTEND</th><th style="width:42%">BACKEND</th></tr></thead>
   <tbody>
-    <tr><td><b>Rol</b></td>
-        <td>Interfaz web: capturar origen/destino y pesos, lanzar el cálculo, presentar la comparativa.</td>
-        <td>Motor geoespacial: descargar y alinear datos, construir superficies de coste, trazar y medir rutas.</td></tr>
     <tr><td><b>Archivos</b></td>
-        <td><code>src/app/streamlit_app.py</code> (~1.600 líneas, único archivo).</td>
+        <td><code>src/app/streamlit_app.py</code> (único archivo).</td>
         <td><code>src/ingesta/</code> · <code>src/superficie/</code> · <code>src/trazados/</code> · <code>src/metricas/</code></td></tr>
     <tr><td><b>Funciones clave</b></td>
         <td><code>_main</code>, <code>_render_paso1/2</code>, <code>_render_results</code>, <code>_render_editor_pesos</code>, <code>_mapa_entrada/_resultados</code>, <code>_ejecutar_pipeline</code> (orquestador puente).</td>
@@ -182,12 +172,6 @@ recoge parámetros, lanza el pipeline y pinta resultados); <b>el backend nunca c
     <tr><td><b>Salida</b></td>
         <td>HTML/CSS + mapas Folium en el navegador; escribe coordenadas a <code>escenario.yaml</code>.</td>
         <td>GeoTIFF (rasters, superficies), GeoPackage (rutas), dict <code>MetricasRuta</code>.</td></tr>
-    <tr><td><b>Tecnologías</b></td>
-        <td>Streamlit · folium · streamlit-folium · pyproj · CSS Material 3.</td>
-        <td>rasterio · geopandas · shapely · numpy · requests/urllib · heapq (Dijkstra).</td></tr>
-    <tr><td><b>Estado</b></td>
-        <td>Efímero, en <code>st.session_state</code> (por sesión de navegador).</td>
-        <td>Persistente, en archivos de <code>data/processed/</code> (reutilizable entre ejecuciones).</td></tr>
     <tr><td><b>Puente</b></td>
         <td colspan="2"><code>_ejecutar_pipeline()</code> es la <b>única costura</b> entre capas: importa el backend en caliente
         (tras purgar <code>sys.modules</code>), lo invoca por escenario y traduce el progreso a la barra de Streamlit.
@@ -242,8 +226,8 @@ exacto de las llamadas por escenario se detalla en el <a href="#backend">backend
 
 <p>Toda la interfaz vive en <code>src/app/streamlit_app.py</code>. Es una <b>single-page app</b>
 que cambia de «pantalla» según el valor de <code>st.session_state.pantalla</code>. El punto de
-entrada es la función <code>_main()</code>, invocada al final del módulo, que pinta la barra
-superior corporativa, el <em>stepper</em> de progreso y la pantalla activa.</p>
+entrada es la función <code>_main()</code>, invocada al final del módulo, que pinta el
+<em>stepper</em> de progreso y la pantalla activa.</p>
 
 <h3>Navegación de la interfaz</h3>
 <p>La app cambia de pantalla según <code>st.session_state.pantalla</code>. El avance (línea continua)
@@ -315,7 +299,7 @@ navegación y resultados en memoria de sesión:</p>
 
 <h3>Capa de presentación</h3>
 <ul class="clean">
-  <li><b>Design system «Enagás Engineering Core»</b> (trasladado de un diseño Stitch): paleta
+  <li><b>Design system</b>: paleta
       Material 3 corporativa vía variables CSS (<code>--primary #004e7e</code>, <code>--secondary #4b6700</code>…),
       tipografías Hanken Grotesk / Inter / JetBrains Mono e iconos Material Symbols. Se inyecta como
       un bloque <code>&lt;style&gt;</code> con <code>st.markdown(..., unsafe_allow_html=True)</code>.</li>
@@ -402,10 +386,9 @@ navegación y resultados en memoria de sesión:</p>
   <p style="font-size:.9rem"><b><code>combinar.py → combinar_pesos(s, pesos)</code></b> es la
      <b>única fuente de verdad</b> de la ponderación: suma cada capa de coste multiplicada por su peso de perfil,
      más un término base de longitud para que la distancia siempre cuente (la fórmula exacta, en el
-     <a href="diagrama_flujo_pipeline.html#algoritmos">diagrama de flujo §03</a>).</p>
+     <a href="Diagrama_Flujo_Pipeline.html#algoritmos">diagrama de flujo §03</a>).</p>
   <p style="font-size:.86rem">Convenio de impasabilidad: <code>NODATA (-9999)</code> e <code>inf</code> → <code>nan</code>;
-     una celda es intransitable si <em>cualquier</em> capa lo es (el <code>nan</code> se propaga por la suma).
-     La misma función la consume el motor LCP en memoria (sin escribir a disco).</p>
+     una celda es intransitable si <em>cualquier</em> capa lo es (el <code>nan</code> se propaga por la suma).</p>
 </div>
 
 <div class="card">
@@ -413,9 +396,8 @@ navegación y resultados en memoria de sesión:</p>
   <p style="font-size:.9rem"><code>run_perfiles(s, perfiles_override)</code>: por cada perfil obtiene la
      superficie ponderada, <em>snapea</em> origen y destino a la celda válida más cercana, y ejecuta
      <b>Dijkstra 8-conexo isótropo</b> (coste de transición = distancia × media de las dos celdas; la fórmula, en
-     el <a href="diagrama_flujo_pipeline.html#algoritmos">diagrama §03</a>).</p>
-  <p style="font-size:.86rem">La preferencia por el relieve la aporta la capa TPI dentro de la superficie
-     escalar (la anisotropía por dirección de gradiente se retiró). Exporta cada ruta a
+     el <a href="Diagrama_Flujo_Pipeline.html#algoritmos">diagrama §03</a>).</p>
+  <p style="font-size:.86rem">Exporta cada ruta a
      <code>Rutas/ruta_{s}_{perfil}.gpkg</code> + estilo QGIS <code>.qml</code>, y guarda la
      superficie del perfil en <code>Trazados/superficie_{s}_{pid}.tif</code>.</p>
   <p class="note" style="font-size:.86rem"><b>Diferenciación de rutas:</b> se logra por
@@ -451,7 +433,7 @@ navegación y resultados en memoria de sesión:</p>
     <li><b>Motor LCP — Dijkstra 8-conexo isótropo:</b> el trazado se resuelve con <b>Dijkstra</b> sobre el
         grafo de la rejilla (cada celda un nodo, 8 vecinos) usando un <em>heap</em> (<code>heapq</code>).
         El coste es <b>isótropo</b> (depende solo de la superficie escalar, sin dirección de gradiente), así
-        que Dijkstra encuentra el óptimo sin necesitar heurística; no se emplea A*.</li>
+        que Dijkstra encuentra el óptimo.</li>
     <li><b>Coste de transición (por qué se promedian celdas):</b> el coste de pasar a una celda vecina es la
         distancia (1 ortogonal, √2 diagonal) por la <b>media</b> del coste de ambas celdas; promediar evita
         sesgos de muestreo en los bordes de las capas.</li>
@@ -473,7 +455,7 @@ navegación y resultados en memoria de sesión:</p>
         el resto. <code>n_cruces_ferrocarril = None</code> significa «no comprobable» (la capa OSM no traía
         <code>railway</code>), distinto de <code>0</code> = «comprobado, no cruza».</li>
     <li><b>Rejilla vs. fuente:</b> la rejilla común de trabajo es de <b>30 m</b> (<code>resolucion_m</code>);
-        el DEM de origen (MDT25 IGN) llega a 25 m y se remuestrea a esa rejilla. Cambiar la resolución afecta
+        el DEM de origen (MDT25 IGN) se remuestrea a esa rejilla. Cambiar la resolución afecta
         al coste computacional del LCP (crece ~cuadráticamente con el nº de celdas).</li>
   </ul>
 </div>
