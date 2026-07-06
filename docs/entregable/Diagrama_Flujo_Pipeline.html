@@ -203,7 +203,7 @@ celda intransitable si CUALQUIER capa lo es (fuera del AOI o barrera dura)</pre>
 
 <h4>Camino de mínimo coste (LCP) · <code>trazados/ruta_pendiente.py</code></h4>
 <pre>coste(p→q) = d · media(C_p, C_q)      d = 1 (ortogonal) | √2 (diagonal)
-Dijkstra 8-conexo isótropo (heapq); sin heurística A*, sin anisotropía
+Dijkstra 8-conexo isótropo (heapq)
 origen/destino → celda válida más cercana (radio ≤ 20) si caen en barrera o nodata</pre>
 
 <h4>Diferenciación de corredores · <code>metricas/diversidad_corredores.py</code></h4>
