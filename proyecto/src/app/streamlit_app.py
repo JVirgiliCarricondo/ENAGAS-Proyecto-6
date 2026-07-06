@@ -157,7 +157,7 @@ _CSS = """
   div[class*="st-key-topnav"] [data-testid="stHorizontalBlock"] {
     align-items: center;
   }
-  .topnav-left { display: flex; align-items: center; gap: 14px; }
+  .topnav-left { display: flex; align-items: center; gap: 14px; margin-top: -12px; }
   .topnav-logo { height: 34px; display: block; }
   .topnav-divider {
     width: 1px; height: 26px; background: var(--outline-variant); margin: 0 2px;
@@ -403,7 +403,6 @@ _CSS = """
     border-radius: 50%;
     width: 34px; height: 34px;
     padding: 0;
-    float: right;
   }
   div[class*="st-key-topnav"] button:hover {
     background: var(--surface-container);
@@ -1687,7 +1686,7 @@ def _main():
         st.markdown(_CSS_DARK, unsafe_allow_html=True)
 
     with st.container(key="topnav"):
-        col_logo, col_toggle = st.columns([8, 1])
+        col_logo, col_toggle = st.columns([30, 1])
         with col_logo:
             st.markdown(f'<div class="topnav-left">{_logo_tag}</div>', unsafe_allow_html=True)
         with col_toggle:
