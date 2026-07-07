@@ -402,20 +402,20 @@
       </div>
       <div class="exec-col">
         <div class="exec-line">
-          <span class="ic">🍽️</span>
-          <div class="tx"><b>Frontend = la sala del restaurante</b><span>Lo que el usuario ve y toca en el navegador: botones, mapas, formularios. Técnicamente es <code>src/app/streamlit_app.py</code>, un único archivo.</span></div>
+          <span class="ic">🖥️</span>
+          <div class="tx"><b>Frontend — capa de presentación</b><span>Lo que el usuario ve y maneja en el navegador: botones, mapas, formularios. Técnicamente es <code>src/app/streamlit_app.py</code>, un único archivo.</span></div>
         </div>
         <div class="exec-line">
-          <span class="ic">🧑‍🍳</span>
-          <div class="tx"><b>Orquestador = el camarero</b><span><code>_ejecutar_pipeline()</code> lleva el pedido de la sala a la cocina y trae de vuelta el resultado — es la única costura entre las dos partes.</span></div>
+          <span class="ic">🔗</span>
+          <div class="tx"><b>Orquestador — puente entre capas</b><span><code>_ejecutar_pipeline()</code> recibe la petición de la interfaz, invoca el pipeline y devuelve el resultado — es la única costura entre las dos partes.</span></div>
         </div>
         <div class="exec-line">
-          <span class="ic">🔥</span>
-          <div class="tx"><b>Backend = la cocina</b><span>El motor que hace los cálculos geoespaciales pesados, sin pantalla propia: módulos deterministas en <code>src/</code>.</span></div>
+          <span class="ic">⚙️</span>
+          <div class="tx"><b>Backend — motor de cálculo</b><span>El núcleo que realiza los cálculos geoespaciales pesados, sin interfaz propia: módulos deterministas en <code>src/</code>.</span></div>
         </div>
         <div class="exec-line">
           <span class="ic">🗄️</span>
-          <div class="tx"><b>Datos = la despensa</b><span>Todo se lee y se guarda en la carpeta <code>data/</code> (config, capas crudas, resultados) — nada vive solo en memoria.</span></div>
+          <div class="tx"><b>Datos — capa de persistencia</b><span>Todo se lee y se guarda en la carpeta <code>data/</code> (config, capas crudas, resultados) — nada vive solo en memoria.</span></div>
         </div>
         <p class="note">💡 <span>Como el backend no depende de la interfaz, se podría envolver en una API o un proceso por lotes sin reescribir el pipeline: el único enganche a la web vive en <code>streamlit_app.py</code>.</span></p>
       </div>
