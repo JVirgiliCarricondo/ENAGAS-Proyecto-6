@@ -107,6 +107,7 @@
     <li><a href="#componentes">Mapa de componentes</a></li>
     <li><a href="#frontend">Frontend — interfaz Streamlit</a></li>
     <li><a href="#backend">Backend — pipeline geoespacial</a></li>
+    <li><a href="#contratos">Contratos de datos y configuración</a></li>
     <li><a href="#fuentes">Fuentes de datos y reproducibilidad</a></li>
     <li><a href="#coste">Modelo de coste y ponderación</a></li>
     <li><a href="#estado">Estado del código y stack</a></li>
@@ -135,28 +136,17 @@ multicriterio.</p>
 </div>
 
 <h4>Cómo se ejecuta el pipeline</h4>
-<p style="font-size:.9rem">La vía principal y <span class="tag ok">operativa</span> es la interfaz web
-   (<code>streamlit_app.py</code> → <code>_ejecutar_pipeline()</code>), que actúa como orquestador real
-   encadenando preparación, trazado y métricas; de forma <span class="tag part">parcial</span> también
-   puede ejecutarse etapa a etapa por CLI de módulo (<code>python -m src.trazados.ruta_pendiente</code> /
-   <code>src.metricas.calculo</code>), donde cada etapa tiene su propio <code>main()</code> ejecutable y
-   reproducible.</p>
-
-<h4>Estructura de carpetas del proyecto</h4>
-<pre class="ascii" style="font-size:.78rem">proyecto/
-├── src/
-│   ├── ingesta/       # descarga, recorte, reproyección y alineación de capas GIS
-│   ├── superficie/    # superficies de coste por criterio (raster [0,1]) + combinación por perfil
-│   ├── trazados/      # motor LCP (Dijkstra 8-conexo) + diferenciación de rutas
-│   ├── metricas/      # métricas multicriterio por ruta + diversidad de corredores
-│   ├── comparacion/   # comparador y scoring formal (esqueleto, Sprint 5)
-│   └── app/           # streamlit_app.py — interfaz web (orquestador puente)
-├── data/
-│   ├── config/        # escenario.yaml (AOI, origen/destino) · perfiles.yaml (pesos) — versionados
-│   ├── raw/            # capas GIS originales descargadas o aportadas a mano — NO versionadas
-│   └── processed/      # rasters alineados, capas de coste, superficies y rutas — NO versionadas
-├── tests/             # pruebas (alineación de rasters, métricas)
-└── notebooks/         # exploración geoespacial y ejercicios de formación</pre>
+<table>
+  <thead><tr><th>Vía</th><th>Punto de entrada</th><th>Estado</th><th>Notas</th></tr></thead>
+  <tbody>
+    <tr><td>Interfaz web (principal)</td><td><code>streamlit_app.py</code> → <code>_ejecutar_pipeline()</code></td>
+        <td><span class="tag ok">operativa</span></td>
+        <td>Es el orquestador real hoy: encadena preparación + trazado + métricas.</td></tr>
+    <tr><td>CLI de módulo</td><td><code>python -m src.trazados.ruta_pendiente</code> / <code>src.metricas.calculo</code></td>
+        <td><span class="tag part">parcial</span></td>
+        <td>Cada etapa tiene su propio <code>main()</code> ejecutable y reproducible.</td></tr>
+  </tbody>
+</table>
 
 <!-- ============================================================ -->
 <h2 id="febe"><span class="n">02</span>Frontend y Backend — separación de responsabilidades</h2>
@@ -289,6 +279,35 @@ flowchart LR
   </ul>
 </div>
 
+<h3>Estado de sesión (<code>st.session_state</code>)</h3>
+<p>Al no haber base de datos ni backend con estado, la interfaz mantiene todo el contexto de
+navegación y resultados en memoria de sesión:</p>
+<table>
+  <thead><tr><th>Clave</th><th>Contenido</th></tr></thead>
+  <tbody>
+    <tr><td><code>pantalla</code></td><td>Pantalla activa: <code>bienvenida</code> / <code>paso1</code> / <code>paso2</code> / <code>resultados</code>.</td></tr>
+    <tr><td><code>coords</code></td><td>Dict de escenarios → origen/destino en UTM (editable antes de guardar al YAML).</td></tr>
+    <tr><td><code>escenario_activo</code>, <code>punto_activo_rol</code>, <code>_last_click</code></td><td>Estado del selector y del mapa clicable del Paso 1.</td></tr>
+    <tr><td><code>perfiles_cfg</code>, <code>perfil_pesos_activo</code>, <code>pesos_version</code></td><td>Copia editable de los perfiles y su versión (para reiniciar sliders).</td></tr>
+    <tr><td><code>resultados</code>, <code>escenarios_procesados</code>, <code>perfiles_procesados</code></td><td>Salida del pipeline (dict de <code>MetricasRuta</code>) tras «Generar rutas».</td></tr>
+    <tr><td><code>avisos_preparacion</code></td><td>Capas omitidas por falta de datos en escenarios recién preparados.</td></tr>
+  </tbody>
+</table>
+
+<h3>Capa de presentación</h3>
+<ul class="clean">
+  <li><b>Design system</b>: paleta
+      Material 3 corporativa vía variables CSS (<code>--primary #004e7e</code>, <code>--secondary #4b6700</code>…),
+      tipografías Hanken Grotesk / Inter / JetBrains Mono e iconos Material Symbols. Se inyecta como
+      un bloque <code>&lt;style&gt;</code> con <code>st.markdown(..., unsafe_allow_html=True)</code>.</li>
+  <li><b>Mapas:</b> <code>folium</code> + <code>streamlit_folium.st_folium</code> (con <em>fallback</em>
+      a HTML embebido si la dependencia no está). Teselas: ortofoto Esri World Imagery.</li>
+  <li><b>Reproyección en la UI:</b> dos <code>pyproj.Transformer</code> cacheados a nivel de módulo
+      convierten 25830 ↔ 4326 para mostrar y para capturar clics.</li>
+  <li><b>Fallback sin <code>streamlit-folium</code>:</b> si la dependencia no está instalada, el mapa se
+      degrada a HTML embebido (no clicable) — la app sigue funcionando en modo solo-lectura de mapa.</li>
+</ul>
+
 <!-- ============================================================ -->
 <h2 id="backend"><span class="n">05</span>Backend — pipeline geoespacial</h2>
 
@@ -359,7 +378,7 @@ flowchart LR
     <li><code>zonas_inundables.py</code> — binaria dentro/fuera de lámina SNCZI.</li>
     <li><code>cruces_viario_rios.py</code> — coste puntual de cruce (viario, ferrocarril, ríos).</li>
     <li><code>tpi.py</code> — relieve: cresta barata / valle caro; e impone la <b>barrera dura de pendiente</b>
-        (umbral y equivalencia en grados, en el <a href="#coste">§07 Modelo de coste</a>).</li>
+        (umbral y equivalencia en grados, en el <a href="#coste">§08 Modelo de coste</a>).</li>
   </ul>
   <p style="font-size:.9rem"><b><code>combinar.py → combinar_pesos(s, pesos)</code></b> es la
      <b>única fuente de verdad</b> de la ponderación: suma cada capa de coste multiplicada por su peso de perfil,
@@ -405,6 +424,39 @@ flowchart LR
      corredor de B (asimétrico). Un par es redundante si supera el <b>umbral 50 %</b>.</p>
 </div>
 
+<div class="card">
+  <h4 style="margin-top:0">Detalles finos de implementación <span class="pill">para quien retome el código</span></h4>
+  <ul class="clean" style="font-size:.88rem">
+    <li><b>Motor LCP — Dijkstra 8-conexo isótropo:</b> el trazado se resuelve con <b>Dijkstra</b> sobre el
+        grafo de la rejilla (cada celda un nodo, 8 vecinos) usando un <em>heap</em> (<code>heapq</code>).
+        El coste es <b>isótropo</b> (depende solo de la superficie escalar, sin dirección de gradiente), así
+        que Dijkstra encuentra el óptimo.</li>
+    <li><b>Coste de transición (por qué se promedian celdas):</b> el coste de pasar a una celda vecina es la
+        distancia (1 ortogonal, √2 diagonal) por la <b>media</b> del coste de ambas celdas; promediar evita
+        sesgos de muestreo en los bordes de las capas.</li>
+    <li><b>Snap de origen/destino:</b> si el punto cae en <code>nodata</code> o barrera, <code>_snap_to_valid</code>
+        lo mueve a la celda válida más cercana (radio 20 celdas). Sin esto, un origen sobre un río o zona
+        intransitable abortaría el trazado.</li>
+    <li><b>Convención de valores especiales:</b> en disco <code>-9999</code> = fuera de AOI (<code>nodata</code>)
+        y <code>999</code> = barrera dura; en memoria pasan a <code>nan</code> e <code>inf</code>
+        respectivamente. Una celda es intransitable si <em>cualquier</em> capa lo es (el <code>nan</code> se
+        propaga por la suma ponderada).</li>
+    <li><b>Recarga de configuración en caliente:</b> <code>_ejecutar_pipeline</code> borra de
+        <code>sys.modules</code> los módulos <code>trazados/metricas/superficie/ingesta</code> antes de
+        importarlos, para que un cambio en los YAML de config surta efecto sin reiniciar Streamlit.</li>
+    <li><b>Coste base de longitud (<code>BASE_LONG = 1.0</code>):</b> garantiza que la distancia siempre
+        cuente en el LCP aunque el peso de todas las capas sea 0; el peso <code>longitud</code> del perfil lo
+        escala.</li>
+    <li><b>Tolerancia a fallos por métrica:</b> cada métrica se calcula en su propio <code>try/except</code>;
+        si una capa falta, se registra en <code>MetricasRuta.errores</code> y su campo queda a 0, sin abortar
+        el resto. <code>n_cruces_ferrocarril = None</code> significa «no comprobable» (la capa OSM no traía
+        <code>railway</code>), distinto de <code>0</code> = «comprobado, no cruza».</li>
+    <li><b>Rejilla vs. fuente:</b> la rejilla común de trabajo es de <b>30 m</b> (<code>resolucion_m</code>);
+        el DEM de origen (MDT25 IGN) se remuestrea a esa rejilla. Cambiar la resolución afecta
+        al coste computacional del LCP (crece ~cuadráticamente con el nº de celdas).</li>
+  </ul>
+</div>
+
 <div class="warn" style="font-size:.88rem">
   <b>Comparación/scoring formal:</b> los módulos <code>src/comparacion/comparador.py</code> y
   <code>src/app/cli.py</code> son <b>esqueletos</b> (Sprint 5). Hoy la comparativa y el ranking se
@@ -413,7 +465,60 @@ flowchart LR
 </div>
 
 <!-- ============================================================ -->
-<h2 id="fuentes"><span class="n">06</span>Fuentes de datos, trazabilidad y reproducibilidad</h2>
+<h2 id="contratos"><span class="n">06</span>Contratos de datos y configuración</h2>
+
+<h3>Estructura de <code>data/</code></h3>
+<table>
+  <thead><tr><th>Carpeta</th><th>Contenido</th></tr></thead>
+  <tbody>
+    <tr><td><code>data/config/</code></td><td><code>escenario.yaml</code> (AOI, origen/destino) · <code>perfiles.yaml</code> (pesos)</td></tr>
+    <tr><td><code>data/raw/</code></td><td>Descargas GIS originales + <code>manifiesto_estado.json</code></td></tr>
+    <tr><td><code>data/processed/Rasters_AOI/</code></td><td>DEM y rasters alineados a la rejilla común</td></tr>
+    <tr><td><code>data/processed/Capas_Coste/</code></td><td>Coste por celda de cada capa (<code>{capa}_{s}.tif</code>)</td></tr>
+    <tr><td><code>data/processed/Trazados/</code></td><td>Superficies de coste combinadas por perfil</td></tr>
+    <tr><td><code>data/processed/Rutas/</code></td><td>Rutas finales <code>ruta_{s}_{perfil}.gpkg</code> (+ .qml)</td></tr>
+  </tbody>
+</table>
+
+<div class="grid2">
+  <div>
+    <h4><code>escenario.yaml</code> (caso de estudio)</h4>
+    <pre style="font-size:.78rem">crs_trabajo: "EPSG:25830"
+resolucion_m: 30
+escenario_A:
+  origen:  {nombre: A_ini, x: 740000, y: 4560000}
+  destino: {nombre: A_fin, x: 741000, y: 4561000}
+escenario_B:
+  origen:  {...}
+  destino: {...}</pre>
+  </div>
+  <div>
+    <h4><code>MetricasRuta.to_dict()</code> (salida por ruta)</h4>
+    <pre style="font-size:.78rem">{
+  "escenario": "A", "perfil": "ambiental",
+  "longitud_km": 0.0,
+  "coste_relativo": 0.0,        # índice, NUNCA €
+  "pendiente_max_pct": 0.0,
+  "pendiente_media_pct": 0.0,
+  "km_protegida": 0.0, "km_inundable": 0.0,
+  "km_suelo_urbano": 0.0,
+  "n_cruces_rios": 0,
+  "n_cruces_carreteras": 0,
+  "n_cruces_ferrocarril": 0      # None = no comprobable
+}</pre>
+  </div>
+</div>
+
+<h4><code>perfiles.yaml</code> — 4 perfiles diferenciados</h4>
+<p style="font-size:.9rem">Define los <b>4 perfiles</b> (<code>corto</code>, <code>ambiental</code>,
+   <code>pendiente</code>, <code>equilibrio</code>); cada uno es un vector de pesos adimensionales sobre las
+   7 capas. El archivo incluye además <code>parametros_capas</code>: la calibración intra-capa (costes por
+   litología, tipo catastral, tipo de vía…), que los módulos leen al importarse. El <b>detalle de los pesos por
+   perfil</b> —qué prioriza cada uno y con qué valores— está en el
+   <a href="#coste">§08 Modelo de coste y ponderación</a>.</p>
+
+<!-- ============================================================ -->
+<h2 id="fuentes"><span class="n">07</span>Fuentes de datos, trazabilidad y reproducibilidad</h2>
 
 <p>Esta sección reúne todo lo necesario para <b>reproducir</b> una ejecución, <b>auditar</b> de dónde
 sale cada número y <b>retomar o mejorar</b> el sistema en el futuro.</p>
@@ -458,6 +563,19 @@ python -m src.metricas.calculo           --escenario A     # métricas + diversi
 mostrados en la página de resultados en «Pesos de capas usados en este procesamiento»). Los estilos
 <code>.qml</code> acompañan a cada raster/ruta para inspección directa en QGIS.</p>
 
+<h3>Puntos de calibración (para mejora futura)</h3>
+<table style="font-size:.84rem">
+  <thead><tr><th>Qué ajustar</th><th>Dónde</th></tr></thead>
+  <tbody>
+    <tr><td>Pesos por perfil (mezcla de criterios)</td><td><code>perfiles.yaml → perfiles[*].pesos</code></td></tr>
+    <tr><td>Coste intra-capa (litología, tipo catastral, tipo de vía, ríos)</td><td><code>perfiles.yaml → parametros_capas</code></td></tr>
+    <tr><td>Barrera de pendiente, radio y clip del TPI</td><td><code>parametros_capas.tpi</code></td></tr>
+    <tr><td>Umbral de diversidad y semiancho de corredor</td><td><code>diversidad_corredores.py</code> (<code>UMBRAL_PCT</code>, <code>BUFFER_M</code>)</td></tr>
+    <tr><td>Resolución de la rejilla y CRS de trabajo</td><td><code>escenario.yaml</code> (<code>resolucion_m</code>, <code>crs_trabajo</code>)</td></tr>
+    <tr><td>Distancia máxima origen–destino (validación UI)</td><td><code>streamlit_app.py</code> (<code>MAX_DIST_M</code>)</td></tr>
+  </tbody>
+</table>
+
 <div class="note" style="font-size:.88rem">
   <b>Reglas no negociables (heredadas del diseño):</b> (1) toda capa <b>alineada</b> a EPSG:25830 y rejilla
   común antes de combinarse; (2) rutas <b>demostrablemente diferenciadas</b>, no el mismo corredor con ruido;
@@ -466,7 +584,7 @@ mostrados en la página de resultados en «Pesos de capas usados en este procesa
 </div>
 
 <!-- ============================================================ -->
-<h2 id="coste"><span class="n">07</span>Modelo de coste y ponderación</h2>
+<h2 id="coste"><span class="n">08</span>Modelo de coste y ponderación</h2>
 
 <p>Toda capa se estandariza a <code>[0, 1]</code> antes de combinarse, para que la suma ponderada
 sea comparable. Las capas con condicionante en la <b>metodología oficial de Enagás</b> derivan su
@@ -527,7 +645,7 @@ coste del factor de ponderación oficial <code>A</code> con divisor común
 </ul>
 
 <!-- ============================================================ -->
-<h2 id="estado"><span class="n">08</span>Estado del código y stack tecnológico</h2>
+<h2 id="estado"><span class="n">09</span>Estado del código y stack tecnológico</h2>
 
 <div class="card">
     <h4 style="margin-top:0">Stack</h4>
