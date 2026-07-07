@@ -24,9 +24,10 @@ from shapely.geometry import box as _shp_box
 from shapely.ops import unary_union
 
 # Page config — DEBE ser la primera llamada a Streamlit
+_ICON_PATH = Path(__file__).resolve().parent / "assets" / "Logo.png"
 st.set_page_config(
-    page_title="Enagás — Trazados de Ramales H₂",
-    page_icon=":large_blue_circle:",
+    page_title="Trazados de Ramales de H₂",
+    page_icon=str(_ICON_PATH) if _ICON_PATH.exists() else ":droplet:",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -150,18 +151,17 @@ _CSS = """
   div[data-testid="stDataFrame"] * { color: var(--on-surface) !important; }
 
   /* ── Barra superior unificada ─────────────────────────────────────────── */
-  .enagas-topnav {
+  div[class*="st-key-topnav"] {
     background: var(--surface-lowest);
     border-bottom: 1px solid var(--outline-variant);
     box-shadow: var(--shadow-card);
-    padding: 12px 28px;
+    padding: 6px 28px;
     margin: -0.4rem 0 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
   }
-  .topnav-left { display: flex; align-items: center; gap: 14px; }
+  div[class*="st-key-topnav"] [data-testid="stHorizontalBlock"] {
+    align-items: center;
+  }
+  .topnav-left { display: flex; align-items: center; gap: 14px; margin-top: -12px; }
   .topnav-logo { height: 34px; display: block; }
   .topnav-divider {
     width: 1px; height: 26px; background: var(--outline-variant); margin: 0 2px;
@@ -249,9 +249,9 @@ _CSS = """
     background: rgba(0,103,163,0.06);
     border: 1px solid rgba(0,103,163,0.22);
     border-radius: var(--radius);
-    padding: 10px 16px;
+    padding: 10px 14px;
     margin-bottom: 12px;
-    font-size: 0.82rem;
+    font-size: 0.76rem;
     color: var(--on-surface-variant);
     font-family: var(--font-body);
   }
@@ -399,12 +399,18 @@ _CSS = """
     border-color: #3d5600 !important;
   }
 
-  /* ── Barra superior: zona derecha (iconos + perfil) ───────────────────── */
-  .topnav-right { display: flex; align-items: center; gap: 14px; }
-  .topnav-icon {
+  /* ── Barra superior: botón de modo noche ──────────────────────────────── */
+  div[class*="st-key-topnav"] button {
+    background: transparent;
+    border: none;
     color: var(--on-surface-variant);
-    display: flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px; border-radius: 50%;
+    border-radius: 50%;
+    width: 34px; height: 34px;
+    padding: 0;
+  }
+  div[class*="st-key-topnav"] button:hover {
+    background: var(--surface-container);
+    color: var(--primary);
   }
   /* ── Footer técnico ───────────────────────────────────────────────────── */
   .enagas-footer {
@@ -494,9 +500,70 @@ _CSS = """
   .section-desc { color: var(--on-surface-variant); font-size: 0.88rem;
                   max-width: 720px; line-height: 1.5; }
 
+  /* ── Bienvenida: tarjetas de igual altura ─────────────────────────────── */
+  /* Suelo común (por encima de la caja más alta) + estirado flex robusto: la
+     fila estira ambas columnas a la más alta y las tarjetas la rellenan. */
+  div[data-testid="stHorizontalBlock"]:has(.st-key-wcard_sim) { align-items: stretch; }
+  div[data-testid="stColumn"]:has(.st-key-wcard_sim),
+  div[data-testid="stColumn"]:has(.st-key-wcard_docs) {
+    display: flex;
+  }
+  div[data-testid="stColumn"]:has(.st-key-wcard_sim) > div,
+  div[data-testid="stColumn"]:has(.st-key-wcard_docs) > div {
+    width: 100%;
+    height: 100%;
+  }
+  .st-key-wcard_sim,
+  .st-key-wcard_docs {
+    height: 100%;
+  }
+
+  /* ── Bienvenida: hero derecho a toda la altura (con centrado de reserva) ── */
+  div[data-testid="stHorizontalBlock"]:has(.st-key-hero_col) { align-items: stretch; }
+  div[data-testid="stColumn"]:has(.st-key-hero_col) > div[data-testid="stVerticalBlock"] {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .st-key-hero_col,
+  .st-key-hero_col > div[data-testid="stVerticalBlock"],
+  .st-key-hero_col div[data-testid="stElementContainer"],
+  .st-key-hero_col div[data-testid="stMarkdownContainer"],
+  .st-key-hero_col div[data-testid="stMarkdownContainer"] > div {
+    height: 100%;
+    width: 100%;
+  }
+
   footer { display: none; }
   #MainMenu { display: none; }
   header[data-testid="stHeader"] { display: none; }
+</style>
+"""
+
+# Sobrescribe las variables de _CSS con la paleta oscura — se inyecta después
+# de _CSS, así que gana en la cascada sin duplicar el resto de reglas.
+_CSS_DARK = """
+<style>
+  :root {
+    --primary:            #6cb7e8;
+    --primary-container:  #004f7d;
+    --on-primary:         #00344f;
+    --secondary:          #a8d65a;
+    --secondary-container:#3a4d00;
+    --tertiary:           #7ecbfa;
+    --surface:            #101418;
+    --surface-lowest:     #0b0e11;
+    --surface-low:        #15191d;
+    --surface-container:  #1b2024;
+    --surface-high:       #23282c;
+    --surface-highest:    #2a2f33;
+    --on-surface:         #e2e6e9;
+    --on-surface-variant: #b8c0c7;
+    --outline:            #8b939b;
+    --outline-variant:    #3c4247;
+    --error:              #ffb4a9;
+  }
 </style>
 """
 
@@ -789,45 +856,49 @@ def _marcador_punto(
     activo: bool,
     coords: dict,
 ) -> None:
-    """Marca origen/destino con circulo visible y etiqueta O/D."""
+    """Marca origen/destino con un badge; el color identifica el escenario."""
     es_origen = rol == "origen"
-    fill = "#27ae60" if es_origen else "#e74c3c"
+    # Mismo tipo de punto para origen y destino: lo que distingue los escenarios
+    # es el color (cada escenario tiene el suyo). La letra O/D marca el rol.
+    fill = _color_escenario(escenario)
     letra = "O" if es_origen else "D"
-    radio = 14 if activo else 9
-    opacidad = 1.0 if activo else 0.45
     tooltip = f"Escenario {escenario} — {rol.capitalize()}"
     popup_html = (
-        f"<b style='color:#002B5C'>{tooltip}</b><br>"
+        f"<b style='color:{fill}'>{tooltip}</b><br>"
         f"X: {coords[escenario][rol]['x']:.0f} m<br>"
         f"Y: {coords[escenario][rol]['y']:.0f} m<br>"
         f"<small>({lat:.5f}, {lon:.5f})</small>"
     )
-    folium.CircleMarker(
-        location=[lat, lon],
-        radius=radio,
-        color="#ffffff",
-        weight=3 if activo else 2,
-        fill=True,
-        fill_color=fill,
-        fill_opacity=opacidad,
-        tooltip=tooltip,
-        popup=folium.Popup(popup_html, max_width=240),
-    ).add_to(m)
     if activo:
+        size = 26
+        badge = (
+            f'<div style="font-family:Inter,\'Segoe UI\',sans-serif;font-size:13px;'
+            f'font-weight:700;color:#fff;background:{fill};'
+            f'width:{size}px;height:{size}px;line-height:{size}px;text-align:center;'
+            f'border-radius:50%;border:2px solid #fff;'
+            f'box-shadow:0 2px 6px rgba(0,0,0,0.30);">{letra}</div>'
+        )
         folium.Marker(
             location=[lat, lon],
             icon=folium.DivIcon(
-                html=(
-                    f'<div style="font-family:Segoe UI,sans-serif;font-size:13px;'
-                    f"font-weight:700;color:#fff;background:{fill};"
-                    f'width:22px;height:22px;line-height:22px;text-align:center;'
-                    f'border-radius:50%;border:2px solid #fff;'
-                    f'box-shadow:0 1px 4px rgba(0,0,0,0.45);">{letra}</div>'
-                ),
-                icon_size=(22, 22),
-                icon_anchor=(11, 11),
+                html=badge,
+                icon_size=(size, size),
+                icon_anchor=(size // 2, size // 2),
             ),
             tooltip=tooltip,
+            popup=folium.Popup(popup_html, max_width=240),
+        ).add_to(m)
+    else:
+        folium.CircleMarker(
+            location=[lat, lon],
+            radius=7,
+            color="#ffffff",
+            weight=2,
+            fill=True,
+            fill_color=fill,
+            fill_opacity=0.55,
+            tooltip=tooltip,
+            popup=folium.Popup(popup_html, max_width=240),
         ).add_to(m)
 
 
@@ -882,14 +953,20 @@ def _mapa_entrada(coords: dict, escenario_activo: str) -> folium.Map:
         [lat_max + dlat, lon_max + dlon],
     ])
 
+    filas_leyenda = "".join(
+        f'<span style="color:{_color_escenario(s)};font-weight:700;'
+        f'font-size:1.15em;">&#9679;</span> '
+        f'{"<b>" if s == escenario_activo else ""}Escenario {s}'
+        f'{" (activo)</b>" if s == escenario_activo else ""}<br>'
+        for s in sorted(coords, key=lambda x: (len(x), x))
+    )
     leyenda = f"""
     <div style="position:fixed;top:12px;right:12px;z-index:1000;background:#fff;
                 padding:10px 14px;border-radius:8px;font-family:'Segoe UI',sans-serif;
                 font-size:12px;color:#1f2937;box-shadow:0 2px 8px rgba(0,0,0,0.2);
                 border-top:3px solid {_color_escenario(escenario_activo)};">
-      <b style="color:#002B5C;">Escenario {escenario_activo}</b><br>
-      <span style="color:#27ae60;font-weight:700;">&#9679;</span> Origen (O)<br>
-      <span style="color:#e74c3c;font-weight:700;">&#9679;</span> Destino (D)
+      <b style="color:#004e7e;">Escenarios</b><br>
+      {filas_leyenda}
     </div>
     """
     m.get_root().html.add_child(folium.Element(leyenda))
@@ -1114,7 +1191,7 @@ def _render_paso1():
     escenarios = sorted(coords.keys(), key=lambda x: (len(x), x))
     esc_activo = st.session_state.escenario_activo
 
-    col_panel, col_map = st.columns([1, 2], gap="large")
+    col_panel, col_map = st.columns([1.15, 2], gap="small")
 
     with col_panel:
         with st.container(border=True):
@@ -1125,8 +1202,7 @@ def _render_paso1():
                 '<span class="material-symbols-outlined" style="font-size:18px;">info</span>'
                 '<span style="font-size:0.68rem;letter-spacing:0.05em;text-transform:uppercase;">'
                 'Restricciones del modelo</span></div>'
-                'Corredor de referencia: <b>2 km de ancho</b> (&plusmn;1 km a cada lado).<br>'
-                'Distancia máxima origen&ndash;destino: <b>15 km</b>.'
+                'Corredor de referencia: <b>2 km de ancho</b> (&plusmn;1 km a cada lado).'
                 '</div>',
                 unsafe_allow_html=True,
             )
@@ -1216,7 +1292,7 @@ def _render_paso1():
                 f'<div style="display:flex;align-items:stretch;gap:14px;'
                 f'background:var(--surface-lowest);border:1px solid var(--outline-variant);'
                 f'border-radius:14px;box-shadow:var(--shadow-card);'
-                f'padding:15px 20px;margin-top:8px;">'
+                f'padding:15px 20px;margin:6px 0 10px;">'
                 f'<div style="width:5px;flex:none;border-radius:99px;background:{acento};"></div>'
                 f'<div style="flex:1;display:flex;align-items:center;justify-content:space-between;gap:10px;">'
                 f'<span style="font-family:var(--font-body);color:var(--outline);font-weight:700;'
@@ -1233,33 +1309,6 @@ def _render_paso1():
 
             # Comprobacion de disponibilidad de capas para el corredor elegido
             _render_estado_datos(coords[esc_activo])
-
-            if _HAS_ST_FOLIUM:
-                st.markdown(
-                    f'<p class="section-label" style="margin-top:12px;">'
-                    f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
-                    unsafe_allow_html=True,
-                )
-                st.session_state.punto_activo_rol = st.radio(
-                    "Punto activo",
-                    options=["origen", "destino"],
-                    format_func=str.capitalize,
-                    index=0 if st.session_state.punto_activo_rol == "origen" else 1,
-                    label_visibility="collapsed",
-                    horizontal=True,
-                    key="radio_punto_rol",
-                )
-
-        st.markdown(
-            '<div style="display:flex;gap:16px;margin-top:10px;font-size:0.78rem;">'
-            '<span style="display:flex;align-items:center;gap:6px;font-weight:600;">'
-            '<span style="width:11px;height:11px;border-radius:50%;background:#4b6700;'
-            'display:inline-block;"></span>Origen (O)</span>'
-            '<span style="display:flex;align-items:center;gap:6px;font-weight:600;">'
-            '<span style="width:11px;height:11px;border-radius:50%;background:#004e7e;'
-            'display:inline-block;"></span>Destino (D)</span></div>',
-            unsafe_allow_html=True,
-        )
 
     with col_map:
         m = _mapa_entrada(coords, esc_activo)
@@ -1285,6 +1334,25 @@ def _render_paso1():
                         "x": round(x_utm), "y": round(y_utm),
                     }
                     st.rerun()
+
+            # Debajo del mapa, en una sola línea: etiqueta + selector de punto activo
+            _, lbl_col, rad_col = st.columns([0.5, 1.5, 1], vertical_alignment="center")
+            with lbl_col:
+                st.markdown(
+                    f'<p class="section-label" style="margin:0;text-align:right;">'
+                    f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
+                    unsafe_allow_html=True,
+                )
+            with rad_col:
+                st.session_state.punto_activo_rol = st.radio(
+                    "Punto activo",
+                    options=["origen", "destino"],
+                    format_func=str.capitalize,
+                    index=0 if st.session_state.punto_activo_rol == "origen" else 1,
+                    label_visibility="collapsed",
+                    horizontal=True,
+                    key="radio_punto_rol",
+                )
         else:
             from streamlit.components.v1 import html as _html
             _html(m._repr_html_(), height=560)
@@ -1300,13 +1368,13 @@ def _render_paso1():
     can_next = all(d <= MAX_DIST_M for d in distancias.values())
 
     st.markdown("---")
-    c_back, _, c_next = st.columns([1.2, 2, 1.4])
+    c_back, _, c_next = st.columns([1.4, 2, 1.4])
     with c_back:
         if st.button("← Inicio", use_container_width=True, key="btn_p1_inicio"):
             st.session_state.pantalla = "bienvenida"
             st.rerun()
     with c_next:
-        if st.button("Siguiente: Pesos y Perfiles  →", type="primary",
+        if st.button("Pesos y Perfiles  →", type="primary",
                      disabled=not can_next, use_container_width=True, key="btn_p1_next"):
             cfg = _aplicar_coords_a_cfg(cfg, coords)
             _guardar_cfg(cfg)
@@ -1632,14 +1700,14 @@ def _hero_visual() -> str:
             mime = "jpeg" if ruta.suffix != ".png" else "png"
             b64 = base64.b64encode(ruta.read_bytes()).decode()
             return (
-                f'<div style="height:100%;min-height:420px;border-radius:var(--radius-xl);'
+                f'<div style="height:100%;min-height:480px;border-radius:var(--radius-xl);'
                 f'background-image:url(\'data:image/{mime};base64,{b64}\');'
                 f'background-size:cover;background-position:center;'
                 f'border:1px solid var(--outline-variant);"></div>'
             )
     # Sin imagen: panel degradado con motivo de red H₂
     return (
-        '<div style="height:100%;min-height:420px;border-radius:var(--radius-xl);'
+        '<div style="height:100%;min-height:480px;border-radius:var(--radius-xl);'
         'border:1px solid var(--outline-variant);overflow:hidden;position:relative;'
         'background:linear-gradient(135deg,#004e7e 0%,#0067a3 55%,#4b6700 130%);'
         'display:flex;align-items:center;justify-content:center;">'
@@ -1652,13 +1720,73 @@ def _hero_visual() -> str:
     )
 
 
+def _docs_buttons() -> None:
+    """Dos botones que abren, en una pestaña nueva, el diagrama de flujo y el
+    informe de arquitectura (HTML de docs/entregable/)."""
+    import base64
+    from streamlit.components.v1 import html as _html
+
+    docs_dir = _ROOT.parent / "docs" / "entregable"
+    botones = [
+        ("Ver diagrama de flujo", "Diagrama_Flujo_Pipeline.html"),
+        ("Ver informe de arquitectura", "Informe_Arquitectura_App.html"),
+    ]
+    items = []
+    for i, (label, fname) in enumerate(botones):
+        ruta = docs_dir / fname
+        if ruta.exists():
+            b64 = base64.b64encode(ruta.read_bytes()).decode()
+            items.append((f"doc{i}", label, b64))
+
+    if not items:
+        st.toast("Documentos no encontrados.")
+        return
+
+    botones_html = "".join(
+        f'<button class="docbtn" onclick="openDoc(\'{key}\')">'
+        f'<span>{label}</span><span>&#128196;</span></button>'
+        for key, label, _ in items
+    )
+    data_scripts = "".join(
+        f'<script type="text/plain" id="{key}">{b64}</script>'
+        for key, _, b64 in items
+    )
+    snippet = f"""
+    <style>
+      body {{ margin:0; }}
+      .docwrap {{ display:flex; flex-direction:column; gap:10px; }}
+      .docbtn {{
+        display:flex; align-items:center; justify-content:center; gap:8px;
+        width:100%; padding:10px 16px; cursor:pointer;
+        font-family:'Inter','Segoe UI',Arial,sans-serif; font-weight:600; font-size:0.9rem;
+        color:#004e7e; background:#ffffff; border:1px solid #004e7e; border-radius:4px;
+        transition:background .15s;
+      }}
+      .docbtn:hover {{ background:#ebeef0; }}
+    </style>
+    <div class="docwrap">{botones_html}</div>
+    {data_scripts}
+    <script>
+      function openDoc(id) {{
+        var b64 = document.getElementById(id).textContent;
+        var bin = atob(b64);
+        var arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        var blob = new Blob([arr], {{type: 'text/html'}});
+        window.open(URL.createObjectURL(blob), '_blank');
+      }}
+    </script>
+    """
+    _html(snippet, height=len(items) * 54 + 12)
+
+
 def _render_bienvenida() -> None:
     col_left, col_right = st.columns([1.15, 1], gap="large")
     with col_left:
         st.markdown(
             '<div style="font-family:var(--font-body);font-weight:700;font-size:0.72rem;'
             'letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary);'
-            'margin-bottom:6px;">Hydrogen Infrastructure Tool v2.4</div>'
+            'margin-bottom:6px;">Hydrogen Infrastructure Tool</div>'
             '<div style="font-family:var(--font-head);font-size:2.3rem;font-weight:800;'
             'color:var(--primary);line-height:1.1;letter-spacing:-0.02em;margin-bottom:14px;">'
             'Generador de Trazados<br>de Ramales de H₂</div>'
@@ -1671,7 +1799,7 @@ def _render_bienvenida() -> None:
         st.write("")
         cc1, cc2 = st.columns(2, gap="medium")
         with cc1:
-            with st.container(border=True):
+            with st.container(border=True, key="wcard_sim"):
                 st.markdown(
                     '<div class="welcome-card-head">'
                     '<div class="welcome-card-icon icon-primary">'
@@ -1687,7 +1815,7 @@ def _render_bienvenida() -> None:
                     st.session_state.pantalla = "paso1"
                     st.rerun()
         with cc2:
-            with st.container(border=True):
+            with st.container(border=True, key="wcard_docs"):
                 st.markdown(
                     '<div class="welcome-card-head">'
                     '<div class="welcome-card-icon icon-secondary">'
@@ -1698,11 +1826,10 @@ def _render_bienvenida() -> None:
                     '</div>',
                     unsafe_allow_html=True,
                 )
-                if st.button("Ver documentación  📖", use_container_width=True,
-                             key="btn_welcome_docs"):
-                    st.toast("Documentación técnica — próximamente.")
+                _docs_buttons()
     with col_right:
-        st.markdown(_hero_visual(), unsafe_allow_html=True)
+        with st.container(key="hero_col"):
+            st.markdown(_hero_visual(), unsafe_allow_html=True)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -1719,17 +1846,21 @@ def _main():
         if _LOGO_PATH.exists() else ""
     )
 
+    st.session_state.setdefault("modo_noche", False)
+
     st.markdown(_CSS, unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="enagas-topnav">'
-        f'<div class="topnav-left">{_logo_tag}</div>'
-        f'<div class="topnav-right">'
-        f'<span class="topnav-icon"><span class="material-symbols-outlined">notifications</span></span>'
-        f'<span class="topnav-icon"><span class="material-symbols-outlined">settings</span></span>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    if st.session_state.modo_noche:
+        st.markdown(_CSS_DARK, unsafe_allow_html=True)
+
+    with st.container(key="topnav"):
+        col_logo, col_toggle = st.columns([30, 1])
+        with col_logo:
+            st.markdown(f'<div class="topnav-left">{_logo_tag}</div>', unsafe_allow_html=True)
+        with col_toggle:
+            icono = ":material/light_mode:" if st.session_state.modo_noche else ":material/dark_mode:"
+            if st.button(icono, key="btn_modo_noche", help="Modo noche"):
+                st.session_state.modo_noche = not st.session_state.modo_noche
+                st.rerun()
 
     if "pantalla" not in st.session_state:
         st.session_state.pantalla = "bienvenida"
