@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Documentación Técnica · Generador de Trazados de Ramales H₂ (Enagás · CI2 Lab 2026)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f8fc;
+    --bg-2:#eef2f9;
+    --panel:#ffffff;
+    --panel-2:#eef3fb;
+    --border:#dde4f1;
+    --border-2:#c6d2e6;
+    --txt:#102a57;
+    --txt-dim:#41527a;
+    --txt-faint:#7886a4;
+    --accent:#1f5fd6;
+    --accent-2:#5a3fd0;
+    --green:#0f9c63;
+    --amber:#b3820a;
+    --red:#d23d57;
+    --cyan:#0b91bd;
+    --comillas:#c79200;
+    --grad:linear-gradient(120deg,#1f5fd6 0%,#5a3fd0 55%,#0b91bd 100%);
+    --radius:18px;
+    --font:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --font-title:'Lora','Poppins',Georgia,'Times New Roman',serif;
+    --mono:'SF Mono','JetBrains Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--txt);
+    font-family:var(--font);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  .bg-orbs{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+  .orb{position:absolute;border-radius:50%;filter:blur(130px);opacity:.30}
+  .orb.a{width:560px;height:560px;background:#a7c4ff;top:-180px;left:-140px}
+  .orb.b{width:500px;height:500px;background:#c3b3ff;bottom:-200px;right:-140px}
+  .orb.c{width:380px;height:380px;background:#a6e6f4;top:40%;right:16%;opacity:.24}
+  .grid-overlay{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:linear-gradient(var(--border-2) 1px,transparent 1px),linear-gradient(90deg,var(--border-2) 1px,transparent 1px);
+    background-size:46px 46px;opacity:.5;
+    mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 30%,transparent 75%);
+    -webkit-mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 30%,transparent 75%);
+  }
+
+  .deck{position:relative;z-index:1;height:100vh;width:100vw}
+  .slide{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;justify-content:safe center;
+    padding:5vh 6.4vw 4.2vh;
+    opacity:0;visibility:hidden;
+    transform:translateY(22px) scale(.992);
+    transition:opacity .55s cubic-bezier(.22,.61,.36,1),transform .55s cubic-bezier(.22,.61,.36,1),visibility .55s;
+    overflow-y:auto;overflow-x:hidden;scrollbar-width:none;
+  }
+  .slide::-webkit-scrollbar{display:none}
+  .slide.active{opacity:1;visibility:visible;transform:none}
+  .slide.prev{transform:translateY(-22px) scale(.992)}
+
+  .kicker{
+    display:inline-flex;align-items:center;gap:.55em;
+    font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--txt-dim);margin-bottom:.95rem;
+  }
+  .kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--grad)}
+  .kicker .num{font-family:var(--mono);color:var(--accent)}
+  h1{font-family:var(--font-title);font-size:clamp(2.2rem,5.4vw,4.3rem);font-weight:700;line-height:1.07;letter-spacing:-.015em}
+  h2{font-family:var(--font-title);font-size:clamp(1.6rem,3.1vw,2.5rem);font-weight:600;line-height:1.13;letter-spacing:-.01em;margin-bottom:.4rem}
+  .card h3,.rcard h4,.mchip .mt,.drow .what{font-family:var(--font-title);font-weight:600}
+  .lead{font-size:clamp(.92rem,1.35vw,1.1rem);color:var(--txt-dim);line-height:1.5;max-width:74ch;font-weight:350}
+  .grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .slide-head{margin-bottom:1.1rem;max-width:78ch}
+  .slide-head .lead{margin-top:.5rem}
+
+  .card{
+    background:linear-gradient(160deg,var(--panel) 0%,var(--bg-2) 130%);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:1.3rem 1.5rem;
+    position:relative;overflow:hidden;
+  }
+  .card.glow::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+    background:var(--grad);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask-composite:exclude;opacity:.5}
+  .card h3{font-size:1.02rem;font-weight:680;margin-bottom:.5rem;letter-spacing:-.01em}
+  .card p{font-size:.88rem;color:var(--txt-dim);line-height:1.5}
+
+  .grid{display:grid;gap:1rem}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.6rem;align-items:start}
+
+  .pill{display:inline-flex;align-items:center;gap:.45em;font-size:.72rem;font-weight:600;
+    padding:.3em .78em;border-radius:999px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--txt-dim)}
+  .pill .d{width:7px;height:7px;border-radius:50%}
+  .d.green{background:var(--green)}.d.amber{background:var(--amber)}.d.red{background:var(--red)}.d.blue{background:var(--accent)}.d.grey{background:var(--txt-faint)}
+  .tag-green{color:var(--green);border-color:rgba(15,156,99,.32);background:rgba(15,156,99,.10)}
+  .tag-amber{color:var(--amber);border-color:rgba(179,130,10,.32);background:rgba(179,130,10,.10)}
+  .tag-blue{color:var(--accent);border-color:rgba(31,95,214,.32);background:rgba(31,95,214,.09)}
+  .tag-purple{color:var(--accent-2);border-color:rgba(90,63,208,.32);background:rgba(90,63,208,.10)}
+  .tag-grey{color:var(--txt-faint);border-color:var(--border-2);background:var(--panel-2)}
+
+  .logo-bar{position:absolute;top:4.2vh;left:6.4vw;right:6.4vw;display:flex;align-items:center;gap:.9rem;z-index:5}
+  .logo-bar.right{justify-content:flex-end}
+  .logo-chip{background:#fff;border:1px solid var(--border);border-radius:11px;padding:.5rem .85rem;display:grid;place-items:center;
+    box-shadow:0 6px 18px rgba(16,42,87,.08);height:50px}
+  .logo-chip svg{display:block;height:34px;width:auto}
+  .logo-x{color:var(--txt-faint);font-size:1.1rem;font-weight:300}
+
+  #cover{justify-content:center;align-items:center;text-align:center}
+  .cover-hero{display:flex;flex-direction:column;align-items:center;max-width:66ch}
+  #cover h1{max-width:none;text-align:center;text-wrap:balance}
+  .cover-sub{margin:1.4rem auto 0;font-size:clamp(1rem,1.7vw,1.3rem);color:var(--txt-dim);font-weight:400;max-width:56ch;line-height:1.5}
+  .cover-meta{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:2.2rem;justify-content:center}
+  .cover-foot{position:absolute;left:6.4vw;right:6.4vw;bottom:6.5vh;display:flex;justify-content:space-between;
+    align-items:flex-end;color:var(--txt-faint);font-size:.8rem;text-align:left}
+  .cover-foot .r{text-align:right}
+  .cover-tag{display:inline-flex;align-items:center;gap:.5rem;background:var(--grad);color:#fff;font-weight:700;
+    font-size:.88rem;letter-spacing:.01em;padding:.5rem 1.05rem;border-radius:13px;
+    box-shadow:0 10px 30px rgba(31,95,214,.30);margin-bottom:1.6rem}
+  .cover-tag .h2sub{font-size:.76rem;opacity:.85;font-weight:500}
+
+  /* pipeline flow diagram — mirrors the mermaid flowchart nodes 1:1 */
+  .pflow{display:flex;flex-direction:column;gap:0}
+  .pflow .node{padding:.55rem 1rem;border-radius:11px;font-size:.82rem;font-weight:600;text-align:center;
+    border:1px solid var(--border-2);background:var(--panel)}
+  .pflow .node small{display:block;font-weight:400;color:var(--txt-faint);font-size:.68rem;margin-top:.15rem;font-family:var(--mono)}
+  .pflow .node.term{background:var(--grad);color:#fff;border:none;box-shadow:0 6px 18px rgba(31,95,214,.25)}
+  .pflow .node.term small{color:rgba(255,255,255,.82)}
+  .pflow .node.dec{background:rgba(90,63,208,.07);border:1.5px dashed var(--accent-2)}
+  .pflow .conn{width:2px;height:14px;background:var(--border-2);align-self:center;position:relative}
+  .pflow .conn::after{content:"";position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);
+    border:4px solid transparent;border-top-color:var(--border-2)}
+
+  /* decision list (also used for Q&A-style explanations) */
+  .dlist{display:flex;flex-direction:column;gap:.75rem}
+  .drow{display:grid;grid-template-columns:1fr 1.35fr;gap:1.1rem;align-items:start;
+    padding:.9rem 1.1rem;background:var(--panel);border:1px solid var(--border);border-radius:14px}
+  .drow .what{font-weight:650;font-size:.92rem}
+  .drow .what .sub{display:block;color:var(--txt-faint);font-size:.72rem;font-weight:400;margin-top:.2rem;font-family:var(--mono)}
+  .drow .why{font-size:.82rem;color:var(--txt-dim);line-height:1.45}
+
+  /* metric / stage cards */
+  .rcard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:1.05rem 1.1rem;position:relative;overflow:hidden}
+  .rcard::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--border-2)}
+  .rcard.r1::before{background:var(--accent)}.rcard.r2::before{background:var(--accent-2)}
+  .rcard.r3::before{background:var(--cyan)}.rcard.r4::before{background:var(--green)}
+  .rcard .sp{font-family:var(--mono);font-size:.7rem;color:var(--txt-faint);font-weight:700}
+  .rcard h4{font-size:.96rem;font-weight:700;margin:.3rem 0 .3rem}
+  .rcard p{font-size:.78rem;color:var(--txt-dim);line-height:1.4}
+  .rcard i.gloss{display:block;font-size:.72rem;color:var(--txt-faint);margin-top:.35rem;line-height:1.35}
+
+  /* exec summary blocks */
+  .exec-col{display:flex;flex-direction:column;gap:.65rem}
+  .exec-line{display:flex;align-items:flex-start;gap:.8rem;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:.7rem 1rem}
+  .exec-line .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;font-size:1rem;background:var(--panel-2)}
+  .exec-line .tx{font-size:.85rem;line-height:1.4}
+  .exec-line .tx b{font-weight:650;display:block;font-size:.88rem;margin-bottom:.1rem}
+  .exec-line .tx span{color:var(--txt-dim)}
+
+  /* formula box */
+  .formula{background:#0e1830;border:1px solid var(--border-2);border-radius:11px;padding:.8rem 1rem;
+    font-family:var(--mono);font-size:.74rem;line-height:1.65;color:#dbe6ff;overflow-x:auto;margin-bottom:.7rem}
+  .formula:last-child{margin-bottom:0}
+  .formula .lbl{display:block;color:#7d8ba8;font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem}
+  .formula .obj{color:var(--cyan)}
+
+  /* mini cost tables */
+  .minigrid{display:grid;grid-template-columns:1fr 1fr;gap:.65rem}
+  .mini{background:var(--panel-2);border:1px solid var(--border);border-radius:11px;padding:.55rem .7rem}
+  .mini h5{font-family:var(--font-title);font-size:.8rem;font-weight:600;color:var(--txt);margin-bottom:.3rem}
+  .mini table{width:100%;border-collapse:collapse;font-size:.72rem}
+  .mini td{padding:.16rem 0;color:var(--txt-dim);border-top:1px solid var(--border)}
+  .mini tr:first-child td{border-top:none}
+  .mini td.c{text-align:right;font-family:var(--mono);color:var(--txt);white-space:nowrap;padding-left:.4rem}
+
+  .bullets{list-style:none;display:flex;flex-direction:column;gap:.7rem}
+  .bullets li{display:flex;gap:.7rem;font-size:.86rem;line-height:1.4;color:var(--txt-dim)}
+  .bullets li b{color:var(--txt);font-weight:600}
+  .bullets li i.gloss{display:block;color:var(--txt-faint);font-size:.76rem;margin-top:.15rem;line-height:1.35}
+  .bullets .bi{flex:0 0 auto;width:22px;height:22px;border-radius:7px;background:var(--panel-2);display:grid;place-items:center;font-size:.74rem;margin-top:.1rem}
+
+  .note{font-size:.8rem;color:var(--txt-faint);margin-top:1rem;display:flex;align-items:flex-start;gap:.5rem}
+
+  .topbar{position:fixed;top:0;left:0;right:0;height:3px;background:transparent;z-index:30}
+  .topbar i{display:block;height:100%;width:0;background:var(--grad);transition:width .5s cubic-bezier(.22,.61,.36,1);box-shadow:0 0 12px rgba(91,140,255,.6)}
+  .hud{position:fixed;bottom:1.5vh;right:2vw;z-index:30;display:flex;align-items:center;gap:1rem;
+    font-family:var(--mono);font-size:.78rem;color:var(--txt-faint)}
+  .dots{display:flex;gap:7px}
+  .dots b{width:8px;height:8px;border-radius:50%;background:var(--border-2);cursor:pointer;transition:.3s;border:none;padding:0}
+  .dots b.on{background:var(--grad);transform:scale(1.3)}
+  .hud .ctrls{display:flex;gap:.4rem}
+  .hud button.nav{background:var(--panel);border:1px solid var(--border-2);color:var(--txt-dim);width:30px;height:30px;
+    border-radius:9px;cursor:pointer;font-size:.9rem;display:grid;place-items:center;transition:.2s}
+  .hud button.nav:hover{background:var(--panel-2);color:var(--txt);border-color:var(--accent)}
+  .hud .count{min-width:46px;text-align:center}
+  .hint{position:fixed;bottom:1.7vh;left:2vw;z-index:30;font-size:.74rem;color:var(--txt-faint);font-family:var(--mono);
+    opacity:.7;transition:opacity .4s}
+  .hint.hide{opacity:0}
+  kbd{font-family:var(--mono);background:var(--panel-2);border:1px solid var(--border-2);border-bottom-width:2px;
+    border-radius:5px;padding:.05em .4em;font-size:.72rem;color:var(--txt-dim)}
+
+  @media (max-width:880px){
+    .slide{padding:6vh 7vw}
+    .g3,.g4,.minigrid{grid-template-columns:1fr 1fr}
+    .two-col,.drow{grid-template-columns:1fr}
+    .hint{display:none}
+    #cover h1{text-align:center;text-align-last:center;width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="bg-orbs"><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div></div>
+<div class="grid-overlay"></div>
+<div class="topbar"><i id="topbar-fill"></i></div>
+
+<div class="deck" id="deck">
+
+  <!-- 0 · COVER -->
+  <section class="slide" id="cover">
+    <div class="logo-bar">
+      <div class="logo-chip">
+        <svg viewBox="0 0 184 70" aria-label="CI2LAB Investigación — Comillas ICAI">
+          <path d="M16 13 H7 V49 H16" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <path d="M168 13 H177 V49 H168" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <text x="92" y="37" text-anchor="middle" font-family="Poppins,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5" fill="#16357c">CI2<tspan fill="#2e74c4">LAB</tspan></text>
+          <text x="92" y="51" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9" font-weight="700" letter-spacing="3" fill="#16357c">INVESTIGACIÓN</text>
+          <text x="92" y="64" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9.5" font-weight="500" letter-spacing="2" fill="#2e74c4">COMILLAS ICAI</text>
+        </svg>
+      </div>
+      <span class="logo-x">×</span>
+      <div class="logo-chip">
+        <svg viewBox="0 0 168 60" aria-label="Enagás">
+          <text x="6" y="42" font-family="Poppins,sans-serif" font-size="34" font-weight="700" letter-spacing="-1" fill="#0098d8">enagás</text>
+          <circle cx="142" cy="30" r="19" fill="none" stroke="#0098d8" stroke-width="6.5"/>
+          <path d="M127 17.5 A19 19 0 0 1 157 17.5" fill="none" stroke="#aac90a" stroke-width="6.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="cover-hero">
+      <div class="cover-tag">Reto 6 de Enagás <span class="h2sub">· ramales de H₂</span></div>
+      <h1>Documentación técnica<br><span class="grad-text">del prototipo</span></h1>
+      <p class="cover-sub">Resumen visual de los dos documentos de referencia: el <b style="color:var(--txt)">diagrama de flujo del pipeline</b> y el <b style="color:var(--txt)">informe de arquitectura</b> de la aplicación (frontend + backend), explicado sin dar por hecho que sabes de páginas web.</p>
+      <div class="cover-meta">
+        <span class="pill tag-blue"><span class="d blue"></span>Documento 1 · Diagrama de Flujo del Pipeline</span>
+        <span class="pill tag-purple"><span class="d" style="background:var(--accent-2)"></span>Documento 2 · Informe de Arquitectura de la App</span>
+      </div>
+    </div>
+    <div class="cover-foot">
+      <div>
+        <div style="color:var(--txt-dim);font-weight:600">Prototipo geoespacial determinista</div>
+        <div>EPSG:25830 · alinear antes de combinar, diferenciar antes de comparar</div>
+      </div>
+      <div class="r">
+        <div style="color:var(--txt-dim);font-weight:600">Grupo 6 · Reto 6</div>
+        <div>CI2 Lab 2026</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 · DOC1 §01 — FLUJO DEL PIPELINE -->
+  <section class="slide" id="s1">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">01</span><span class="dot"></span>Documento 1 · Diagrama de Flujo del Pipeline</div>
+      <h2>Del origen y destino a <span class="grad-text">las cuatro rutas</span></h2>
+      <p class="lead">Pipeline determinista orquestado por <code>streamlit_app.py</code>: <b style="color:var(--txt)">alinear antes de combinar, diferenciar antes de comparar</b>. El esquema reproduce, paso a paso, el mismo diagrama de flujo del documento original — incluidas sus dos compuertas de decisión.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:1fr 1.1fr">
+      <div class="card">
+        <div class="pflow">
+          <div class="node term">ENTRADA<small>origen · destino (UTM) · pesos por perfil</small></div>
+          <div class="conn"></div>
+          <div class="node dec">¿Escenario nuevo?<small>sin capas en Capas_Coste/ — detalle a la derecha</small></div>
+          <div class="conn"></div>
+          <div class="node">1 · Ingesta y alineación<small>recorte al corredor · EPSG:25830 · rejilla 30 m</small></div>
+          <div class="conn"></div>
+          <div class="node">2 · Capas de coste<small>6 capas estandarizadas en [0,1]</small></div>
+          <div class="conn"></div>
+          <div class="node">3 · Combinación por perfil<small>Σ pesoᵢ · capaᵢ + BASE_LONG</small></div>
+          <div class="conn"></div>
+          <div class="node">4 · Camino de mínimo coste<small>Dijkstra 8-conexo isótropo</small></div>
+          <div class="conn"></div>
+          <div class="node dec">5 · Diferenciación<small>¿algún par ≥ 50% de solapamiento? — detalle a la derecha</small></div>
+          <div class="conn"></div>
+          <div class="node">6 · Métricas multicriterio<small>longitud · coste · pendiente · cruces · zonas</small></div>
+          <div class="conn"></div>
+          <div class="node term">SALIDA<small>KPIs · tabla comparativa · mapa de 4 rutas</small></div>
+        </div>
+      </div>
+      <div>
+        <div class="dlist">
+          <div class="drow">
+            <div class="what">¿Escenario nuevo?<span class="sub">Capas_Coste/ vacía</span></div>
+            <div class="why"><b style="color:var(--accent)">Sí</b> → descarga automática (DEM · OSM · hidrografía IGN · IGME · inundables vía WMS) + aporte manual obligatorio de <b style="color:var(--txt)">Red Natura 2000</b> y <b style="color:var(--txt)">Catastro</b> en <code>data/raw/</code>, antes de entrar en la ingesta.<br><b style="color:var(--txt-faint)">No</b> → ya está preparado, continúa directo en el paso 3.</div>
+          </div>
+          <div class="drow">
+            <div class="what">Puerta de diferenciación<span class="sub">solape ≥ 50% (buffer 60 m)</span></div>
+            <div class="why"><b style="color:var(--red)">Sí</b> → se reporta como <b style="color:var(--red)">redundante</b>; toca revisar los pesos del perfil antes de aceptar el resultado.<br><b style="color:var(--green)">No</b> → las rutas son diferenciadas y pasan a métricas.</div>
+          </div>
+        </div>
+        <p class="note">🌊 <span><b style="color:var(--txt-dim)">Zonas inundables:</b> se autodescargan vía WMS (SNCZI/MITECO) como imagen ráster — una primera aproximación sin datos asociados. Por fiabilidad, lo recomendable es aportar la capa a mano (previsto, aún no implementado).</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 · DOC1 §02-03 — CAPAS DE COSTE Y FÓRMULAS -->
+  <section class="slide" id="s2">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">02</span><span class="dot"></span>Documento 1 · Diagrama de Flujo del Pipeline</div>
+      <h2>Todo condicionante, <span class="grad-text">un coste entre 0 y 1</span></h2>
+      <p class="lead">Las capas con condicionante en la metodología oficial de Enagás derivan su coste del factor de ponderación <code>A</code> con divisor común <code>A_REF = 38</code> (el mayor factor, «terrenos inestables»): <code>coste_celda = A_oficial / 38</code>.</p>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <h3 style="margin-bottom:.7rem">Ejemplos de coste estandarizado</h3>
+        <div class="minigrid">
+          <div class="mini">
+            <h5>Geotecnia <small style="font-weight:400;color:var(--txt-faint)">IGME (DLO)</small></h5>
+            <table>
+              <tr><td>Aluvial / terrazas</td><td class="c">0.05</td></tr>
+              <tr><td>Arenisca compacta</td><td class="c">0.22</td></tr>
+              <tr><td>Caliza / roca dura</td><td class="c">0.34</td></tr>
+              <tr><td>Yeso / expansivo</td><td class="c" style="color:var(--red)">1.00</td></tr>
+            </table>
+          </div>
+          <div class="mini">
+            <h5>Expropiación <small style="font-weight:400;color:var(--txt-faint)">Catastro (TIPO)</small></h5>
+            <table>
+              <tr><td>D — dominio público</td><td class="c">0.03</td></tr>
+              <tr><td>R — rústico</td><td class="c">0.10</td></tr>
+              <tr><td>Periurbano (&lt;500 m²)</td><td class="c">0.47</td></tr>
+              <tr><td>U — urbano</td><td class="c">0.66</td></tr>
+            </table>
+          </div>
+          <div class="mini">
+            <h5>Capas binarias <small style="font-weight:400;color:var(--txt-faint)">dentro / fuera</small></h5>
+            <table>
+              <tr><td>Red Natura 2000</td><td class="c">0.75</td></tr>
+              <tr><td>Inundable SNCZI</td><td class="c">0.375</td></tr>
+            </table>
+          </div>
+          <div class="mini">
+            <h5>Cruces puntuales <small style="font-weight:400;color:var(--txt-faint)">máx./celda</small></h5>
+            <table>
+              <tr><td>Río permanente</td><td class="c">0.34</td></tr>
+              <tr><td>Rambla</td><td class="c">0.26</td></tr>
+              <tr><td>Viario</td><td class="c">0.2–0.8</td></tr>
+              <tr><td>Ferrocarril</td><td class="c">0.9</td></tr>
+            </table>
+          </div>
+        </div>
+        <p class="note">📐 <span>El TPI (relieve) queda fuera del esquema A/38: z-score acotado a ±2σ → cresta 0.0 / valle 1.0.</span></p>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:.7rem">Fórmulas — motor de trazado</h3>
+        <div class="formula">
+          <span class="lbl">Relieve · TPI (Weiss, 2001)</span>
+          TPI(c) = z(c) − media(z en anillo de 300 m)<br>
+          cresta (+2σ) → 0.0 &nbsp;·&nbsp; llano → 0.5 &nbsp;·&nbsp; valle (−2σ) → 1.0<br>
+          barrera dura: pendiente Horn &gt; 70% (≈ 35°) → intransitable
+        </div>
+        <div class="formula">
+          <span class="lbl">Camino de mínimo coste (LCP)</span>
+          coste(p→q) = d · media(C_p, C_q) &nbsp;&nbsp;d = 1 (ortogonal) | √2 (diagonal)<br>
+          <span class="obj">Dijkstra 8-conexo isótropo (heapq)</span>
+        </div>
+        <div class="formula">
+          <span class="lbl">Diferenciación de corredores</span>
+          solap(A→B) = long(A ∩ buffer(B,60m)) / long(A) · 100<br>
+          <span class="obj">DIFERENCIADAS ⟺ ningún par &gt; 50% de solapamiento</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · DOC1 §04 — PERFILES DE PRIORIDAD -->
+  <section class="slide" id="s3">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">03</span><span class="dot"></span>Documento 1 · Diagrama de Flujo del Pipeline</div>
+      <h2>Cuatro perfiles, <span class="grad-text">cuatro prioridades distintas</span></h2>
+      <p class="lead">Cada perfil es un vector de pesos sobre las mismas capas: pesos distintos → superficies distintas → rutas distintas. Es el mecanismo que garantiza las cuatro alternativas.</p>
+    </div>
+    <div class="grid g4" style="margin-bottom:1rem">
+      <div class="card" style="border-top:3px solid var(--accent);padding:1.05rem 1.1rem">
+        <span class="pill tag-blue" style="margin-bottom:.5rem"><span class="d blue"></span>Ruta corta</span>
+        <p><b style="color:var(--txt)">Prioriza</b> la longitud. <b style="color:var(--txt)">Cómo:</b> peso longitud 1.00 · cruces 0.20.</p>
+      </div>
+      <div class="card" style="border-top:3px solid var(--green);padding:1.05rem 1.1rem">
+        <span class="pill tag-green" style="margin-bottom:.5rem"><span class="d green"></span>Ambiental</span>
+        <p><b style="color:var(--txt)">Prioriza</b> zonas protegidas. <b style="color:var(--txt)">Cómo:</b> protegida 1.00 · geotecnia 0.80 · cruces/inundable 0.50.</p>
+      </div>
+      <div class="card" style="border-top:3px solid var(--comillas);padding:1.05rem 1.1rem">
+        <span class="pill mvp" style="margin-bottom:.5rem;color:var(--comillas);border-color:rgba(199,146,0,.35);background:rgba(199,146,0,.10)"><span class="d" style="background:var(--comillas)"></span>Relieve</span>
+        <p><b style="color:var(--txt)">Prioriza</b> posición topográfica (TPI). <b style="color:var(--txt)">Cómo:</b> tpi 1.00 · resto ≤ 0.10.</p>
+      </div>
+      <div class="card glow" style="border-top:3px solid var(--accent-2);padding:1.05rem 1.1rem">
+        <span class="pill tag-purple" style="margin-bottom:.5rem"><span class="d" style="background:var(--accent-2)"></span>Equilibrio ★ recom.</span>
+        <p><b style="color:var(--txt)">Compromiso</b> multicriterio (bandas EV-500). protegida 0.25 · exprop. 0.21 · cruces 0.16 · tpi+geo 0.21.</p>
+      </div>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:1.1rem;padding:.8rem 1.3rem">
+      <span class="pill tag-blue" style="flex:0 0 auto"><span class="d blue"></span>Puerta de diferenciación</span>
+      <p style="margin:0">Si algún par de rutas supera el <b style="color:var(--txt)">50% de solapamiento</b> dirigido (buffer 60 m), se reporta como <b style="color:var(--red)">redundante</b> y toca revisar los pesos del perfil antes de aceptar el resultado.</p>
+    </div>
+  </section>
+
+  <!-- 4 · DOC2 — ARQUITECTURA GENERAL -->
+  <section class="slide" id="s4">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">04</span><span class="dot"></span>Documento 2 · Informe de Arquitectura de la App</div>
+      <h2>Un frontend, un backend, <span class="grad-text">un solo puente</span></h2>
+      <p class="lead">La interfaz Streamlit y el pipeline geoespacial comparten el mismo proceso Python; intercambian datos por archivos en disco. La única costura entre capas es <code>_ejecutar_pipeline()</code>.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:.95fr 1.15fr">
+      <div class="card">
+        <div class="pflow">
+          <div class="node">FRONTEND — Streamlit<small>streamlit_app.py</small></div>
+          <div class="conn"></div>
+          <div class="node dec">ORQUESTADOR<small>_ejecutar_pipeline()</small></div>
+          <div class="conn"></div>
+          <div class="node">BACKEND — pipeline geoespacial<small>ingesta → superficie → trazados → métricas</small></div>
+          <div class="conn"></div>
+          <div class="node term">DATOS — data/<small>config · raw · processed</small></div>
+        </div>
+      </div>
+      <div class="exec-col">
+        <div class="exec-line">
+          <span class="ic">🍽️</span>
+          <div class="tx"><b>Frontend = la sala del restaurante</b><span>Lo que el usuario ve y toca en el navegador: botones, mapas, formularios. Técnicamente es <code>src/app/streamlit_app.py</code>, un único archivo.</span></div>
+        </div>
+        <div class="exec-line">
+          <span class="ic">🧑‍🍳</span>
+          <div class="tx"><b>Orquestador = el camarero</b><span><code>_ejecutar_pipeline()</code> lleva el pedido de la sala a la cocina y trae de vuelta el resultado — es la única costura entre las dos partes.</span></div>
+        </div>
+        <div class="exec-line">
+          <span class="ic">🔥</span>
+          <div class="tx"><b>Backend = la cocina</b><span>El motor que hace los cálculos geoespaciales pesados, sin pantalla propia: módulos deterministas en <code>src/</code>.</span></div>
+        </div>
+        <div class="exec-line">
+          <span class="ic">🗄️</span>
+          <div class="tx"><b>Datos = la despensa</b><span>Todo se lee y se guarda en la carpeta <code>data/</code> (config, capas crudas, resultados) — nada vive solo en memoria.</span></div>
+        </div>
+        <p class="note">💡 <span>Como el backend no depende de la interfaz, se podría envolver en una API o un proceso por lotes sin reescribir el pipeline: el único enganche a la web vive en <code>streamlit_app.py</code>.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · DOC2 — FRONTEND: NAVEGACIÓN -->
+  <section class="slide" id="s5">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">05</span><span class="dot"></span>Documento 2 · Informe de Arquitectura de la App</div>
+      <h2>Una sola página web <span class="grad-text">que cambia de paso</span></h2>
+      <p class="lead"><code>streamlit_app.py</code> es una <b style="color:var(--txt)">single-page app</b>: todo ocurre en una única página que cambia de contenido según el paso — como pasar de pantalla en una app del móvil, sin recargar el navegador. Lo controla <code>st.session_state.pantalla</code>.</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1.1rem">
+      <span class="pill tag-blue"><span class="d blue"></span>Bienvenida</span>
+      <span style="color:var(--txt-faint)">→</span>
+      <span class="pill">Paso 1 · Origen / Destino <small style="font-family:var(--mono);color:var(--txt-faint)">≤ 15 km</small></span>
+      <span style="color:var(--txt-faint)">→</span>
+      <span class="pill">Paso 2 · Pesos y Perfiles <small style="font-family:var(--mono);color:var(--txt-faint)">sliders por capa</small></span>
+      <span style="color:var(--txt-faint)">→</span>
+      <span class="pill tag-purple"><span class="d" style="background:var(--accent-2)"></span>Resultados <small style="font-family:var(--mono);color:var(--txt-faint)">mapa · tablas · diversidad</small></span>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <h3>Paso 1 y 2 <span class="pill" style="margin-left:.4rem;font-size:.68rem">_render_paso1/2</span></h3>
+        <ul class="bullets" style="margin-top:.6rem">
+          <li><span class="bi">🗺️</span><div>Mapa Folium con ortofoto Esri; un clic fija origen/destino.<i class="gloss">Folium dibuja mapas interactivos tipo Google Maps dentro de la propia web.</i></div></li>
+          <li><span class="bi">📏</span><div>Valida la distancia máxima <code>MAX_DIST_M = 15 km</code>; bloquea «Siguiente» si se supera.</div></li>
+          <li><span class="bi">🎚️</span><div>Editor de pesos por capa para 4 perfiles: <code>corto · equilibrio · ambiental · pendiente</code>.<i class="gloss">Un perfil es una combinación de prioridades, como elegir en un GPS entre «más rápido» o «evitar peajes».</i></div></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Resultados <span class="pill" style="margin-left:.4rem;font-size:.68rem">_render_results</span></h3>
+        <ul class="bullets" style="margin-top:.6rem">
+          <li><span class="bi">🗂️</span><div><b>Tab Mapa:</b> dibuja las rutas por escenario con leyenda de perfiles.</div></li>
+          <li><span class="bi">📊</span><div><b>Tabs Métricas:</b> km, coste relativo, pendiente, km protegida/inundable/urbano, nº cruces + tarjetas KPI.</div></li>
+          <li><span class="bi">🔀</span><div><b>Tab Diversidad:</b> matriz de solapamiento entre corredores — valida que las rutas son realmente distintas.</div></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · DOC2 — BACKEND Y STACK -->
+  <section class="slide" id="s6">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">06</span><span class="dot"></span>Documento 2 · Informe de Arquitectura de la App</div>
+      <h2>El backend, <span class="grad-text">cuatro etapas encadenadas</span></h2>
+      <p class="lead">El orquestador ejecuta estos cuatro módulos en orden, por cada escenario.</p>
+    </div>
+    <div class="grid g4" style="margin-bottom:1rem">
+      <div class="rcard r1">
+        <span class="sp">src/ingesta</span>
+        <h4>1 · Ingesta</h4>
+        <p>Descarga por bbox (DEM, OSM, IGN, IGME, SNCZI) y alinea a EPSG:25830 + rejilla común.</p>
+        <i class="gloss">«Alinear» es poner todos los mapas sobre la misma cuadrícula, para que un mismo punto caiga en el mismo sitio en todas las capas.</i>
+      </div>
+      <div class="rcard r2">
+        <span class="sp">src/superficie</span>
+        <h4>2 · Superficies</h4>
+        <p>Un módulo por criterio → coste [0,1] por celda. <code>combinar_pesos()</code> es la única fuente de verdad de la ponderación.</p>
+      </div>
+      <div class="rcard r3">
+        <span class="sp">src/trazados</span>
+        <h4>3 · Trazados</h4>
+        <p><code>run_perfiles()</code>: Dijkstra 8-conexo sobre la superficie ponderada de cada perfil.</p>
+        <i class="gloss">Dijkstra es el mismo tipo de algoritmo que usa un GPS para calcular la ruta más corta.</i>
+      </div>
+      <div class="rcard r4">
+        <span class="sp">src/metricas</span>
+        <h4>4 · Métricas</h4>
+        <p><code>calcular_todas()</code> reúne longitud, coste, pendiente, cruces, zonas y diversidad de corredores.</p>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:.3rem">Stack tecnológico <span class="pill" style="margin-left:.5rem;font-size:.68rem">los ingredientes de la receta</span></h3>
+      <ul class="bullets" style="margin-top:.6rem">
+        <li><span class="bi">🐍</span><div><b>Lenguaje:</b> Python 3.11+ · código en inglés, documentación en español.</div></li>
+        <li><span class="bi">🌍</span><div><b>Geoespacial:</b> rasterio · geopandas · shapely · pyproj · numpy.<i class="gloss">Librerías: paquetes de código ya hecho para trabajar con mapas y coordenadas, en vez de programarlo desde cero.</i></div></li>
+        <li><span class="bi">💻</span><div><b>UI y mapas:</b> Streamlit · folium · streamlit-folium.<i class="gloss">Convierten código Python en páginas web con mapas interactivos, sin escribir HTML, CSS ni JavaScript.</i></div></li>
+        <li><span class="bi">📍</span><div><b>CRS de trabajo:</b> ETRS89 / UTM 30N (EPSG:25830); vista en WGS-84.<i class="gloss">El «sistema de coordenadas»: el mapa de referencia común para que todas las capas encajen en el mismo sitio.</i></div></li>
+      </ul>
+      <div class="formula" style="margin-top:.8rem">
+        <span class="lbl">Próximo paso · Sprint 5</span>
+        src/comparacion/comparador.py — scoring formal y ranking<br>
+        <span class="obj">(hoy la comparativa vive directamente en la página de Resultados)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 · CIERRE -->
+  <section class="slide" id="close">
+    <div class="logo-bar right">
+      <div class="logo-chip">
+        <svg viewBox="0 0 184 70" aria-label="CI2LAB Investigación — Comillas ICAI">
+          <path d="M16 13 H7 V49 H16" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <path d="M168 13 H177 V49 H168" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <text x="92" y="37" text-anchor="middle" font-family="Poppins,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5" fill="#16357c">CI2<tspan fill="#2e74c4">LAB</tspan></text>
+          <text x="92" y="51" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9" font-weight="700" letter-spacing="3" fill="#16357c">INVESTIGACIÓN</text>
+          <text x="92" y="64" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9.5" font-weight="500" letter-spacing="2" fill="#2e74c4">COMILLAS ICAI</text>
+        </svg>
+      </div>
+      <span class="logo-x">×</span>
+      <div class="logo-chip">
+        <svg viewBox="0 0 168 60" aria-label="Enagás">
+          <text x="6" y="42" font-family="Poppins,sans-serif" font-size="34" font-weight="700" letter-spacing="-1" fill="#0098d8">enagás</text>
+          <circle cx="142" cy="30" r="19" fill="none" stroke="#0098d8" stroke-width="6.5"/>
+          <path d="M127 17.5 A19 19 0 0 1 157 17.5" fill="none" stroke="#aac90a" stroke-width="6.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div style="max-width:62ch">
+      <div class="kicker"><span class="num">07</span><span class="dot"></span>Cierre</div>
+      <h1 style="font-size:clamp(2.2rem,5vw,4rem)">Documentación <span class="grad-text">completa</span></h1>
+      <p class="lead" style="margin-top:1.3rem">Dos documentos, un mismo prototipo: el flujo determinista del pipeline (ingesta → coste → trazado → métricas) y la arquitectura frontend/backend que lo pone en manos del usuario.</p>
+      <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-top:2rem">
+        <span class="pill tag-green"><span class="d green"></span>Documento 1 · Flujo del pipeline</span>
+        <span class="pill tag-purple"><span class="d" style="background:var(--accent-2)"></span>Documento 2 · Arquitectura de la app</span>
+        <span class="pill tag-blue"><span class="d blue"></span>Prototipo determinista · EPSG:25830</span>
+      </div>
+      <div style="margin-top:2.6rem;display:flex;gap:2.2rem;flex-wrap:wrap;color:var(--txt-faint);font-size:.85rem">
+        <div><div style="color:var(--txt-dim);font-weight:600;margin-bottom:.2rem">Grupo 6 · CI2 Lab 2026</div>Reto 6 — Enagás</div>
+        <div><div style="color:var(--txt-dim);font-weight:600;margin-bottom:.2rem">Cátedra de Industria Inteligente</div>ETSI ICAI · Comillas</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- HUD -->
+<div class="hint" id="hint"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>F</kbd> pantalla completa</div>
+<div class="hud">
+  <div class="dots" id="dots"></div>
+  <div class="ctrls">
+    <button class="nav" id="prevBtn" aria-label="Anterior">‹</button>
+    <span class="count" id="counter">1 / 8</span>
+    <button class="nav" id="nextBtn" aria-label="Siguiente">›</button>
+    <button class="nav" id="fsBtn" aria-label="Pantalla completa">⛶</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total = slides.length;
+  let idx = 0;
+  const topbar = document.getElementById('topbar-fill');
+  const counter = document.getElementById('counter');
+  const dotsWrap = document.getElementById('dots');
+  const hint = document.getElementById('hint');
+
+  slides.forEach((_,i)=>{
+    const b=document.createElement('button');
+    b.addEventListener('click',()=>go(i));
+    dotsWrap.appendChild(b);
+  });
+  const dots = Array.from(dotsWrap.children);
+
+  function render(){
+    slides.forEach((s,i)=>{
+      s.classList.remove('active','prev');
+      if(i===idx) s.classList.add('active');
+      else if(i<idx) s.classList.add('prev');
+    });
+    dots.forEach((d,i)=>d.classList.toggle('on',i===idx));
+    topbar.style.width = ((idx)/(total-1))*100 + '%';
+    counter.textContent = (idx+1)+' / '+total;
+  }
+  function go(n){
+    idx = Math.max(0, Math.min(total-1, n));
+    render();
+    if(idx>0){hint.classList.add('hide');}
+  }
+  function next(){ go(idx+1); }
+  function prev(){ go(idx-1); }
+
+  document.getElementById('nextBtn').addEventListener('click',next);
+  document.getElementById('prevBtn').addEventListener('click',prev);
+  document.getElementById('fsBtn').addEventListener('click',toggleFs);
+
+  function toggleFs(){
+    if(!document.fullscreenElement){ document.documentElement.requestFullscreen?.(); }
+    else{ document.exitFullscreen?.(); }
+  }
+
+  document.addEventListener('keydown',e=>{
+    switch(e.key){
+      case 'ArrowRight': case 'PageDown': case ' ': e.preventDefault(); next(); break;
+      case 'ArrowLeft': case 'PageUp': prev(); break;
+      case 'Home': go(0); break;
+      case 'End': go(total-1); break;
+      case 'f': case 'F': toggleFs(); break;
+    }
+  });
+
+  let tx=0;
+  document.addEventListener('touchstart',e=>{tx=e.changedTouches[0].clientX},{passive:true});
+  document.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-tx;
+    if(Math.abs(dx)>55){ dx<0?next():prev(); }
+  },{passive:true});
+
+  render();
+})();
+</script>
+</body>
+</html>
