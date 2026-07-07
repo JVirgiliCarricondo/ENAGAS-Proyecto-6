@@ -10,6 +10,9 @@ import copy
 import math
 import re
 import sys
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import folium
@@ -1087,6 +1090,120 @@ def _catastro_cobertura_wkt(recorte_dir: str) -> str | None:
     return unary_union(cajas).wkt
 
 
+# ── Acceso directo a las descargas manuales (Catastro INSPIRE, RN2000, SNCZI) ──
+#
+# La capa realmente manual es CATASTRO: se descarga por municipio en la Sede del
+# Catastro (servicio INSPIRE). Para que el usuario no tenga que averiguar qué
+# municipio le toca, resolvemos con las coordenadas del corredor:
+#   1) OVC Consulta_RCCOOR → referencia catastral del punto; sus 5 primeros dígitos
+#      son el código DGC del municipio (provincia[2] + municipio[3]).
+#   2) Feed ATOM provincial de "Cadastral Parcels" → enlace directo (enclosure) al
+#      ZIP INSPIRE de parcelas de ese municipio.
+# Todo cacheado y tolerante a fallos: sin red, se cae al portal general.
+
+_OVC_RCCOOR = ("http://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/"
+               "OVCCoordenadas.asmx/Consulta_RCCOOR")
+_CAT_INSPIRE_CP = "https://www.catastro.hacienda.gob.es/INSPIRE/CadastralParcels"
+# Visor oficial de cartografía del Catastro, centrado por referencia catastral.
+_CAT_VISOR = "https://www1.sedecatastro.gob.es/Cartografia/mapa.aspx?refcat="
+# Portales de descarga (fallback / fuentes recomendadas que se aportan a mano)
+_URL_CATASTRO_PORTAL = "https://www.catastro.hacienda.gob.es/webinspire/index.html"
+_URL_RN2000 = ("https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/"
+               "biodiversidad/rn2000.html")
+_URL_SNCZI = ("https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/"
+              "agua/zonas-inundables.html")
+
+
+def _xml_localname(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def _ovc_parcela(xq: int, yq: int) -> tuple[str, str] | None:
+    """(dgc5, refcat14) de la parcela en (xq, yq) EPSG:25830 vía OVC. None si falla.
+
+    dgc5 = código DGC del municipio (provincia[2]+municipio[3]); refcat14 = pc1+pc2,
+    referencia catastral con la que se centra el visor del Catastro. Se consulta con
+    coordenadas redondeadas a rejilla gruesa (500 m) para reaprovechar la caché.
+    """
+    q = urllib.parse.urlencode({
+        "SRS": "EPSG:25830", "Coordenada_X": str(xq), "Coordenada_Y": str(yq),
+    })
+    try:
+        with urllib.request.urlopen(f"{_OVC_RCCOOR}?{q}", timeout=6) as r:
+            root = ET.fromstring(r.read())
+    except Exception:
+        return None
+    pc1 = pc2 = ""
+    for el in root.iter():
+        name = _xml_localname(el.tag)
+        if name == "pc1" and el.text:
+            pc1 = el.text.strip()
+        elif name == "pc2" and el.text:
+            pc2 = el.text.strip()
+    dgc = pc1[:5]
+    if len(dgc) != 5 or not dgc.isdigit():
+        return None
+    return dgc, (pc1 + pc2)
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def _catastro_cp_zip(dgc5: str) -> tuple[str, str] | None:
+    """(nombre_municipio, url_zip) del ZIP INSPIRE de parcelas, desde el feed ATOM
+    provincial. None si el municipio no aparece o no hay red."""
+    prov = dgc5[:2]
+    url = f"{_CAT_INSPIRE_CP}/{prov}/ES.SDGC.CP.atom_{prov}.xml"
+    try:
+        with urllib.request.urlopen(url, timeout=8) as r:
+            root = ET.fromstring(r.read())
+    except Exception:
+        return None
+    for link in root.iter("{http://www.w3.org/2005/Atom}link"):
+        if link.get("rel") != "enclosure":
+            continue
+        href = link.get("href", "")
+        # .../{prov}/{dgc5}-NOMBRE/A.ES.SDGC.CP.{dgc5}.zip
+        if f"/{dgc5}-" in href and href.endswith(f".CP.{dgc5}.zip"):
+            nombre = href.split(f"/{dgc5}-", 1)[1].split("/", 1)[0]
+            # El nombre del municipio lleva espacios/acentos (p. ej. "FUENTES DE
+            # EBRO", "ALCAÑIZ"); hay que percent-encodear la ruta o el navegador
+            # no descarga el ZIP.
+            sp = urllib.parse.urlsplit(href)
+            url = urllib.parse.urlunsplit(
+                (sp.scheme, sp.netloc, urllib.parse.quote(sp.path), sp.query, sp.fragment)
+            )
+            return nombre.replace("%20", " ").strip(), url
+    return None
+
+
+def _catastro_municipios_aoi(coords_esc: dict) -> list[dict]:
+    """Municipios que cruza el corredor, con enlace directo al ZIP INSPIRE.
+
+    Devuelve [{dgc, nombre, url_zip, url_visor}]. Muestrea el eje origen-destino
+    cada ~500 m (puntos ajustados a rejilla de 500 m para aprovechar la caché de OVC).
+    """
+    line = LineString([
+        (coords_esc["origen"]["x"], coords_esc["origen"]["y"]),
+        (coords_esc["destino"]["x"], coords_esc["destino"]["y"]),
+    ])
+    n = max(4, int(line.length // 500) + 1)
+    municipios: dict[str, dict] = {}
+    for i in range(n + 1):
+        p = line.interpolate(i / n, normalized=True)
+        parc = _ovc_parcela(round(p.x / 500) * 500, round(p.y / 500) * 500)
+        if not parc or parc[0] in municipios:
+            continue
+        dgc, refcat = parc
+        info = _catastro_cp_zip(dgc)
+        municipios[dgc] = {
+            "dgc": dgc,
+            "nombre": info[0] if info else "",
+            "url_zip": info[1] if info else _URL_CATASTRO_PORTAL,
+            "url_visor": _CAT_VISOR + urllib.parse.quote(refcat) if refcat else _URL_CATASTRO_PORTAL,
+        }
+    return list(municipios.values())
+
+
 def _estado_datos_aoi(coords_esc: dict) -> list[dict]:
     """Estado por capa para el corredor actual.
 
@@ -1114,14 +1231,37 @@ def _estado_datos_aoi(coords_esc: dict) -> list[dict]:
     else:
         cat = ("warn", "Fuera de lo descargado · aportar a mano (Sede Catastro INSPIRE)")
 
+    # Enlaces directos al ZIP INSPIRE por municipio del corredor (o portal si no hay red).
+    try:
+        municipios = _catastro_municipios_aoi(coords_esc)
+    except Exception:
+        municipios = []
+    if municipios:
+        cat_enlaces = []
+        for m in municipios:
+            nombre = f"{(m['nombre'] or 'Municipio').title()} ({m['dgc']})"
+            cat_enlaces.append(
+                {"label": nombre, "url": m["url_visor"], "icono": "map", "nivel": 0})
+            cat_enlaces.append(
+                {"label": "Descargar ZIP parcelas", "url": m["url_zip"],
+                 "icono": "download", "nivel": 1})
+    else:
+        cat_enlaces = [{"label": "Portal de descarga INSPIRE", "url": _URL_CATASTRO_PORTAL,
+                        "icono": "open_in_new", "nivel": 0}]
+
     return [
-        {"nombre": "Catastro (expropiación)", "estado": cat[0], "detalle": cat[1]},
+        {"nombre": "Catastro (expropiación)", "estado": cat[0], "detalle": cat[1],
+         "enlaces": cat_enlaces},
         {"nombre": "Red Natura 2000", "estado": "warn",
-         "detalle": "Obtenible por zona (WFS IDEE); recomendado fichero nacional MITECO"},
+         "detalle": "Obtenible por zona (WFS IDEE); recomendado fichero nacional MITECO",
+         "enlaces": [{"label": "Fichero nacional MITECO", "url": _URL_RN2000,
+                      "icono": "open_in_new", "nivel": 0}]},
         {"nombre": "Zonas inundables (SNCZI)", "estado": "rec",
-         "detalle": "Obtenibles por zona · se recomienda incluirlas en el coste"},
+         "detalle": "Obtenibles por zona · se recomienda incluirlas en el coste",
+         "enlaces": [{"label": "Portal SNCZI (MITECO)", "url": _URL_SNCZI,
+                      "icono": "open_in_new", "nivel": 0}]},
         {"nombre": "DEM · Hidrografía · Geología · Viario (OSM)", "estado": "ok",
-         "detalle": "Se descargan automáticamente por zona (bbox)"},
+         "detalle": "Se descargan automáticamente por zona (bbox)", "enlaces": []},
     ]
 
 
@@ -1137,29 +1277,62 @@ def _render_estado_datos(coords_esc: dict) -> None:
         "warn": ("warning",      "#b26a00"),
         "rec":  ("lightbulb",    "var(--primary)"),
     }
-    filas = ""
-    for it in items:
-        icono, color = _ICONO[it["estado"]]
-        filas += (
-            f'<div style="display:flex;align-items:flex-start;gap:9px;padding:6px 0;'
-            f'border-top:1px solid var(--surface-high);">'
-            f'<span class="material-symbols-outlined" style="font-size:18px;color:{color};'
-            f'line-height:1.15;flex:none;">{icono}</span>'
-            f'<div style="line-height:1.25;">'
-            f'<span style="font-family:var(--font-body);font-weight:700;font-size:0.78rem;'
-            f'color:var(--on-surface);">{it["nombre"]}</span><br>'
-            f'<span style="font-family:var(--font-body);font-size:0.7rem;'
-            f'color:var(--on-surface-variant);">{it["detalle"]}</span></div></div>'
+
+    def _celda(it: dict, grow: bool = False) -> str:
+        icono, icolor = _ICONO[it["estado"]]
+        enlaces = ""
+        for en in it.get("enlaces", []):
+            sec = en.get("nivel", 0) == 1
+            margin = "margin-left:19px;" if sec else ""
+            peso = "500" if sec else "600"
+            tamano = "0.64rem" if sec else "0.68rem"
+            lcolor = "var(--on-surface-variant)" if sec else "var(--primary)"
+            enlaces += (
+                f'<a href="{en["url"]}" target="_blank" rel="noopener" '
+                f'style="font-family:var(--font-body);font-size:{tamano};font-weight:{peso};'
+                f'color:{lcolor};text-decoration:none;display:inline-flex;'
+                f'align-items:center;gap:4px;{margin}">'
+                f'<span class="material-symbols-outlined" style="font-size:15px;">'
+                f'{en["icono"]}</span>{en["label"]}</a>'
+            )
+        enlaces_html = (
+            f'<div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;">'
+            f'{enlaces}</div>' if enlaces else ""
         )
+        return (
+            f'<div style="border:1px solid var(--surface-high);border-radius:10px;'
+            f'padding:8px 10px;background:var(--surface-lowest);'
+            f'display:flex;flex-direction:column;{"flex:1 1 0;" if grow else ""}">'
+            f'<div style="display:flex;align-items:center;gap:7px;">'
+            f'<span class="material-symbols-outlined" style="font-size:17px;color:{icolor};'
+            f'flex:none;">{icono}</span>'
+            f'<span style="font-family:var(--font-body);font-weight:700;font-size:0.76rem;'
+            f'color:var(--on-surface);line-height:1.2;">{it["nombre"]}</span></div>'
+            f'<div style="font-family:var(--font-body);font-size:0.68rem;'
+            f'color:var(--on-surface-variant);margin-top:3px;line-height:1.25;">'
+            f'{it["detalle"]}</div>{enlaces_html}</div>'
+        )
+
+    # Catastro (la capa manual, con enlaces por municipio) ocupa media tarjeta;
+    # las demas capas se apilan en la otra mitad.
+    catastro = next((it for it in items if it["nombre"].startswith("Catastro")), None)
+    resto = [it for it in items if it is not catastro]
+
+    izq = _celda(catastro) if catastro else ""
+    der = "".join(_celda(it, grow=True) for it in resto)
+
     st.markdown(
         f'<div style="background:var(--surface-lowest);border:1px solid var(--outline-variant);'
-        f'border-radius:14px;box-shadow:var(--shadow-card);padding:12px 16px 8px;margin-top:10px;">'
+        f'border-radius:14px;box-shadow:var(--shadow-card);padding:12px 16px;margin-top:10px;">'
         f'<div style="display:flex;align-items:center;gap:6px;color:var(--primary);'
-        f'font-weight:700;margin-bottom:2px;">'
+        f'font-weight:700;margin-bottom:8px;">'
         f'<span class="material-symbols-outlined" style="font-size:18px;">dataset</span>'
         f'<span style="font-size:0.68rem;letter-spacing:0.05em;text-transform:uppercase;">'
         f'Datos para esta zona</span></div>'
-        f'{filas}</div>',
+        f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch;">'
+        f'{izq}'
+        f'<div style="display:flex;flex-direction:column;gap:8px;">{der}</div>'
+        f'</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -1307,9 +1480,6 @@ def _render_paso1():
                 unsafe_allow_html=True,
             )
 
-            # Comprobacion de disponibilidad de capas para el corredor elegido
-            _render_estado_datos(coords[esc_activo])
-
     with col_map:
         m = _mapa_entrada(coords, esc_activo)
         if _HAS_ST_FOLIUM:
@@ -1356,6 +1526,9 @@ def _render_paso1():
         else:
             from streamlit.components.v1 import html as _html
             _html(m._repr_html_(), height=560)
+
+    # Disponibilidad de capas para el corredor — a ancho completo, bajo el mapa.
+    _render_estado_datos(coords[esc_activo])
 
     # ── Navegación ────────────────────────────────────────────────────────────
     distancias = {
