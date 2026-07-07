@@ -26,6 +26,7 @@ matplotlib
 contextily
 streamlit
 streamlit-folium
+reportlab       # informe PDF de resultados (comparativa + rutas + metricas)
 
 # --- Calidad / pruebas ---
 pytest

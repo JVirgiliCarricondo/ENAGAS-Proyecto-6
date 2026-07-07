@@ -423,6 +423,13 @@ _CSS = """
     letter-spacing: 0.2px !important;
   }
 
+  /* ── Botón "Generar informe PDF" — texto e icono en blanco ──────────────── */
+  .st-key-btn_pdf_informe div[data-testid="stDownloadButton"] > button,
+  .st-key-btn_pdf_informe div[data-testid="stDownloadButton"] > button * {
+    color: #ffffff !important;
+    fill: #ffffff !important;
+  }
+
   /* ── Paso 1: selector de punto bajo el mapa (etiqueta + radio) ──────────── */
   /* Etiqueta a la izquierda y opciones Origen/Destino apiladas en vertical a su
      derecha, con la MISMA tipografía y tamaño. La etiqueta se centra
@@ -1109,12 +1116,16 @@ def _mapa_resultados(escenarios: list[str] | None = None) -> folium.Map | None:
 
     gdf0 = gpd.read_file(rutas[0][2]).to_crs("EPSG:4326")
     c = gdf0.geometry.iloc[0].centroid
-    m = folium.Map(
-        location=[c.y, c.x],
-        zoom_start=12,
+    m = folium.Map(location=[c.y, c.x], zoom_start=12, tiles=None)
+    # Capa base con nombre propio y control=False: así el LayerControl no muestra
+    # la URL cruda del teselado (el "hiperenlace" que se veía en el selector).
+    folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         attr="Esri WorldImagery",
-    )
+        name="Ortofoto (Esri)",
+        overlay=False,
+        control=False,
+    ).add_to(m)
 
     esc_en_rutas = sorted({s for s, _, _ in rutas})
     grupos = {s: folium.FeatureGroup(name=f"Escenario {s}", show=True) for s in esc_en_rutas}
@@ -1150,7 +1161,7 @@ def _mapa_resultados(escenarios: list[str] | None = None) -> folium.Map | None:
                 box-shadow:0 2px 8px rgba(0,0,0,0.18);font-family:'Segoe UI',sans-serif;
                 font-size:13px;border-top:3px solid #002B5C;">
       <b>Perfiles</b><br>
-      <span class="c-corto" style="font-size:1.3em;">&#9644;</span><span> Ruta Corta</span><br>
+      <span class="c-corto" style="font-size:1.3em;">&#9644;</span><span> Corto</span><br>
       <span class="c-equilibrio" style="font-size:1.3em;">&#9644;</span><span> Equilibrio</span><br>
       <span class="c-ambiental" style="font-size:1.3em;">&#9644;</span><span> Ambiental</span><br>
       <span class="c-pendiente" style="font-size:1.3em;">&#9644;</span><span> Relieve (TPI)</span>
@@ -1628,33 +1639,93 @@ def _render_kpis(resultados: dict, escenarios: list[str]) -> None:
                 )
 
 
+_COL_RENAME_METRICAS = {
+    "perfil":                "Perfil",
+    "longitud_km":           "km",
+    "coste_relativo":        "Coste rel.",
+    "pendiente_max_pct":     "Pend.max %",
+    "pendiente_media_pct":   "Pend.med %",
+    "km_protegida":          "km prot.",
+    "km_inundable":          "km inund.",
+    "km_suelo_urbano":       "km urbano",
+    "n_cruces_rios":         "Rios",
+    "n_cruces_carreteras":   "Carreteras",
+    "n_cruces_ferrocarril":  "FFCC",
+}
+
+
+def _boton_informe_pdf(resultados: dict, escenarios: list[str]) -> None:
+    """Botón que genera y descarga el informe PDF completo de resultados.
+
+    El PDF (matplotlib + reportlab) se construye una sola vez por combinación de
+    escenarios/perfiles y se cachea en sesión; los reruns (cambio de pestaña,
+    etc.) reutilizan los bytes ya generados.
+    """
+    perfiles = st.session_state.get("perfiles_procesados")
+    # Firma para no regenerar el PDF en cada rerun.
+    firma = (
+        tuple(escenarios),
+        tuple(
+            (p.get("id"), tuple(sorted(p.get("pesos", {}).items())))
+            for p in (perfiles or [])
+        ),
+    )
+    cache = st.session_state.get("_pdf_informe_cache")
+    if not (cache and cache[0] == firma):
+        try:
+            from informe import construir_informe_pdf
+
+            coords = _coords_desde_cfg(_leer_cfg())
+            data = construir_informe_pdf(
+                escenarios=escenarios,
+                resultados=resultados,
+                perfiles=perfiles,
+                coords=coords,
+                rutas_dir=_RUTAS_DIR,
+                perfiles_orden=PERFILES,
+                colores=_COLORES,
+                nombre_perfil=_NOMBRE_PERFIL,
+                capas_peso=_CAPAS_PESO,
+                col_rename=_COL_RENAME_METRICAS,
+                logo_path=_ICON_PATH,
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.button("Generar informe PDF", disabled=True,
+                      use_container_width=True, icon=":material/download:",
+                      help=f"No se pudo generar el informe: {exc}")
+            return
+        cache = (firma, data)
+        st.session_state["_pdf_informe_cache"] = cache
+
+    st.download_button(
+        "Generar informe PDF",
+        data=cache[1],
+        file_name="informe_trazados_H2.pdf",
+        mime="application/pdf",
+        type="primary",
+        use_container_width=True,
+        icon=":material/download:",
+        key="dl_informe_pdf",
+    )
+
+
 def _render_results():
     resultados = st.session_state.get("resultados", {})
     escenarios = st.session_state.get(
         "escenarios_procesados", sorted(resultados.keys(), key=lambda x: (len(x), x))
     )
 
-    if st.button("← Volver a configuración", key="btn_back_results"):
-        st.session_state.pantalla = "paso2"
-        st.rerun()
-
-    st.markdown(
-        '<div style="display:flex;justify-content:space-between;align-items:flex-end;'
-        'gap:16px;flex-wrap:wrap;margin:2px 0 10px;">'
-        '<div>'
-        '<div class="results-title">Comparativa de Trazados de Ramales H₂</div>'
-        '<p class="results-sub">Visualización métrica de indicadores de rendimiento para la red '
-        'de transporte de hidrógeno renovable. Proyecto H2 Lab 2026.</p>'
-        '</div>'
-        '<div class="results-actions">'
-        '<span class="btn-ghost"><span class="material-symbols-outlined" '
-        'style="font-size:16px;">share</span>Compartir</span>'
-        '<span class="btn-solid"><span class="material-symbols-outlined" '
-        'style="font-size:16px;">download</span>Generar informe PDF</span>'
-        '</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    head_l, head_r = st.columns([3.2, 1], vertical_alignment="center")
+    with head_l:
+        st.markdown(
+            '<div class="results-title">Comparativa de Trazados de Ramales H₂</div>'
+            '<p class="results-sub">Visualización métrica de indicadores de rendimiento para la red '
+            'de transporte de hidrógeno renovable. Proyecto H2 Lab 2026.</p>',
+            unsafe_allow_html=True,
+        )
+    with head_r:
+        with st.container(key="btn_pdf_informe"):
+            _boton_informe_pdf(resultados, escenarios)
 
     # Avisos de preparación: capas de coste que no se pudieron generar para
     # algún escenario nuevo (p. ej. sin cobertura o sin fuente de datos). Se
@@ -1703,18 +1774,19 @@ def _render_results():
             _html(m._repr_html_(), height=640)
 
     # ── Tabs métricas ─────────────────────────────────────────────────────────
-    col_rename = {
-        "perfil":                "Perfil",
-        "longitud_km":           "km",
-        "coste_relativo":        "Coste rel.",
-        "pendiente_max_pct":     "Pend.max %",
-        "pendiente_media_pct":   "Pend.med %",
-        "km_protegida":          "km prot.",
-        "km_inundable":          "km inund.",
-        "km_suelo_urbano":       "km urbano",
-        "n_cruces_rios":         "Rios",
-        "n_cruces_carreteras":   "Carreteras",
-        "n_cruces_ferrocarril":  "FFCC",
+    col_rename = _COL_RENAME_METRICAS
+    # Formato por columna: máximo 3 decimales; los recuentos de cruces, enteros.
+    fmt_metricas = {
+        "km":          "{:.2f}",
+        "Coste rel.":  "{:.3f}",
+        "Pend.max %":  "{:.1f}",
+        "Pend.med %":  "{:.2f}",
+        "km prot.":    "{:.3f}",
+        "km inund.":   "{:.3f}",
+        "km urbano":   "{:.3f}",
+        "Rios":        "{:.0f}",
+        "Carreteras":  "{:.0f}",
+        "FFCC":        "{:.0f}",
     }
 
     for s in escenarios:
@@ -1734,18 +1806,18 @@ def _render_results():
                 lambda p: _NOMBRE_PERFIL.get(p, p)
             )
 
-            st.dataframe(
-                df_show.style.format({
-                    "km":          "{:.2f}",
-                    "Coste rel.":  "{:.3f}",
-                    "Pend.max %":  "{:.1f}",
-                    "Pend.med %":  "{:.2f}",
-                    "km prot.":    "{:.3f}",
-                    "km urbano":   "{:.3f}",
-                }),
-                use_container_width=True,
-                hide_index=True,
-            )
+            # Cada columna numérica se formatea a texto (máx. 3 decimales) y se
+            # usa st.dataframe: la tabla sigue siendo ajustable (redimensionar,
+            # ordenar, fijar, ocultar…), pero al ser columnas de texto ya NO
+            # aparece la opción "Format" del menú de columna (que solo existe
+            # para columnas numéricas).
+            df_txt = df_show.copy()
+            for etiqueta, spec in fmt_metricas.items():
+                if etiqueta in df_txt.columns:
+                    df_txt[etiqueta] = df_txt[etiqueta].map(
+                        lambda v, _sp=spec: "—" if pd.isna(v) else _sp.format(v)
+                    )
+            st.dataframe(df_txt, use_container_width=True, hide_index=True)
 
             st.write("")
             _render_kpis(resultados, [s])
@@ -1788,6 +1860,15 @@ def _render_results():
                 st.dataframe(df_matriz, use_container_width=True)
 
             st.markdown("---")
+
+    # ── Navegación inferior (como en el resto de ventanas) ────────────────────
+    st.markdown("---")
+    c_back, _, _ = st.columns([1.4, 2, 1.4])
+    with c_back:
+        if st.button("← Volver a configuración", use_container_width=True,
+                     key="btn_back_results"):
+            st.session_state.pantalla = "paso2"
+            st.rerun()
 
 
 # ── Stepper de progreso ───────────────────────────────────────────────────────
