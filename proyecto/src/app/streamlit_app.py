@@ -295,8 +295,23 @@ _CSS = """
     border: 2px solid #fff !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.25) !important;
   }
-  div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div {
+  /* Relleno de la barra en primario, EXCLUYENDO la barra de marcas (0%/100%)
+     para no pintarles el fondo azul. */
+  div[data-testid="stSlider"] div[data-baseweb="slider"]
+    > div:not([data-testid="stSliderTickBar"]) > div {
     background: var(--primary) !important;
+  }
+  /* Etiquetas de extremos del slider (0% / 100%): sin fondo y en negro, siempre
+     visibles. Alta especificidad para ganar a la regla de relleno de arriba. */
+  div[data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stSliderTickBar"],
+  div[data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stSliderTickBarMin"],
+  div[data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stSliderTickBarMax"] {
+    color: var(--on-surface) !important;
+    -webkit-text-fill-color: var(--on-surface) !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    opacity: 1 !important;
+    font-weight: 600 !important;
   }
 
   /* ── Pestañas: subrayado con acento primario ──────────────────────────── */
@@ -401,6 +416,43 @@ _CSS = """
     background: #3d5600 !important;
     border-color: #3d5600 !important;
   }
+
+  /* ── Botones "atrás" al mismo tamaño que el primario contiguo ──────────── */
+  /* Paso 1 (← Inicio / Pesos y Perfiles) y Paso 2 (← Origen y Destino / Generar rutas) */
+  .st-key-btn_p1_inicio div[data-testid="stButton"] > button,
+  .st-key-btn_p2_back div[data-testid="stButton"] > button {
+    padding: 12px 28px !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.2px !important;
+  }
+
+  /* ── Paso 1: selector de punto bajo el mapa (etiqueta + radio) ──────────── */
+  /* Etiqueta a la izquierda y opciones Origen/Destino apiladas en vertical a su
+     derecha, con la MISMA tipografía y tamaño. La etiqueta se centra
+     verticalmente respecto al bloque de las dos opciones. */
+  .st-key-p1_map_selector [data-testid="stElementContainer"] { margin: 0 !important; }
+
+  .p1-sel-label {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin: 0;
+    text-align: right;
+    white-space: nowrap;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.9rem;
+    line-height: 1.2;
+    color: var(--on-surface-variant);
+  }
+  .st-key-p1_map_selector div[data-testid="stRadio"] label p,
+  .st-key-p1_map_selector div[data-testid="stRadio"] div[role="radiogroup"] label {
+    font-family: var(--font-body) !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    color: var(--on-surface-variant) !important;
+  }
+  .st-key-p1_map_selector div[data-testid="stRadio"] { margin: 0 !important; }
 
   /* ── Barra superior: botón de modo noche ──────────────────────────────── */
   div[class*="st-key-topnav"] button {
@@ -674,6 +726,20 @@ def _cargar_perfiles_defecto() -> list[dict]:
     return copy.deepcopy(data["perfiles"])
 
 
+# Barrera dura de pendiente (%): pendiente Horn > este valor → celda intransitable.
+# Vive en perfiles.yaml → parametros_capas.tpi.umbral_barrera_pct (por defecto 70).
+_BARRERA_PENDIENTE_DEFECTO = 70
+
+
+def _barrera_pendiente_actual() -> int:
+    try:
+        data = yaml.safe_load(_PERFILES_PATH.read_text(encoding="utf-8"))
+        val = data["parametros_capas"]["tpi"]["umbral_barrera_pct"]
+        return int(round(float(val)))
+    except (KeyError, TypeError, ValueError, OSError):
+        return _BARRERA_PENDIENTE_DEFECTO
+
+
 def _perfil_por_id(perfiles: list[dict], pid: str) -> dict:
     for p in perfiles:
         if p["id"] == pid:
@@ -715,7 +781,6 @@ def _render_editor_pesos() -> list[dict]:
         col_a, col_b = st.columns(2, gap="large")
         pesos = perfil.setdefault("pesos", {})
         ver = st.session_state.pesos_version
-        suma_pct = 0
         for i, (clave, etiqueta) in enumerate(_CAPAS_PESO):
             col = col_a if i % 2 == 0 else col_b
             with col:
@@ -729,16 +794,6 @@ def _render_editor_pesos() -> list[dict]:
                     key=f"peso_{pid}_{clave}_v{ver}",
                 )
                 pesos[clave] = pct / 100
-                suma_pct += pct
-
-        suma_color = "var(--secondary)" if suma_pct == 100 else "var(--error)"
-        st.markdown(
-            f'<p style="font-family:var(--font-mono);font-size:0.82rem;'
-            f'color:var(--on-surface-variant);margin-top:10px;">Suma de pesos: '
-            f'<b style="color:{suma_color};">{suma_pct}%</b>'
-            f'<span style="opacity:0.6;margin-left:6px;">(recomendado: 100%)</span></p>',
-            unsafe_allow_html=True,
-        )
 
         btn_r, btn_a = st.columns(2)
         with btn_r:
@@ -754,18 +809,6 @@ def _render_editor_pesos() -> list[dict]:
                 st.rerun()
 
     return perfiles
-
-
-def _tabla_comparativa_perfiles(perfiles: list[dict]) -> None:
-    """Tabla resumen de los pesos por perfil (en %)."""
-    filas = []
-    for p in perfiles:
-        row = {"Perfil": _NOMBRE_PERFIL.get(p["id"], p["id"])}
-        for clave, etiqueta in _CAPAS_PESO:
-            v = p.get("pesos", {}).get(clave, 0.0)
-            row[etiqueta.split(" (")[0]] = f"{round(v * 100)}%"
-        filas.append(row)
-    st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
 
 def _crear_escenario(cfg: dict, coords: dict, nuevo_id: str, ref_id: str | None) -> str:
@@ -786,6 +829,7 @@ def _ejecutar_pipeline(
     progress_cb,
     escenarios: list[str],
     perfiles: list[dict] | None = None,
+    umbral_barrera_pct: float | None = None,
 ) -> dict:
     import importlib
     import logging as _logging
@@ -801,6 +845,14 @@ def _ejecutar_pipeline(
 
     if not escenarios:
         raise ValueError("No hay escenarios configurados.")
+
+    # Barrera dura de pendiente: si el usuario la cambió respecto al valor por
+    # defecto, se sobreescribe el global de la capa TPI y se regenera esa capa
+    # (donde vive la barrera) para los escenarios ya preparados.
+    _tpimod = None
+    if umbral_barrera_pct is not None:
+        import superficie.tpi as _tpimod
+        _tpimod.UMBRAL_BARRERA_PCT = float(umbral_barrera_pct)
 
     n = len(escenarios)
     avisos_prep: dict[str, list[str]] = {}
@@ -821,6 +873,12 @@ def _ejecutar_pipeline(
             )
             if res_prep.get("avisos"):
                 avisos_prep[s] = res_prep["avisos"]
+        elif _tpimod is not None:
+            # Escenario ya preparado: regenerar solo la capa TPI (barrera) con
+            # el nuevo umbral, a partir del DEM ya existente.
+            progress_cb(base, f"Aplicando barrera de pendiente "
+                              f"({umbral_barrera_pct:.0f}%) — Escenario {s}…")
+            _tpimod.procesar_escenario(s)
         progress_cb(base + span * 0.72, f"Calculando rutas — Escenario {s}…")
         run_perfiles(s, perfiles_override=perfiles)
 
@@ -850,6 +908,66 @@ def _color_escenario(sid: str) -> str:
     return ["#6A3D9A", "#B15928", "#FB9A99", "#CAB2D6", "#FFFF99"][idx]
 
 
+# CSS corporativo para los controles nativos de Leaflet (zoom +/- y atribución).
+# Se inyecta DENTRO del HTML del mapa (el iframe), donde no llega el CSS de la app.
+_MAPA_CSS_CORP = """
+<style>
+  /* ── Control de zoom (+/-) : tarjeta corporativa ─────────────────────── */
+  .leaflet-control-zoom.leaflet-bar {
+    border: none !important;
+    border-radius: 10px !important;
+    box-shadow: 0 2px 10px rgba(0,75,118,0.20) !important;
+    overflow: hidden !important;
+  }
+  .leaflet-control-zoom a {
+    width: 32px !important; height: 32px !important; line-height: 32px !important;
+    background: #ffffff !important;
+    color: #004e7e !important;
+    font-family: 'Inter','Segoe UI',Arial,sans-serif !important;
+    font-size: 18px !important; font-weight: 700 !important;
+    border: none !important;
+    border-bottom: 1px solid #e5e9eb !important;
+    transition: background .15s ease, color .15s ease !important;
+  }
+  .leaflet-control-zoom a.leaflet-control-zoom-out { border-bottom: none !important; }
+  .leaflet-control-zoom a:hover {
+    background: #004e7e !important;
+    color: #ffffff !important;
+  }
+  .leaflet-control-zoom a.leaflet-disabled {
+    background: #f1f4f6 !important; color: #b0b7bd !important;
+  }
+
+  /* ── Atribución (fuente) : píldora corporativa, sin bandera ──────────── */
+  .leaflet-control-attribution {
+    background: rgba(255,255,255,0.94) !important;
+    color: #404750 !important;
+    font-family: 'Inter','Segoe UI',Arial,sans-serif !important;
+    font-size: 10.5px !important;
+    line-height: 1.4 !important;
+    padding: 3px 9px !important;
+    border-radius: 8px 0 0 0 !important;
+    border-top: 2px solid #004e7e !important;
+    box-shadow: 0 1px 6px rgba(0,75,118,0.14) !important;
+  }
+  .leaflet-control-attribution a {
+    color: #004e7e !important; font-weight: 600 !important; text-decoration: none !important;
+  }
+  .leaflet-control-attribution a:hover { text-decoration: underline !important; }
+  /* Ocultar la bandera de Leaflet en el prefijo. Especificidad alta a propósito:
+     leaflet.css trae `.leaflet-attribution-flag{display:inline!important}` y se
+     carga después, así que hay que ganarle con un selector más específico. */
+  .leaflet-control-attribution svg.leaflet-attribution-flag,
+  .leaflet-container svg.leaflet-attribution-flag { display: none !important; }
+</style>
+"""
+
+
+def _estilo_corporativo_mapa(m: folium.Map) -> None:
+    """Inyecta el CSS corporativo de los controles Leaflet en el HTML del mapa."""
+    m.get_root().header.add_child(folium.Element(_MAPA_CSS_CORP))
+
+
 def _marcador_punto(
     m: folium.Map,
     lat: float,
@@ -873,13 +991,16 @@ def _marcador_punto(
         f"<small>({lat:.5f}, {lon:.5f})</small>"
     )
     if activo:
-        size = 26
+        size = 28
+        # Letra O/D perfectamente centrada (flexbox) y estilo corporativo:
+        # tipografía de titulares Enagás, anillo blanco y sombra sutil.
         badge = (
-            f'<div style="font-family:Inter,\'Segoe UI\',sans-serif;font-size:13px;'
-            f'font-weight:700;color:#fff;background:{fill};'
-            f'width:{size}px;height:{size}px;line-height:{size}px;text-align:center;'
-            f'border-radius:50%;border:2px solid #fff;'
-            f'box-shadow:0 2px 6px rgba(0,0,0,0.30);">{letra}</div>'
+            f'<div style="font-family:\'Hanken Grotesk\',Inter,\'Segoe UI\',sans-serif;'
+            f'font-size:14px;font-weight:800;letter-spacing:0.02em;color:#fff;'
+            f'background:{fill};width:{size}px;height:{size}px;'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'border-radius:50%;border:2.5px solid #fff;'
+            f'box-shadow:0 2px 6px rgba(0,0,0,0.35);">{letra}</div>'
         )
         folium.Marker(
             location=[lat, lon],
@@ -974,6 +1095,7 @@ def _mapa_entrada(coords: dict, escenario_activo: str) -> folium.Map:
     """
     m.get_root().html.add_child(folium.Element(leyenda))
 
+    _estilo_corporativo_mapa(m)
     return m
 
 
@@ -1038,6 +1160,8 @@ def _mapa_resultados(escenarios: list[str] | None = None) -> folium.Map | None:
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend))
+
+    _estilo_corporativo_mapa(m)
 
     if all_bounds:
         bounds = np.array(all_bounds)
@@ -1505,24 +1629,28 @@ def _render_paso1():
                     }
                     st.rerun()
 
-            # Debajo del mapa, en una sola línea: etiqueta + selector de punto activo
-            _, lbl_col, rad_col = st.columns([0.5, 1.5, 1], vertical_alignment="center")
-            with lbl_col:
-                st.markdown(
-                    f'<p class="section-label" style="margin:0;text-align:right;">'
-                    f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
-                    unsafe_allow_html=True,
+            # Debajo del mapa, centrado: etiqueta + selector de punto activo, ambos
+            # con la misma tipografía y tamaño, alineados y centrados bajo el mapa.
+            with st.container(key="p1_map_selector"):
+                sp_l, lbl_col, rad_col, sp_r = st.columns(
+                    [1, 2.3, 1.8, 0.9], vertical_alignment="center"
                 )
-            with rad_col:
-                st.session_state.punto_activo_rol = st.radio(
-                    "Punto activo",
-                    options=["origen", "destino"],
-                    format_func=str.capitalize,
-                    index=0 if st.session_state.punto_activo_rol == "origen" else 1,
-                    label_visibility="collapsed",
-                    horizontal=True,
-                    key="radio_punto_rol",
-                )
+                with lbl_col:
+                    st.markdown(
+                        f'<p class="p1-sel-label">'
+                        f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
+                        unsafe_allow_html=True,
+                    )
+                with rad_col:
+                    st.session_state.punto_activo_rol = st.radio(
+                        "Punto activo",
+                        options=["origen", "destino"],
+                        format_func=str.capitalize,
+                        index=0 if st.session_state.punto_activo_rol == "origen" else 1,
+                        label_visibility="collapsed",
+                        horizontal=False,
+                        key="radio_punto_rol",
+                    )
         else:
             from streamlit.components.v1 import html as _html
             _html(m._repr_html_(), height=560)
@@ -1568,46 +1696,57 @@ def _render_paso2():
     coords = st.session_state.get("coords") or _coords_desde_cfg(_leer_cfg())
     escenarios = sorted(coords.keys(), key=lambda x: (len(x), x))
 
-    top = st.container()  # cabecera (título + botón "Generar rutas"), rellenada al final
+    st.markdown(
+        '<div class="section-h1">Paso 2: Pesos y Perfiles</div>',
+        unsafe_allow_html=True,
+    )
 
-    col_izq, col_der = st.columns([3, 2], gap="large")
-    with col_izq:
-        perfiles_cfg = _render_editor_pesos()
-    with col_der:
+    # Editor de pesos a todo el ancho (sin tabla comparativa a la derecha).
+    perfiles_cfg = _render_editor_pesos()
+
+    # ── Caja: barrera dura de pendiente ───────────────────────────────────────
+    barrera_defecto = _barrera_pendiente_actual()
+    with st.container(border=True):
         st.markdown(
-            '<h3 style="font-family:var(--font-head);color:var(--on-surface);'
-            'font-size:1.05rem;font-weight:700;margin:0 0 8px;">Comparativa de Perfiles</h3>',
+            '<div class="scenario-title">Barrera dura de pendiente</div>'
+            '<p style="color:var(--on-surface-variant);font-size:0.85rem;margin:0 0 8px;">'
+            'Pendiente máxima transitable: las celdas cuyo terreno supere este valor se '
+            'marcan como <b>intransitables</b> y las rutas las esquivan. '
+            '(70&nbsp;% ≈ 35°).</p>',
             unsafe_allow_html=True,
         )
-        _tabla_comparativa_perfiles(perfiles_cfg)
-
-    generar = False
-    with top:
-        h_txt, h_btn = st.columns([3, 1])
-        with h_txt:
-            st.markdown(
-                '<div class="section-h1">Paso 2: Pesos y Perfiles</div>'
-                '<p class="section-desc">Cada perfil combina los pesos de coste, longitud, '
-                'zonas protegidas, relieve y otros criterios. Los valores son índices relativos. '
-                'Cada peso está acotado entre 0 y 1; la suma debe ser 1 (100%).</p>',
-                unsafe_allow_html=True,
+        c_in, _sp = st.columns([1, 2])
+        with c_in:
+            barrera_pct = st.number_input(
+                "Barrera de pendiente (%)",
+                min_value=5, max_value=100,
+                value=int(barrera_defecto), step=5,
+                format="%d",
+                key="barrera_pendiente_pct",
             )
-        with h_btn:
-            generar = st.button("Generar rutas", type="primary",
-                                use_container_width=True, key="btn_generar_rutas")
-        c_back, _ = st.columns([1.2, 3])
-        with c_back:
-            if st.button("← Origen y Destino", use_container_width=True, key="btn_p2_back"):
-                st.session_state.pantalla = "paso1"
-                st.rerun()
+
+    # ── Navegación inferior (como en el Paso 1) ───────────────────────────────
+    st.markdown("---")
+    c_back, _, c_next = st.columns([1.4, 2, 1.4])
+    with c_back:
+        if st.button("← Origen y Destino", use_container_width=True, key="btn_p2_back"):
+            st.session_state.pantalla = "paso1"
+            st.rerun()
+    with c_next:
+        generar = st.button("Generar rutas", type="primary",
+                            use_container_width=True, key="btn_generar_rutas")
 
     if generar:
+        # Solo se pasa el umbral si cambió respecto al valor por defecto (evita
+        # regenerar la capa TPI innecesariamente).
+        umbral = float(barrera_pct) if int(barrera_pct) != int(barrera_defecto) else None
         bar = st.progress(0, text="Iniciando pipeline...")
         try:
             resultados = _ejecutar_pipeline(
                 lambda pct, msg: bar.progress(pct, text=msg),
                 escenarios=escenarios,
                 perfiles=copy.deepcopy(perfiles_cfg),
+                umbral_barrera_pct=umbral,
             )
             st.session_state.resultados = resultados
             st.session_state.escenarios_procesados = escenarios
