@@ -395,6 +395,41 @@ _CSS = """
     border-color: #3d5600 !important;
   }
 
+  /* ── Paso 1: botón "← Inicio" al mismo tamaño que el primario "Pesos y Perfiles" ── */
+  .st-key-btn_p1_inicio div[data-testid="stButton"] > button {
+    padding: 12px 28px !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.2px !important;
+  }
+
+  /* ── Paso 1: selector de punto bajo el mapa (etiqueta + radio) ──────────── */
+  /* Etiqueta a la izquierda y opciones Origen/Destino apiladas en vertical a su
+     derecha, con la MISMA tipografía y tamaño. La etiqueta se centra
+     verticalmente respecto al bloque de las dos opciones. */
+  .st-key-p1_map_selector [data-testid="stElementContainer"] { margin: 0 !important; }
+
+  .p1-sel-label {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin: 0;
+    text-align: right;
+    white-space: nowrap;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.9rem;
+    line-height: 1.2;
+    color: var(--on-surface-variant);
+  }
+  .st-key-p1_map_selector div[data-testid="stRadio"] label p,
+  .st-key-p1_map_selector div[data-testid="stRadio"] div[role="radiogroup"] label {
+    font-family: var(--font-body) !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    color: var(--on-surface-variant) !important;
+  }
+  .st-key-p1_map_selector div[data-testid="stRadio"] { margin: 0 !important; }
+
   /* ── Barra superior: botón de modo noche ──────────────────────────────── */
   div[class*="st-key-topnav"] button {
     background: transparent;
@@ -843,6 +878,66 @@ def _color_escenario(sid: str) -> str:
     return ["#6A3D9A", "#B15928", "#FB9A99", "#CAB2D6", "#FFFF99"][idx]
 
 
+# CSS corporativo para los controles nativos de Leaflet (zoom +/- y atribución).
+# Se inyecta DENTRO del HTML del mapa (el iframe), donde no llega el CSS de la app.
+_MAPA_CSS_CORP = """
+<style>
+  /* ── Control de zoom (+/-) : tarjeta corporativa ─────────────────────── */
+  .leaflet-control-zoom.leaflet-bar {
+    border: none !important;
+    border-radius: 10px !important;
+    box-shadow: 0 2px 10px rgba(0,75,118,0.20) !important;
+    overflow: hidden !important;
+  }
+  .leaflet-control-zoom a {
+    width: 32px !important; height: 32px !important; line-height: 32px !important;
+    background: #ffffff !important;
+    color: #004e7e !important;
+    font-family: 'Inter','Segoe UI',Arial,sans-serif !important;
+    font-size: 18px !important; font-weight: 700 !important;
+    border: none !important;
+    border-bottom: 1px solid #e5e9eb !important;
+    transition: background .15s ease, color .15s ease !important;
+  }
+  .leaflet-control-zoom a.leaflet-control-zoom-out { border-bottom: none !important; }
+  .leaflet-control-zoom a:hover {
+    background: #004e7e !important;
+    color: #ffffff !important;
+  }
+  .leaflet-control-zoom a.leaflet-disabled {
+    background: #f1f4f6 !important; color: #b0b7bd !important;
+  }
+
+  /* ── Atribución (fuente) : píldora corporativa, sin bandera ──────────── */
+  .leaflet-control-attribution {
+    background: rgba(255,255,255,0.94) !important;
+    color: #404750 !important;
+    font-family: 'Inter','Segoe UI',Arial,sans-serif !important;
+    font-size: 10.5px !important;
+    line-height: 1.4 !important;
+    padding: 3px 9px !important;
+    border-radius: 8px 0 0 0 !important;
+    border-top: 2px solid #004e7e !important;
+    box-shadow: 0 1px 6px rgba(0,75,118,0.14) !important;
+  }
+  .leaflet-control-attribution a {
+    color: #004e7e !important; font-weight: 600 !important; text-decoration: none !important;
+  }
+  .leaflet-control-attribution a:hover { text-decoration: underline !important; }
+  /* Ocultar la bandera de Leaflet en el prefijo. Especificidad alta a propósito:
+     leaflet.css trae `.leaflet-attribution-flag{display:inline!important}` y se
+     carga después, así que hay que ganarle con un selector más específico. */
+  .leaflet-control-attribution svg.leaflet-attribution-flag,
+  .leaflet-container svg.leaflet-attribution-flag { display: none !important; }
+</style>
+"""
+
+
+def _estilo_corporativo_mapa(m: folium.Map) -> None:
+    """Inyecta el CSS corporativo de los controles Leaflet en el HTML del mapa."""
+    m.get_root().header.add_child(folium.Element(_MAPA_CSS_CORP))
+
+
 def _marcador_punto(
     m: folium.Map,
     lat: float,
@@ -866,13 +961,16 @@ def _marcador_punto(
         f"<small>({lat:.5f}, {lon:.5f})</small>"
     )
     if activo:
-        size = 26
+        size = 28
+        # Letra O/D perfectamente centrada (flexbox) y estilo corporativo:
+        # tipografía de titulares Enagás, anillo blanco y sombra sutil.
         badge = (
-            f'<div style="font-family:Inter,\'Segoe UI\',sans-serif;font-size:13px;'
-            f'font-weight:700;color:#fff;background:{fill};'
-            f'width:{size}px;height:{size}px;line-height:{size}px;text-align:center;'
-            f'border-radius:50%;border:2px solid #fff;'
-            f'box-shadow:0 2px 6px rgba(0,0,0,0.30);">{letra}</div>'
+            f'<div style="font-family:\'Hanken Grotesk\',Inter,\'Segoe UI\',sans-serif;'
+            f'font-size:14px;font-weight:800;letter-spacing:0.02em;color:#fff;'
+            f'background:{fill};width:{size}px;height:{size}px;'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'border-radius:50%;border:2.5px solid #fff;'
+            f'box-shadow:0 2px 6px rgba(0,0,0,0.35);">{letra}</div>'
         )
         folium.Marker(
             location=[lat, lon],
@@ -957,6 +1055,7 @@ def _mapa_entrada(coords: dict, escenario_activo: str) -> folium.Map:
     """
     m.get_root().html.add_child(folium.Element(leyenda))
 
+    _estilo_corporativo_mapa(m)
     return m
 
 
@@ -1021,6 +1120,8 @@ def _mapa_resultados(escenarios: list[str] | None = None) -> folium.Map | None:
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend))
+
+    _estilo_corporativo_mapa(m)
 
     if all_bounds:
         bounds = np.array(all_bounds)
@@ -1169,24 +1270,28 @@ def _render_paso1():
                     coords[esc_activo][rol]["y"] = round(y_utm)
                     st.rerun()
 
-            # Debajo del mapa, en una sola línea: etiqueta + selector de punto activo
-            _, lbl_col, rad_col = st.columns([0.5, 1.5, 1], vertical_alignment="center")
-            with lbl_col:
-                st.markdown(
-                    f'<p class="section-label" style="margin:0;text-align:right;">'
-                    f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
-                    unsafe_allow_html=True,
+            # Debajo del mapa, centrado: etiqueta + selector de punto activo, ambos
+            # con la misma tipografía y tamaño, alineados y centrados bajo el mapa.
+            with st.container(key="p1_map_selector"):
+                sp_l, lbl_col, rad_col, sp_r = st.columns(
+                    [1, 2.3, 1.8, 0.9], vertical_alignment="center"
                 )
-            with rad_col:
-                st.session_state.punto_activo_rol = st.radio(
-                    "Punto activo",
-                    options=["origen", "destino"],
-                    format_func=str.capitalize,
-                    index=0 if st.session_state.punto_activo_rol == "origen" else 1,
-                    label_visibility="collapsed",
-                    horizontal=True,
-                    key="radio_punto_rol",
-                )
+                with lbl_col:
+                    st.markdown(
+                        f'<p class="p1-sel-label">'
+                        f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
+                        unsafe_allow_html=True,
+                    )
+                with rad_col:
+                    st.session_state.punto_activo_rol = st.radio(
+                        "Punto activo",
+                        options=["origen", "destino"],
+                        format_func=str.capitalize,
+                        index=0 if st.session_state.punto_activo_rol == "origen" else 1,
+                        label_visibility="collapsed",
+                        horizontal=False,
+                        key="radio_punto_rol",
+                    )
         else:
             from streamlit.components.v1 import html as _html
             _html(m._repr_html_(), height=560)
