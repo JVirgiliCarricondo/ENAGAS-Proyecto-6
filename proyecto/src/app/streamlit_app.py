@@ -292,8 +292,23 @@ _CSS = """
     border: 2px solid #fff !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.25) !important;
   }
-  div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div {
+  /* Relleno de la barra en primario, EXCLUYENDO la barra de marcas (0%/100%)
+     para no pintarles el fondo azul. */
+  div[data-testid="stSlider"] div[data-baseweb="slider"]
+    > div:not([data-testid="stSliderTickBar"]) > div {
     background: var(--primary) !important;
+  }
+  /* Etiquetas de extremos del slider (0% / 100%): sin fondo y en negro, siempre
+     visibles. Alta especificidad para ganar a la regla de relleno de arriba. */
+  div[data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stSliderTickBar"],
+  div[data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stSliderTickBarMin"],
+  div[data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stSliderTickBarMax"] {
+    color: var(--on-surface) !important;
+    -webkit-text-fill-color: var(--on-surface) !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    opacity: 1 !important;
+    font-weight: 600 !important;
   }
 
   /* ── Pestañas: subrayado con acento primario ──────────────────────────── */
@@ -399,8 +414,10 @@ _CSS = """
     border-color: #3d5600 !important;
   }
 
-  /* ── Paso 1: botón "← Inicio" al mismo tamaño que el primario "Pesos y Perfiles" ── */
-  .st-key-btn_p1_inicio div[data-testid="stButton"] > button {
+  /* ── Botones "atrás" al mismo tamaño que el primario contiguo ──────────── */
+  /* Paso 1 (← Inicio / Pesos y Perfiles) y Paso 2 (← Origen y Destino / Generar rutas) */
+  .st-key-btn_p1_inicio div[data-testid="stButton"] > button,
+  .st-key-btn_p2_back div[data-testid="stButton"] > button {
     padding: 12px 28px !important;
     font-size: 0.95rem !important;
     letter-spacing: 0.2px !important;
@@ -706,6 +723,20 @@ def _cargar_perfiles_defecto() -> list[dict]:
     return copy.deepcopy(data["perfiles"])
 
 
+# Barrera dura de pendiente (%): pendiente Horn > este valor → celda intransitable.
+# Vive en perfiles.yaml → parametros_capas.tpi.umbral_barrera_pct (por defecto 70).
+_BARRERA_PENDIENTE_DEFECTO = 70
+
+
+def _barrera_pendiente_actual() -> int:
+    try:
+        data = yaml.safe_load(_PERFILES_PATH.read_text(encoding="utf-8"))
+        val = data["parametros_capas"]["tpi"]["umbral_barrera_pct"]
+        return int(round(float(val)))
+    except (KeyError, TypeError, ValueError, OSError):
+        return _BARRERA_PENDIENTE_DEFECTO
+
+
 def _perfil_por_id(perfiles: list[dict], pid: str) -> dict:
     for p in perfiles:
         if p["id"] == pid:
@@ -747,7 +778,6 @@ def _render_editor_pesos() -> list[dict]:
         col_a, col_b = st.columns(2, gap="large")
         pesos = perfil.setdefault("pesos", {})
         ver = st.session_state.pesos_version
-        suma_pct = 0
         for i, (clave, etiqueta) in enumerate(_CAPAS_PESO):
             col = col_a if i % 2 == 0 else col_b
             with col:
@@ -761,16 +791,6 @@ def _render_editor_pesos() -> list[dict]:
                     key=f"peso_{pid}_{clave}_v{ver}",
                 )
                 pesos[clave] = pct / 100
-                suma_pct += pct
-
-        suma_color = "var(--secondary)" if suma_pct == 100 else "var(--error)"
-        st.markdown(
-            f'<p style="font-family:var(--font-mono);font-size:0.82rem;'
-            f'color:var(--on-surface-variant);margin-top:10px;">Suma de pesos: '
-            f'<b style="color:{suma_color};">{suma_pct}%</b>'
-            f'<span style="opacity:0.6;margin-left:6px;">(recomendado: 100%)</span></p>',
-            unsafe_allow_html=True,
-        )
 
         btn_r, btn_a = st.columns(2)
         with btn_r:
@@ -786,18 +806,6 @@ def _render_editor_pesos() -> list[dict]:
                 st.rerun()
 
     return perfiles
-
-
-def _tabla_comparativa_perfiles(perfiles: list[dict]) -> None:
-    """Tabla resumen de los pesos por perfil (en %)."""
-    filas = []
-    for p in perfiles:
-        row = {"Perfil": _NOMBRE_PERFIL.get(p["id"], p["id"])}
-        for clave, etiqueta in _CAPAS_PESO:
-            v = p.get("pesos", {}).get(clave, 0.0)
-            row[etiqueta.split(" (")[0]] = f"{round(v * 100)}%"
-        filas.append(row)
-    st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
 
 def _crear_escenario(cfg: dict, coords: dict, nuevo_id: str, ref_id: str | None) -> str:
@@ -818,6 +826,7 @@ def _ejecutar_pipeline(
     progress_cb,
     escenarios: list[str],
     perfiles: list[dict] | None = None,
+    umbral_barrera_pct: float | None = None,
 ) -> dict:
     import importlib
     import logging as _logging
@@ -833,6 +842,14 @@ def _ejecutar_pipeline(
 
     if not escenarios:
         raise ValueError("No hay escenarios configurados.")
+
+    # Barrera dura de pendiente: si el usuario la cambió respecto al valor por
+    # defecto, se sobreescribe el global de la capa TPI y se regenera esa capa
+    # (donde vive la barrera) para los escenarios ya preparados.
+    _tpimod = None
+    if umbral_barrera_pct is not None:
+        import superficie.tpi as _tpimod
+        _tpimod.UMBRAL_BARRERA_PCT = float(umbral_barrera_pct)
 
     n = len(escenarios)
     avisos_prep: dict[str, list[str]] = {}
@@ -853,6 +870,12 @@ def _ejecutar_pipeline(
             )
             if res_prep.get("avisos"):
                 avisos_prep[s] = res_prep["avisos"]
+        elif _tpimod is not None:
+            # Escenario ya preparado: regenerar solo la capa TPI (barrera) con
+            # el nuevo umbral, a partir del DEM ya existente.
+            progress_cb(base, f"Aplicando barrera de pendiente "
+                              f"({umbral_barrera_pct:.0f}%) — Escenario {s}…")
+            _tpimod.procesar_escenario(s)
         progress_cb(base + span * 0.72, f"Calculando rutas — Escenario {s}…")
         run_perfiles(s, perfiles_override=perfiles)
 
@@ -1500,46 +1523,57 @@ def _render_paso2():
     coords = st.session_state.get("coords") or _coords_desde_cfg(_leer_cfg())
     escenarios = sorted(coords.keys(), key=lambda x: (len(x), x))
 
-    top = st.container()  # cabecera (título + botón "Generar rutas"), rellenada al final
+    st.markdown(
+        '<div class="section-h1">Paso 2: Pesos y Perfiles</div>',
+        unsafe_allow_html=True,
+    )
 
-    col_izq, col_der = st.columns([3, 2], gap="large")
-    with col_izq:
-        perfiles_cfg = _render_editor_pesos()
-    with col_der:
+    # Editor de pesos a todo el ancho (sin tabla comparativa a la derecha).
+    perfiles_cfg = _render_editor_pesos()
+
+    # ── Caja: barrera dura de pendiente ───────────────────────────────────────
+    barrera_defecto = _barrera_pendiente_actual()
+    with st.container(border=True):
         st.markdown(
-            '<h3 style="font-family:var(--font-head);color:var(--on-surface);'
-            'font-size:1.05rem;font-weight:700;margin:0 0 8px;">Comparativa de Perfiles</h3>',
+            '<div class="scenario-title">Barrera dura de pendiente</div>'
+            '<p style="color:var(--on-surface-variant);font-size:0.85rem;margin:0 0 8px;">'
+            'Pendiente máxima transitable: las celdas cuyo terreno supere este valor se '
+            'marcan como <b>intransitables</b> y las rutas las esquivan. '
+            '(70&nbsp;% ≈ 35°).</p>',
             unsafe_allow_html=True,
         )
-        _tabla_comparativa_perfiles(perfiles_cfg)
-
-    generar = False
-    with top:
-        h_txt, h_btn = st.columns([3, 1])
-        with h_txt:
-            st.markdown(
-                '<div class="section-h1">Paso 2: Pesos y Perfiles</div>'
-                '<p class="section-desc">Cada perfil combina los pesos de coste, longitud, '
-                'zonas protegidas, relieve y otros criterios. Los valores son índices relativos. '
-                'Cada peso está acotado entre 0 y 1; la suma debe ser 1 (100%).</p>',
-                unsafe_allow_html=True,
+        c_in, _sp = st.columns([1, 2])
+        with c_in:
+            barrera_pct = st.number_input(
+                "Barrera de pendiente (%)",
+                min_value=5, max_value=100,
+                value=int(barrera_defecto), step=5,
+                format="%d",
+                key="barrera_pendiente_pct",
             )
-        with h_btn:
-            generar = st.button("Generar rutas", type="primary",
-                                use_container_width=True, key="btn_generar_rutas")
-        c_back, _ = st.columns([1.2, 3])
-        with c_back:
-            if st.button("← Origen y Destino", use_container_width=True, key="btn_p2_back"):
-                st.session_state.pantalla = "paso1"
-                st.rerun()
+
+    # ── Navegación inferior (como en el Paso 1) ───────────────────────────────
+    st.markdown("---")
+    c_back, _, c_next = st.columns([1.4, 2, 1.4])
+    with c_back:
+        if st.button("← Origen y Destino", use_container_width=True, key="btn_p2_back"):
+            st.session_state.pantalla = "paso1"
+            st.rerun()
+    with c_next:
+        generar = st.button("Generar rutas", type="primary",
+                            use_container_width=True, key="btn_generar_rutas")
 
     if generar:
+        # Solo se pasa el umbral si cambió respecto al valor por defecto (evita
+        # regenerar la capa TPI innecesariamente).
+        umbral = float(barrera_pct) if int(barrera_pct) != int(barrera_defecto) else None
         bar = st.progress(0, text="Iniciando pipeline...")
         try:
             resultados = _ejecutar_pipeline(
                 lambda pct, msg: bar.progress(pct, text=msg),
                 escenarios=escenarios,
                 perfiles=copy.deepcopy(perfiles_cfg),
+                umbral_barrera_pct=umbral,
             )
             st.session_state.resultados = resultados
             st.session_state.escenarios_procesados = escenarios
