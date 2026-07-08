@@ -41,7 +41,8 @@ sys.path.insert(0, str(_ROOT / "src"))
 
 _CONFIG_PATH = _ROOT / "data" / "config" / "escenario.yaml"
 _PERFILES_PATH = _ROOT / "data" / "config" / "perfiles.yaml"
-_RUTAS_DIR   = _ROOT / "data" / "processed" / "Rutas"
+_RUTAS_DIR     = _ROOT / "data" / "processed" / "Rutas"
+_TRAZADOS_DIR  = _ROOT / "data" / "processed" / "Trazados"
 
 # Constantes
 MAX_DIST_M = 15_000.0
@@ -2505,6 +2506,7 @@ def _boton_informe_pdf(resultados: dict, escenarios: list[str]) -> None:
                 perfiles=perfiles,
                 coords=coords,
                 rutas_dir=_RUTAS_DIR,
+                trazados_dir=_TRAZADOS_DIR,
                 perfiles_orden=PERFILES,
                 colores=_COLORES,
                 nombre_perfil=_NOMBRE_PERFIL,
@@ -2523,7 +2525,7 @@ def _boton_informe_pdf(resultados: dict, escenarios: list[str]) -> None:
     st.download_button(
         "Generar informe PDF",
         data=cache[1],
-        file_name="informe_trazados_H2.pdf",
+        file_name="informe_trazados_alternativos.pdf",
         mime="application/pdf",
         type="primary",
         use_container_width=True,
