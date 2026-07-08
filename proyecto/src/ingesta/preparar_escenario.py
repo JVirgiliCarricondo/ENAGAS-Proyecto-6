@@ -193,8 +193,11 @@ def preparar(scenario: str, progress_cb=None) -> dict:
     cb(0.03, f"Descargando datos GIS del AOI del escenario {s} (puede tardar)…")
     dl = _run_modulo("src.ingesta.descargar_capas", s)
     fallidas = _descargas_fallidas(s)
-    if dl.returncode != 0 or fallidas:
-        detalle = ", ".join(fallidas) if fallidas else _cola(dl.stderr or dl.stdout)
+    # RN2000 es opcional: si el WFS falla, el pipeline continúa sin capa de
+    # zonas protegidas (zonas_protegidas.procesar_escenario lo trata como aviso).
+    fallidas_criticas = [f for f in fallidas if not f.startswith("RN2000_")]
+    if fallidas_criticas or (dl.returncode != 0 and not fallidas):
+        detalle = ", ".join(fallidas_criticas) if fallidas_criticas else _cola(dl.stderr or dl.stdout)
         raise PreparacionError(
             f"No se pudieron descargar los datos GIS del escenario {s}. "
             f"Comprueba la conexión a internet (servicios WFS/WCS/Overpass). "
