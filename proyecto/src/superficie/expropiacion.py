@@ -217,13 +217,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Capa de coste de expropiación")
     parser.add_argument(
         "--escenario",
-        choices=["A", "B", "ambos"],
         default="ambos",
         help="Escenario a procesar (por defecto: ambos)",
     )
     args = parser.parse_args()
 
-    scenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
+    scenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario.upper()]
     for sc in scenarios:
         print(f"\n{'='*60}")
         print(f"  Escenario {sc}")

@@ -105,8 +105,26 @@ class MetricasRuta:
     # Módulos que fallaron por falta de datos u otro error
     errores: dict[str, str] = field(default_factory=dict)
 
+    # Campos que invalida cada error de módulo: si el módulo falló, sus campos
+    # se serializan como None ("sin dato"), NUNCA como un 0.0 indistinguible de
+    # un cero real. La UI y el PDF los muestran como "—".
+    _CAMPOS_POR_ERROR = {
+        "longitud": ("longitud_km", "coste_relativo"),
+        "coste_relativo": ("coste_relativo",),
+        "pendiente": ("pendiente_max_pct", "pendiente_media_pct"),
+        "zonas_protegidas": ("km_protegida", "pct_protegida"),
+        "zonas_inundables": ("km_inundable", "pct_inundable"),
+        "zonas_urbanas": ("km_suelo_urbano", "km_suelo_diseminado",
+                          "km_suelo_rustico", "km_suelo_especial"),
+        "cruces": ("n_cruces_rios", "n_cruces_carreteras", "n_cruces_ferrocarril"),
+    }
+
     def to_dict(self) -> dict[str, Any]:
-        """Serializa a dict plano para pandas / comparador."""
+        """Serializa a dict plano para pandas / comparador.
+
+        Los campos cuyo módulo de cálculo falló (ver `errores`) salen como
+        None: un fallo de cálculo no es un cero.
+        """
         d: dict[str, Any] = {
             "escenario": self.escenario,
             "perfil": self.perfil,
@@ -126,6 +144,9 @@ class MetricasRuta:
             "n_cruces_carreteras": self.n_cruces_carreteras,
             "n_cruces_ferrocarril": self.n_cruces_ferrocarril,
         }
+        for err_key in self.errores:
+            for campo in self._CAMPOS_POR_ERROR.get(err_key, ()):
+                d[campo] = None
         if self.errores:
             d["errores"] = "; ".join(f"{k}: {v}" for k, v in self.errores.items())
         return d
@@ -242,7 +263,7 @@ def calcular_metricas_ruta(escenario: str, perfil: str) -> MetricasRuta:
         if m.n_cruces_ferrocarril is None:
             # No comprobable: la capa OSM no trae 'railway'. Se deja constancia para
             # que la tabla no presente un 0 que en realidad es "sin dato".
-            m.errores["cruces_ferrocarril"] = "capa OSM sin columna 'railway' (no comprobable)"
+            m.errores["cruces_ferrocarril"] = "capa OSM sin columna 'railway'"
     except Exception as exc:
         m.errores["cruces"] = str(exc)
 
@@ -353,14 +374,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Métricas multicriterio de todas las rutas."
     )
-    parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
+    parser.add_argument("--escenario", default="ambos",
+                        help="id de escenario.yaml (p. ej. A, B o C) o 'ambos' (=A y B)")
     parser.add_argument(
         "--perfil", choices=PERFILES + ["todos"], default="todos",
         help="Perfil de prioridad (def: todos).",
     )
     args = parser.parse_args()
 
-    ess = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
+    ess = ["A", "B"] if args.escenario == "ambos" else [args.escenario.upper()]
     prfs = PERFILES if args.perfil == "todos" else [args.perfil]
 
     resultados = calcular_todas(escenarios=ess, perfiles=prfs)

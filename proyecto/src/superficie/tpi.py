@@ -318,14 +318,15 @@ def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capa de coste TPI (posicion topografica).")
-    parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
+    parser.add_argument("--escenario", default="ambos",
+                        help="id de escenario.yaml (p. ej. A, B o C) o 'ambos' (=A y B)")
     parser.add_argument("--radio", type=float, default=RADIO_EXT_M,
                         help=f"radio exterior del anillo en metros (def: {RADIO_EXT_M:.0f})")
     parser.add_argument("--radio-interior", type=float, default=RADIO_INT_M,
                         help=f"radio interior del anillo en metros (def: {RADIO_INT_M:.0f}; 0 = disco)")
     args = parser.parse_args()
 
-    escenarios = ESCENARIOS if args.escenario == "ambos" else [args.escenario]
+    escenarios = ESCENARIOS if args.escenario == "ambos" else [args.escenario.upper()]
     for s in escenarios:
         procesar_escenario(s, args.radio, args.radio_interior)
     print("P6 completado: capa de coste 'tpi' generada.")

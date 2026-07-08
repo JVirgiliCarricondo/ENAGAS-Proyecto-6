@@ -20,7 +20,7 @@ rango válido de esa superficie (0 = terreno más barato; 1 = más caro).
 
 Convenios heredados del pipeline (Modelo_Coste.md §9):
   · CRS común EPSG:25830 (metros) → la longitud sale directa de la geometría.
-  · nodata fuera del AOI = -9999.0 ; barrera dura = 999.0 (se excluyen del rango).
+  · nodata = -9999.0 cubre fuera del AOI y barrera dura (se excluye del rango).
 
 Uso (desde proyecto/):
   python -m src.metricas.longitud                      # escenarios A y B, todos los perfiles
@@ -44,9 +44,9 @@ DATA = _ROOT / "data" / "processed"
 RUTAS = DATA / "Rutas"
 TRAZADOS = DATA / "Trazados"
 
-# Convenios de codificación de las superficies de coste (Modelo_Coste.md §9).
+# Convenio de codificación de las superficies de coste: NODATA (-9999) cubre
+# tanto "fuera del AOI" como barrera dura (ver src/superficie/combinar.py).
 _NODATA = -9999.0
-_BARRERA_DISCO = 999.0
 
 # Perfiles de prioridad disponibles (data/config/perfiles.yaml).
 PERFILES = ["corto", "ambiental", "pendiente", "equilibrio"]
@@ -107,13 +107,13 @@ def _muestrear_coste(
         cols = np.clip(np.asarray(cols), 0, arr.shape[1] - 1)
         costes = arr[rows, cols]
 
-    # Rango válido de la superficie (excluye nodata y barrera dura).
-    valido = arr[(arr != nodata) & (arr != _BARRERA_DISCO) & np.isfinite(arr)]
+    # Rango válido de la superficie (excluye nodata: fuera de AOI y barrera).
+    valido = arr[(arr != nodata) & np.isfinite(arr)]
     c_min, c_max = float(valido.min()), float(valido.max())
 
     # Si algún punto cayó en nodata/barrera (no debería: la ruta vive en el AOI),
     # se sustituye por el coste válido más cercano para no romper la media.
-    invalida = (costes == nodata) | (costes == _BARRERA_DISCO) | ~np.isfinite(costes)
+    invalida = (costes == nodata) | ~np.isfinite(costes)
     if invalida.any():
         costes = costes.copy()
         costes[invalida] = np.interp(
@@ -206,14 +206,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Longitud y coste relativo de las rutas (Persona 1)."
     )
-    parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
+    parser.add_argument("--escenario", default="ambos",
+                        help="id de escenario.yaml (p. ej. A, B o C) o 'ambos' (=A y B)")
     parser.add_argument(
         "--perfil", choices=PERFILES + ["todos"], default="todos",
         help="perfil de prioridad (def: todos)",
     )
     args = parser.parse_args()
 
-    escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
+    escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario.upper()]
     perfiles = PERFILES if args.perfil == "todos" else [args.perfil]
 
     for s in escenarios:

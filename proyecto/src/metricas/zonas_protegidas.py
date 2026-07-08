@@ -137,10 +137,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="% de cada ruta que pasa por zona protegida (Red Natura 2000)."
     )
-    parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
+    parser.add_argument("--escenario", default="ambos",
+                        help="id de escenario.yaml (p. ej. A, B o C) o 'ambos' (=A y B)")
     args = parser.parse_args()
 
-    escenarios = ESCENARIOS if args.escenario == "ambos" else [args.escenario]
+    escenarios = ESCENARIOS if args.escenario == "ambos" else [args.escenario.upper()]
     for s in escenarios:
         print(f"\n=== Escenario {s} ===")
         print(f"  {'perfil':12s} {'km_total':>9s} {'km_protegida':>13s} {'% protegida':>12s}")

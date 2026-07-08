@@ -30,10 +30,13 @@ data/raw/
 *.geojson
 # excepción: ficheros de configuración del caso de estudio sí se versionan
 !data/config/**
-# excepción: los datos procesados SÍ se versionan (rasters/capas generados incluidos)
-!data/processed/**
-# re-ignorar caché GDAL/QGIS aunque estén en processed/ (se regeneran automáticamente)
-data/processed/**/*.aux.xml
+# datos procesados: NO se versionan (se regeneran en cada ejecución de la
+# herramienta); solo se conservan la estructura y su documentación
+!data/processed/**/.gitkeep
+!data/processed/README.md
+# estilos QGIS y logs generados por el pipeline
+*.qml
+data/processed/log_*.txt
 
 # Notebooks: checkpoints
 .ipynb_checkpoints/

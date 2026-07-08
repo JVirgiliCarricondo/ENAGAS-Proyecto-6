@@ -6,7 +6,7 @@ espacial entre rutas: una ruta solo es aceptable si su solapamiento con las dem�
 queda por debajo de un umbral (ver docs/reto6_enagas.md §3.2, arquitectura.md).
 
 Medida de solapamiento (por LONGITUD compartida):
-  Cada ruta se "engorda" a corredor con un buffer de semiancho BUFFER_M (250 m por
+  Cada ruta se "engorda" a corredor con un buffer de semiancho BUFFER_M (60 m por
   defecto). El solapamiento dirigido de A respecto a B es el porcentaje de la
   LONGITUD de A que discurre dentro del corredor de B:
 
@@ -19,12 +19,15 @@ Medida de solapamiento (por LONGITUD compartida):
 Veredicto: las rutas del escenario están diferenciadas si NINGÚN par supera el
 umbral de solapamiento (UMBRAL_PCT, 50 % por defecto).
 
+La validación NO regenera rutas (decisión de diseño): si un par sale
+redundante se reporta para que el usuario revise los pesos del perfil.
+
 Interfaz:
-    calcular(escenario, buffer_m=250, umbral_pct=50) -> dict
+    calcular(escenario, buffer_m=60, umbral_pct=50) -> dict
 
 Uso standalone (desde proyecto/):
     python -m src.metricas.diversidad_corredores
-    python -m src.metricas.diversidad_corredores --escenario A --buffer 250 --umbral 50
+    python -m src.metricas.diversidad_corredores --escenario A --buffer 60 --umbral 50
 """
 
 from __future__ import annotations
@@ -193,14 +196,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Diversidad real de los corredores (solapamiento entre rutas)."
     )
-    parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
+    parser.add_argument("--escenario", default="ambos",
+                        help="id de escenario.yaml (p. ej. A, B o C) o 'ambos' (=A y B)")
     parser.add_argument("--buffer", type=float, default=BUFFER_M,
                         help=f"semiancho del corredor en m (def: {BUFFER_M:.0f})")
     parser.add_argument("--umbral", type=float, default=UMBRAL_PCT,
                         help=f"%% de solapamiento que marca un par como redundante (def: {UMBRAL_PCT:.0f})")
     args = parser.parse_args()
 
-    escenarios = ESCENARIOS if args.escenario == "ambos" else [args.escenario]
+    escenarios = ESCENARIOS if args.escenario == "ambos" else [args.escenario.upper()]
     for s in escenarios:
         res = calcular(s, buffer_m=args.buffer, umbral_pct=args.umbral)
         _imprimir(s, res)

@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import heapq
 import logging
+import math
 from pathlib import Path
 
 import geopandas as gpd
@@ -52,7 +53,6 @@ TRAZADOS = DATA / "processed" / "Trazados"   # superficies escalares (.tif)
 RUTAS_DIR = DATA / "processed" / "Rutas"     # rutas LCP (.gpkg)
 
 _NODATA = -9999.0
-_BARRERA_DISCO = 999.0
 
 _VECINOS = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
             (0, 1), (1, -1), (1, 0), (1, 1)]
@@ -67,9 +67,14 @@ _COLOR_RUTA = {
 
 
 def _utm_to_rowcol(x: float, y: float, transform: rasterio.Affine) -> tuple[int, int]:
-    """Coordenadas UTM (x, y) → (row, col). (idéntico a run_trazados)."""
-    col = int(round((x - transform.c) / transform.a))
-    row = int(round((y - transform.f) / transform.e))
+    """Coordenadas UTM (x, y) → (row, col) de la celda que contiene el punto.
+
+    floor, no round: transform.c/f son el borde NO de la rejilla, así que la
+    parte entera de la fracción identifica la celda; redondear desplazaría el
+    punto media celda hacia la vecina.
+    """
+    col = int(math.floor((x - transform.c) / transform.a))
+    row = int(math.floor((y - transform.f) / transform.e))
     return row, col
 
 
@@ -222,10 +227,9 @@ def _write_qml(tif_path: Path, vmin: float, vmax: float) -> None:
 def _guardar_superficie(C: np.ndarray, transform, crs, path: Path) -> None:
     """Guarda la superficie escalar de un perfil + su leyenda de color (.qml).
 
-    nan→-9999, inf→999 (convenio de combinar.py).
+    nan → -9999 (convenio de combinar.py: fuera de AOI y barrera comparten NODATA).
     """
-    out = np.where(np.isposinf(C), _BARRERA_DISCO, C)
-    out = np.where(np.isnan(out), _NODATA, out).astype("float32")
+    out = np.where(np.isnan(C), _NODATA, C).astype("float32")
     profile = dict(driver="GTiff", dtype="float32", count=1,
                    height=C.shape[0], width=C.shape[1],
                    transform=transform, crs=crs, nodata=_NODATA, compress="lzw")
@@ -233,7 +237,7 @@ def _guardar_superficie(C: np.ndarray, transform, crs, path: Path) -> None:
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(out, 1)
 
-    valido = out[(out != _NODATA) & (out != _BARRERA_DISCO)]
+    valido = out[out != _NODATA]
     if valido.size:
         _write_qml(path, float(valido.min()), float(valido.max()))
 
@@ -274,10 +278,11 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s  %(levelname)-8s  %(message)s", datefmt="%H:%M:%S")
     parser = argparse.ArgumentParser(description="Ruta con LCP isótropo por perfil de prioridad.")
-    parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
+    parser.add_argument("--escenario", default="ambos",
+                        help="id de escenario.yaml (p. ej. A, B o C) o 'ambos' (=A y B)")
     args = parser.parse_args()
 
-    escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
+    escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario.upper()]
     for s in escenarios:
         run_perfiles(s)
     print(f"\nRutas guardadas en: {RUTAS_DIR}")

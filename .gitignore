@@ -36,8 +36,10 @@ proyecto/data/raw/*
 *.prj
 *.geojson
 
-# Excepcion: los datos procesados SI se versionan (incluye rasters/capas generados)
-!proyecto/data/processed/**
+# Datos procesados: NO se versionan (se regeneran en cada ejecución de la
+# herramienta); solo se conservan la estructura y su documentación.
+!proyecto/data/processed/**/.gitkeep
+!proyecto/data/processed/README.md
 
 # Notebooks: checkpoints
 .ipynb_checkpoints/

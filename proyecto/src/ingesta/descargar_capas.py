@@ -11,12 +11,15 @@ descarga la unidad mínima de cada fuente que lo contenga:
 
 Archivos generados en data/raw/ (sufijo _A o _B según el escenario):
 
-  DEM_{s}.tif      → MDT25 IGN WCS, 25 m, GeoTIFF
-  RN2000_{s}.gpkg  → Red Natura 2000, WFS IGN INSPIRE (PS.ProtectedSite)
+  DEM_{s}.tif      → Copernicus GLO-30 (tiles COG en AWS S3), ~30 m, GeoTIFF
   OSM_{s}.gpkg     → Carreteras + ferrocarril, Overpass API
   HID_{s}.gpkg     → Hidrografía IGN, WFS INSPIRE (HY.PhysicalWaters.Watercourses)
-  IGME_{s}.gpkg    → Mapa geológico IGME MAGNA50, WFS / ArcGIS REST fallback
+  IGME_{s}.gpkg    → Mapa geológico IGME MAGNA50, ArcGIS REST
   INUND_{s}.gpkg   → Zonas inundables SNCZI (MITECO), OGC API Features, unión T10+T100+T500
+
+Red Natura 2000 y Catastro NO se descargan automáticamente (no se encontró
+servicio por bbox fiable): se colocan a mano en data/raw/RN2000/ y
+data/raw/Catastro/ y alinear_capas.py los recorta al AOI de cada escenario.
 
 Además se escribe un manifiesto de estado por capa en data/raw/manifiesto_estado.json
 que distingue tres situaciones que antes se confundían en "guardar vacío y seguir":
@@ -112,9 +115,7 @@ class LayerResult:
 # ──────────────────────────────────────────────────────────────────────────── #
 # Endpoints de servicios OGC públicos                                          #
 # ──────────────────────────────────────────────────────────────────────────── #
-_IGN_WCS_MDT = "https://servicios.idee.es/wcs/mdt"
 _IGN_WFS_HID = "https://servicios.idee.es/wfs-inspire/hidrografia"
-_IGN_WFS_ENP = "https://servicios.idee.es/wfs-inspire/espacios-naturales-protegidos"
 _IGME_REST   = "https://mapas.igme.es/gis/rest/services/Cartografia_Geologica/IGME_MAGNA_50/MapServer/11/query"
 _OVERPASS    = "https://overpass-api.de/api/interpreter"
 # SNCZI (Sistema Nacional de Cartografía de Zonas Inundables), MITECO.
@@ -125,7 +126,6 @@ _MITECO_OAFEAT_ZI = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
 
 # Nombres de capa WFS INSPIRE (obtenidos vía GetCapabilities)
 _WFS_HID = "hy-n:WatercourseLink"      # enlaces de cursos de agua (tramos lineales)
-_WFS_ENP = "PS.ProtectedSite"          # Red Natura 2000 y otros ENP
 # SNCZI: láminas de inundación por periodo de retorno (T10, T100, T500 años).
 # IDs de colección confirmados en /collections del API-Features (29-jun-2026).
 # El modelo de coste solo usa la UNIÓN de las tres (binario, sin distinguir T).
@@ -156,13 +156,15 @@ def _setup_logging() -> logging.Logger:
         "%(asctime)s  %(levelname)-8s  %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    # Guard sobre AMBOS handlers: llamadas repetidas en el mismo proceso no
+    # deben duplicar salidas ni dejar el fichero de log abierto dos veces.
     if not log.handlers:
         ch = logging.StreamHandler(sys.stdout)
         ch.setFormatter(fmt)
         log.addHandler(ch)
-    fh = logging.FileHandler(LOG_PATH, mode="w", encoding="utf-8")
-    fh.setFormatter(fmt)
-    log.addHandler(fh)
+        fh = logging.FileHandler(LOG_PATH, mode="w", encoding="utf-8")
+        fh.setFormatter(fmt)
+        log.addHandler(fh)
     return log
 
 
@@ -343,6 +345,11 @@ def _wfs_bbox(
             gdf = _parse_wfs_response(resp)
             if gdf is not None:
                 log.debug(f"    OK WFS {version} / {out_fmt[:30]} → {len(gdf)} filas")
+                if len(gdf) >= max_features:
+                    log.warning(
+                        f"    Respuesta WFS en el límite ({max_features} features): "
+                        f"la capa puede estar TRUNCADA para este AOI."
+                    )
                 return gdf.to_crs("EPSG:25830") if gdf.crs else gdf
         except requests.exceptions.Timeout:
             log.debug(f"    Timeout WFS {version} / {out_fmt[:30]}")
@@ -386,6 +393,11 @@ def _ogc_features_bbox(
     if not features:
         # El servicio respondió bien, pero el AOI no tiene cobertura: vacío ≠ fallo.
         return gpd.GeoDataFrame(geometry=gpd.GeoSeries(crs="EPSG:25830"))
+    if len(features) >= limit:
+        log.warning(
+            f"    {collection_id}: respuesta en el límite ({limit} features): "
+            f"la capa puede estar TRUNCADA para este AOI."
+        )
     gdf = gpd.GeoDataFrame.from_features(features, crs="EPSG:4326")
     return gdf.to_crs("EPSG:25830")
 
@@ -502,71 +514,6 @@ def download_dem(
         LayerStatus.OK, dst_width * dst_height,
         f"{dst_width}×{dst_height} px @ ~30 m EPSG:25830",
     )
-
-
-def download_natura2000(
-    bbox_25830: tuple[float, float, float, float],
-    out_path: Path,
-    log: logging.Logger,
-) -> LayerResult:
-    """
-    Red Natura 2000: intenta WFS IGN INSPIRE; si falla, fallback a Overpass
-    (boundary=protected_area) que cubre ZEPA, ZEC, ZEPVN y parques nacionales
-    mapeados en OpenStreetMap.
-    """
-    log.info(f"  WFS IGN INSPIRE → {_WFS_ENP}")
-    gdf = _wfs_bbox(_IGN_WFS_ENP, _WFS_ENP, bbox_25830, log, max_features=2_000)
-    if gdf is not None and not gdf.empty:
-        return _vector_result(gdf, out_path, log, "WFS IGN INSPIRE ENP")
-
-    # Fallback: áreas protegidas desde Overpass (OSM boundary=protected_area)
-    log.info("  Fallback → Overpass boundary=protected_area")
-    w, s, e, n = _to_4326(*bbox_25830)
-    bbox_str = f"{s:.6f},{w:.6f},{n:.6f},{e:.6f}"
-    query = (
-        f"[out:json][timeout:90][bbox:{bbox_str}];"
-        "(way[boundary=protected_area];relation[boundary=protected_area];);"
-        "(._;>;);"
-        "out body;"
-    )
-    try:
-        resp = requests.post(_OVERPASS, data={"data": query}, headers=_HEADERS, timeout=120)
-        resp.raise_for_status()
-        data = resp.json()
-
-        nodes = {
-            el["id"]: (el["lon"], el["lat"])
-            for el in data.get("elements", [])
-            if el["type"] == "node"
-        }
-        keep_tags = {"name", "boundary", "protect_class", "site_type", "ref:natura2000"}
-        features = []
-        for el in data.get("elements", []):
-            if el["type"] != "way":
-                continue
-            coords = [nodes[nid] for nid in el.get("nodes", []) if nid in nodes]
-            if len(coords) < 3:
-                continue
-            from shapely.geometry import Polygon
-            features.append({
-                "geometry": Polygon(coords) if coords[0] == coords[-1] else Polygon(coords + [coords[0]]),
-                "osm_id": el["id"],
-                **{k: v for k, v in el.get("tags", {}).items() if k in keep_tags},
-            })
-
-        gdf_osm = (
-            gpd.GeoDataFrame(features, crs="EPSG:4326")
-            if features
-            else gpd.GeoDataFrame(geometry=gpd.GeoSeries(crs="EPSG:4326"))
-        )
-        log.info(f"  Overpass protected_area → {len(gdf_osm)} geometrías (calidad OSM)")
-        return _vector_result(gdf_osm, out_path, log, "Overpass protected_area")
-
-    except Exception as exc:
-        # El WFS no dio datos Y el fallback Overpass falló: no sabemos si hay
-        # cobertura → FAILED, sin escribir un GPKG vacío engañoso.
-        log.warning(f"  Overpass fallback falló: {exc}")
-        return LayerResult(LayerStatus.FAILED, 0, f"WFS sin datos y Overpass falló: {exc}")
 
 
 def download_zonas_inundables(
@@ -706,6 +653,11 @@ def download_igme(
         gdf = gpd.read_file(io.BytesIO(resp.content))
         if gdf.crs is None:
             gdf = gdf.set_crs("EPSG:4326")
+        if len(gdf) >= int(params["resultRecordCount"]):
+            log.warning(
+                f"  IGME: respuesta en el límite ({params['resultRecordCount']} "
+                f"features): la capa puede estar TRUNCADA para este AOI."
+            )
         return _vector_result(gdf, out_path, log, "ArcGIS REST IGME MAGNA50")
     except Exception as exc:
         # El servicio falló: no sabemos si hay litología en el AOI. No escribir
@@ -719,7 +671,7 @@ def download_igme(
 # ──────────────────────────────────────────────────────────────────────────── #
 # (etiqueta, nombre_archivo con {s}=sufijo escenario, función descargadora)
 SOURCES: list[tuple[str, str, Callable]] = [
-    ("DEM IGN MDT25",      "DEM_{s}.tif",   download_dem),
+    ("DEM Copernicus GLO-30", "DEM_{s}.tif", download_dem),
     ("OSM",                "OSM_{s}.gpkg",  download_osm),
     ("Hidrografía IGN",    "HID_{s}.gpkg",  download_hidrografia),
     ("IGME geológico",     "IGME_{s}.gpkg", download_igme),
