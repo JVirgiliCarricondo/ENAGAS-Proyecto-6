@@ -197,15 +197,33 @@ _CSS = """
   }
 
   /* ── Stepper de progreso ──────────────────────────────────────────────── */
+  /* Sticky: la barra de pasos queda pegada arriba al hacer scroll. Streamlit
+     envuelve CADA elemento de nivel superior (incluido nuestro contenedor con
+     clave) en un stLayoutWrapper que mide justo lo que su contenido: un sticky
+     dentro de ese envoltorio tiene recorrido cero y se va con el scroll. El que
+     SÍ tiene un padre alto (el stack vertical de toda la página) es ese propio
+     stLayoutWrapper, así que es ÉL quien debe ser sticky. Lo seleccionamos por
+     ser el que contiene directamente nuestro contenedor 'stepper_wrap'. */
+  div[data-testid="stLayoutWrapper"]:has(> div[class*="st-key-stepper_wrap"]) {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--surface);
+  }
+  /* Anular padding/gap propios del contenedor para que la barra quede pegada al
+     borde superior sin franja de fondo por encima. */
+  div[class*="st-key-stepper_wrap"] [data-testid="stVerticalBlock"] { gap: 0 !important; }
+  div[class*="st-key-stepper_wrap"] [data-testid="stElementContainer"] { margin: 0 !important; }
   .enagas-stepper {
     display: flex;
     align-items: center;
     gap: 0;
-    background: rgba(247,250,252,0.7);
+    background: var(--surface);
     border: 1px solid var(--outline-variant);
     border-radius: var(--radius-xl);
     padding: 12px 22px;
     margin-bottom: 16px;
+    box-shadow: 0 2px 12px rgba(0,75,118,0.07);
   }
   .step { display: flex; align-items: center; gap: 10px; }
   .step-num {
@@ -213,6 +231,7 @@ _CSS = """
     display: flex; align-items: center; justify-content: center;
     font-family: var(--font-body); font-weight: 700; font-size: 0.85rem;
     flex-shrink: 0;
+    transition: background 0.4s ease, color 0.4s ease, box-shadow 0.4s ease;
   }
   .step.done   .step-num { background: var(--primary); color: #fff; }
   .step.active .step-num { background: var(--secondary); color: #fff;
@@ -231,8 +250,38 @@ _CSS = """
     color: var(--on-surface);
   }
   .step.pending .step-name { color: var(--on-surface-variant); font-weight: 500; }
-  .step-conn { flex: 1; height: 2px; background: var(--outline-variant); margin: 0 18px; }
-  .step-conn.done { background: var(--primary); }
+  /* Conector: barra base gris con un relleno primario interior que se anima de
+     izquierda a derecha (scaleX) cuando el paso acaba de completarse. */
+  .step-conn {
+    position: relative; flex: 1; height: 2px; margin: 0 18px;
+    background: var(--outline-variant); overflow: hidden;
+  }
+  .step-conn-fill {
+    position: absolute; inset: 0; background: var(--primary);
+    transform: scaleX(0); transform-origin: left;
+  }
+  .step-conn.done .step-conn-fill { transform: scaleX(1); }
+  .step-conn.just-done .step-conn-fill { animation: connFill 0.6s ease-out both; }
+
+  /* ── Animaciones del avance del stepper ───────────────────────────────── */
+  @keyframes connFill {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+  }
+  /* Paso recién activado: pulso de escala + anillo que "late" una vez. */
+  @keyframes stepPop {
+    0%   { transform: scale(0.7);  box-shadow: 0 0 0 0 var(--secondary-container); }
+    55%  { transform: scale(1.14); box-shadow: 0 0 0 9px rgba(195,243,92,0.55); }
+    100% { transform: scale(1);    box-shadow: 0 0 0 4px var(--secondary-container); }
+  }
+  .step.just-active .step-num { animation: stepPop 0.5s ease-out; }
+  /* Paso recién completado: pequeño rebote al pasar a azul. */
+  @keyframes stepDone {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.16); }
+    100% { transform: scale(1); }
+  }
+  .step.just-done .step-num { animation: stepDone 0.5s ease; }
 
   /* ── Tarjetas con borde (container border=True) ───────────────────────── */
   div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -252,6 +301,72 @@ _CSS = """
   .scenario-title::before {
     content: ""; width: 6px; height: 20px;
     background: var(--secondary-container); border-radius: 999px;
+  }
+  /* Desplegable de escenario (popover): el disparador actúa como cabecero, con
+     tipografía grande en acento primario, texto a la izquierda y el símbolo de
+     desplegable a la derecha. */
+  .st-key-esc_dropdown [data-testid="stPopover"] button {
+    justify-content: space-between !important;
+    font-family: var(--font-head) !important;
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    color: var(--primary) !important;
+    -webkit-text-fill-color: var(--primary) !important;
+    border: 1px solid var(--outline-variant) !important;
+    background: var(--surface-lowest) !important;
+  }
+  .st-key-esc_dropdown [data-testid="stPopover"] button * {
+    color: var(--primary) !important;
+    -webkit-text-fill-color: var(--primary) !important;
+  }
+  /* Filas del desplegable: botón de selección alineado a la izquierda, sin borde,
+     y papelera compacta. Se estilan por sus claves (están en la capa del popover).
+     Especificidad extra (div[data-testid=stButton] > button) para ganar a la regla
+     global de botones. */
+  div[class*="st-key-sel_esc_"] div[data-testid="stButton"] > button {
+    justify-content: flex-start !important;
+    border: none !important;
+    background: transparent !important;
+    font-family: var(--font-body) !important;
+    font-weight: 600 !important;
+    text-align: left !important;
+  }
+  div[class*="st-key-sel_esc_"] div[data-testid="stButton"] > button:hover {
+    background: var(--surface-container) !important;
+  }
+  /* Iconos de acción de cada fila (lápiz, papelera, confirmar/cancelar): sin
+     borde, fondo transparente y compactos. */
+  div[class*="st-key-edit_esc_"] div[data-testid="stButton"] > button,
+  div[class*="st-key-del_esc_"] div[data-testid="stButton"] > button,
+  div[class*="st-key-rename_ok_"] div[data-testid="stButton"] > button,
+  div[class*="st-key-rename_no_"] div[data-testid="stButton"] > button {
+    border: none !important;
+    background: transparent !important;
+    padding: 4px !important;
+  }
+  div[class*="st-key-edit_esc_"] div[data-testid="stButton"] > button:hover,
+  div[class*="st-key-del_esc_"] div[data-testid="stButton"] > button:hover,
+  div[class*="st-key-rename_ok_"] div[data-testid="stButton"] > button:hover,
+  div[class*="st-key-rename_no_"] div[data-testid="stButton"] > button:hover {
+    background: var(--surface-container) !important;
+  }
+  /* Iconos Material de las filas: silueta monocroma en azul oscuro (acento
+     primario), nunca emoji multicolor. Se pinta todo el contenido del botón
+     (incl. el glifo dentro del envoltorio de tooltip) forzando también
+     -webkit-text-fill-color, que es quien decide el color real del glifo. */
+  div[class*="st-key-edit_esc_"] *,
+  div[class*="st-key-del_esc_"] *,
+  div[class*="st-key-rename_ok_"] *,
+  div[class*="st-key-rename_no_"] * {
+    color: var(--primary) !important;
+    -webkit-text-fill-color: var(--primary) !important;
+  }
+  /* Compactar el desplegable: menos separación vertical entre filas. */
+  [data-testid="stPopoverBody"] [data-testid="stVerticalBlock"] {
+    gap: 0.2rem !important;
+  }
+  [data-testid="stPopoverBody"] [data-testid="stElementContainer"] {
+    margin: 0 !important;
   }
 
   /* ── Badge de restricciones (info) ────────────────────────────────────── */
@@ -362,7 +477,8 @@ _CSS = """
     color: var(--primary) !important;
     -webkit-text-fill-color: var(--primary) !important;
     background: var(--surface-lowest) !important;
-    transition: background 0.15s, color 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s,
+                transform 0.1s ease, box-shadow 0.15s ease;
   }
   div[data-testid="stButton"] > button p,
   div[data-testid="stButton"] > button span,
@@ -375,6 +491,12 @@ _CSS = """
   div[data-testid="stButton"] > button:hover {
     background: var(--surface-container) !important;
     border-color: var(--primary-container) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-card);
+  }
+  div[data-testid="stButton"] > button:active {
+    transform: translateY(0);
+    box-shadow: none;
   }
   div[data-testid="stButton"] > button:disabled,
   div[data-testid="stButton"] > button:disabled p,
@@ -407,6 +529,12 @@ _CSS = """
   div[data-testid="stButton"] > button[kind="primary"]:hover {
     background: var(--primary-container) !important;
     filter: brightness(1.05);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-pop) !important;
+  }
+  div[data-testid="stButton"] > button[kind="primary"]:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-card) !important;
   }
 
   /* Botón verde (secundario Enagás) — "Comenzar simulación" en bienvenida */
@@ -440,33 +568,59 @@ _CSS = """
     fill: #ffffff !important;
   }
 
-  /* ── Paso 1: selector de punto bajo el mapa (etiqueta + radio) ──────────── */
-  /* Etiqueta a la izquierda y opciones Origen/Destino apiladas en vertical a su
-     derecha, con la MISMA tipografía y tamaño. La etiqueta se centra
-     verticalmente respecto al bloque de las dos opciones. */
-  .st-key-p1_map_selector [data-testid="stElementContainer"] { margin: 0 !important; }
-
-  .p1-sel-label {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    margin: 0;
-    text-align: right;
-    white-space: nowrap;
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 0.9rem;
-    line-height: 1.2;
-    color: var(--on-surface-variant);
+  /* ── Paso 1: selector de punto bajo el mapa (etiqueta + segmentos) ──────── */
+  /* La etiqueta "El próximo clic fija:" es la propia etiqueta del control
+     segmentado. Disponemos el grupo (etiqueta + botones) como una fila flex
+     centrada bajo el mapa; align-items:center alinea el centro del texto con el
+     centro de los botones sin depender de columnas de Streamlit. */
+  /* Contenedor del control encogido a su contenido y centrado horizontalmente
+     bajo el mapa mediante márgenes automáticos. */
+  .st-key-p1_map_selector [data-testid="stElementContainer"] {
+    width: fit-content !important;
+    margin: 0 auto !important;
   }
-  .st-key-p1_map_selector div[data-testid="stRadio"] label p,
-  .st-key-p1_map_selector div[data-testid="stRadio"] div[role="radiogroup"] label {
+  /* Grupo (etiqueta + botones) en fila flex. */
+  .st-key-p1_map_selector div[data-testid="stButtonGroup"] {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 14px !important;
+    width: fit-content !important;
+    margin: 0 !important;
+  }
+  /* Etiqueta del control como texto inline a la izquierda de los botones. */
+  .st-key-p1_map_selector div[data-testid="stButtonGroup"] label[data-testid="stWidgetLabel"] {
+    margin: 0 !important;
+    padding: 0 !important;
+    white-space: nowrap;
+  }
+  .st-key-p1_map_selector div[data-testid="stButtonGroup"] label[data-testid="stWidgetLabel"] p {
+    margin: 0 !important;
     font-family: var(--font-body) !important;
     font-weight: 600 !important;
     font-size: 0.9rem !important;
     color: var(--on-surface-variant) !important;
   }
-  .st-key-p1_map_selector div[data-testid="stRadio"] { margin: 0 !important; }
+  .st-key-p1_map_selector div[data-testid="stButtonGroup"] button {
+    font-family: var(--font-body) !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+  }
+  /* Segmento seleccionado: fondo y texto en verde (acento Enagás). El fondo se
+     aplica SOLO al botón; los hijos van transparentes para que el tono verde sea
+     uniforme (si se tiñen también los hijos, la opacidad se acumula y el icono
+     y el texto se ven más oscuros que el resto de la caja). */
+  .st-key-p1_map_selector button[data-testid="stBaseButton-segmented_controlActive"] {
+    background: rgba(75,103,0,0.12) !important;
+    border-color: var(--secondary) !important;
+    color: var(--secondary) !important;
+    -webkit-text-fill-color: var(--secondary) !important;
+  }
+  .st-key-p1_map_selector button[data-testid="stBaseButton-segmented_controlActive"] * {
+    background: transparent !important;
+    color: var(--secondary) !important;
+    -webkit-text-fill-color: var(--secondary) !important;
+  }
 
   /* ── Footer técnico ───────────────────────────────────────────────────── */
   .enagas-footer {
@@ -594,6 +748,21 @@ _CSS = """
   footer { display: none; }
   #MainMenu { display: none; }
   header[data-testid="stHeader"] { display: none; }
+
+  /* ── Accesibilidad: sin movimiento si el sistema lo pide ───────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    .step-num, .step-conn-fill,
+    div[data-testid="stButton"] > button {
+      transition: none !important;
+      animation: none !important;
+    }
+    .step.just-active .step-num,
+    .step.just-done .step-num,
+    .step-conn.just-done .step-conn-fill { animation: none !important; }
+    .step-conn.just-done .step-conn-fill { transform: scaleX(1); }
+    div[data-testid="stButton"] > button:hover,
+    div[data-testid="stButton"] > button[kind="primary"]:hover { transform: none; }
+  }
 </style>
 """
 
@@ -737,6 +906,10 @@ def _render_editor_pesos() -> list[dict]:
     perfiles = st.session_state.perfiles_cfg
 
     with st.container(border=True):
+        st.markdown(
+            '<div class="scenario-title">Perfil a ajustar</div>',
+            unsafe_allow_html=True,
+        )
         pid = st.selectbox(
             "Perfil a ajustar",
             options=PERFILES,
@@ -744,6 +917,7 @@ def _render_editor_pesos() -> list[dict]:
             if st.session_state.perfil_pesos_activo in PERFILES else 0,
             format_func=lambda p: _NOMBRE_PERFIL.get(p, p),
             key="select_perfil_pesos",
+            label_visibility="collapsed",
         )
         st.session_state.perfil_pesos_activo = pid
         perfil = _perfil_por_id(perfiles, pid)
@@ -795,6 +969,48 @@ def _crear_escenario(cfg: dict, coords: dict, nuevo_id: str, ref_id: str | None)
     coords[sid] = _plantilla_nuevo_escenario(cfg, ref_id)
     cfg = _aplicar_coords_a_cfg(cfg, {sid: coords[sid]})
     _guardar_cfg(cfg)
+    return sid
+
+
+def _borrar_escenario(cfg: dict, coords: dict, sid: str) -> None:
+    """Elimina un escenario de la config y de coords. Exige que quede al menos uno."""
+    if sid not in coords:
+        raise ValueError(f"El escenario '{sid}' no existe.")
+    if len(coords) <= 1:
+        raise ValueError("Debe quedar al menos un escenario; no se puede borrar el último.")
+    coords.pop(sid, None)
+    cfg.pop(f"escenario_{sid}", None)
+    _guardar_cfg(cfg)
+    # Limpiar el estado de los number_input de ese escenario para que no reviva.
+    for rol in ("origen", "destino"):
+        for eje in ("x", "y"):
+            st.session_state.pop(f"{sid}_{rol}_{eje}", None)
+
+
+def _renombrar_escenario(cfg: dict, coords: dict, old: str, nuevo_id: str) -> str:
+    """Cambia el identificador de un escenario (su nombre visible). El id se usa como
+    clave en toda la app, así que renombrar propaga el nombre a mapa, métricas, etc."""
+    sid = _normalizar_id_escenario(nuevo_id)
+    if not sid:
+        raise ValueError("Indica un nombre valido (letras, numeros, guion o guion bajo).")
+    if sid == old:
+        return old  # sin cambios
+    if sid in coords:
+        raise ValueError(f"El escenario '{sid}' ya existe.")
+    old_key, new_key = f"escenario_{old}", f"escenario_{sid}"
+    if old_key in cfg:
+        block = cfg.pop(old_key)
+        block.setdefault("origen", {})["nombre"] = f"{sid}_inicial"
+        block.setdefault("destino", {})["nombre"] = f"{sid}_final"
+        cfg[new_key] = block
+    coords[sid] = coords.pop(old)
+    _guardar_cfg(cfg)
+    # Migrar el estado de los number_input del escenario renombrado.
+    for rol in ("origen", "destino"):
+        for eje in ("x", "y"):
+            ok = f"{old}_{rol}_{eje}"
+            if ok in st.session_state:
+                st.session_state[f"{sid}_{rol}_{eje}"] = st.session_state.pop(ok)
     return sid
 
 
@@ -1127,19 +1343,51 @@ def _mapa_resultados(escenarios: list[str] | None = None) -> folium.Map | None:
 
     folium.LayerControl(collapsed=False).add_to(m)
 
+    # Ambas cajas arriba a la derecha: la leyenda de Perfiles (estática, altura
+    # fija) arriba, y debajo la caja de Escenarios (el LayerControl, con sus
+    # toggles). El LayerControl se re-estiliza como tarjeta corporativa y se
+    # empuja hacia abajo con margin-top para que quede bajo la leyenda.
     legend = """
     <style>
+      /* ── Leyenda de perfiles: tarjeta corporativa (arriba a la derecha) ── */
+      .perfiles-legend {
+        position: fixed; top: 12px; right: 12px; z-index: 1000;
+        box-sizing: border-box; width: 190px;
+        background: #ffffff; padding: 10px 14px; border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,75,118,0.18);
+        font-family: 'Inter','Segoe UI',Arial,sans-serif; font-size: 13px;
+        border-top: 3px solid #004e7e;
+      }
       .perfiles-legend, .perfiles-legend span { color: #1f2937 !important; }
-      .perfiles-legend b { color: #002B5C !important; }
+      .perfiles-legend b { color: #004e7e !important; }
       .perfiles-legend .c-corto { color: #1f78b4 !important; }
       .perfiles-legend .c-equilibrio { color: #ff7f00 !important; }
       .perfiles-legend .c-ambiental { color: #33a02c !important; }
       .perfiles-legend .c-pendiente { color: #e31a1c !important; }
+
+      /* ── Caja de escenarios (LayerControl): misma tarjeta corporativa, ────
+         empujada bajo la leyenda de perfiles. */
+      .leaflet-control-layers {
+        margin-top: 152px !important;
+        box-sizing: border-box !important; width: 190px !important;
+        border: none !important; border-radius: 8px !important;
+        box-shadow: 0 2px 8px rgba(0,75,118,0.18) !important;
+        border-top: 3px solid #004e7e !important;
+        background: #ffffff !important; padding: 10px 14px !important;
+        font-family: 'Inter','Segoe UI',Arial,sans-serif !important;
+      }
+      .leaflet-control-layers-toggle { display: none !important; }
+      .leaflet-control-layers-separator { display: none !important; }
+      .leaflet-control-layers-overlays::before {
+        content: "Escenarios"; display: block;
+        color: #004e7e; font-weight: 700; font-size: 13px; margin-bottom: 6px;
+      }
+      .leaflet-control-layers-overlays label {
+        color: #1f2937 !important; font-size: 13px !important;
+        margin-bottom: 2px !important; font-weight: 400 !important;
+      }
     </style>
-    <div class="perfiles-legend" style="position:fixed;bottom:28px;left:28px;z-index:1000;background:#ffffff;
-                padding:12px 16px;border-radius:8px;
-                box-shadow:0 2px 8px rgba(0,0,0,0.18);font-family:'Segoe UI',sans-serif;
-                font-size:13px;border-top:3px solid #002B5C;">
+    <div class="perfiles-legend">
       <b>Perfiles</b><br>
       <span class="c-corto" style="font-size:1.3em;">&#9644;</span><span> Corto</span><br>
       <span class="c-equilibrio" style="font-size:1.3em;">&#9644;</span><span> Equilibrio</span><br>
@@ -1492,38 +1740,114 @@ def _render_paso1():
                 unsafe_allow_html=True,
             )
 
-            esc_activo = st.selectbox(
-                "Escenario",
-                options=escenarios,
-                index=escenarios.index(st.session_state.escenario_activo)
-                if st.session_state.escenario_activo in escenarios else 0,
-                format_func=lambda s: f"Escenario {s}",
-                key="select_escenario",
-            )
-            st.session_state.escenario_activo = esc_activo
+            # Desplegable de escenario: el disparador muestra el escenario activo;
+            # al abrirlo, cada escenario es una fila con su nombre (selección), un
+            # lápiz para renombrarlo y una papelera para borrarlo, más una opción
+            # "＋ Nuevo escenario" al final. El popover permanece abierto entre
+            # interacciones internas, así que el renombrado se hace en línea.
+            with st.container(key="esc_dropdown"):
+                with st.popover(f"Escenario {esc_activo}", use_container_width=True):
+                    editando = st.session_state.get("_editando_esc")
+                    for s in escenarios:
+                        if editando == s:
+                            # Fila en modo edición: campo de texto + confirmar / cancelar.
+                            c_in, c_ok, c_no = st.columns(
+                                [4, 1, 1], vertical_alignment="center"
+                            )
+                            with c_in:
+                                nuevo_nombre = st.text_input(
+                                    "Nuevo nombre",
+                                    value=s,
+                                    label_visibility="collapsed",
+                                    key=f"rename_input_{s}",
+                                )
+                            with c_ok:
+                                if st.button(
+                                    ":material/check:", use_container_width=True,
+                                    key=f"rename_ok_{s}", help="Guardar nombre",
+                                ):
+                                    try:
+                                        nuevo = _renombrar_escenario(
+                                            cfg, coords, s, nuevo_nombre
+                                        )
+                                        if st.session_state.escenario_activo == s:
+                                            st.session_state.escenario_activo = nuevo
+                                        st.session_state._editando_esc = None
+                                        st.rerun()
+                                    except ValueError as exc:
+                                        st.error(str(exc))
+                            with c_no:
+                                if st.button(
+                                    ":material/close:", use_container_width=True,
+                                    key=f"rename_no_{s}", help="Cancelar",
+                                ):
+                                    st.session_state._editando_esc = None
+                                    st.rerun()
+                            continue
 
-            with st.expander("＋ Crear nuevo escenario", expanded=False):
-                propuesto = _siguiente_id_escenario(escenarios)
-                nuevo_id = st.text_input(
-                    "Identificador",
-                    value=propuesto,
-                    help="Letras, numeros, guion o guion bajo. Ej.: C, NORTE, RAMAL_3",
-                    key="nuevo_escenario_id",
-                )
-                if st.button("Crear escenario", use_container_width=True, key="btn_crear_escenario"):
-                    try:
-                        nuevo = _crear_escenario(cfg, coords, nuevo_id, esc_activo)
+                        c_sel, c_edit, c_del = st.columns(
+                            [4, 1, 1], vertical_alignment="center"
+                        )
+                        with c_sel:
+                            activo = s == esc_activo
+                            marca = "●" if activo else "○"
+                            etiqueta = (
+                                f"{marca}  **Escenario {s}**" if activo
+                                else f"{marca}  Escenario {s}"
+                            )
+                            if st.button(
+                                etiqueta,
+                                use_container_width=True,
+                                key=f"sel_esc_{s}",
+                            ):
+                                st.session_state.escenario_activo = s
+                                st.rerun()
+                        with c_edit:
+                            if st.button(
+                                ":material/edit:",
+                                use_container_width=True,
+                                key=f"edit_esc_{s}",
+                                help="Editar nombre",
+                            ):
+                                st.session_state._editando_esc = s
+                                st.rerun()
+                        with c_del:
+                            puede_borrar = len(escenarios) > 1
+                            if st.button(
+                                ":material/delete:",
+                                use_container_width=True,
+                                key=f"del_esc_{s}",
+                                disabled=not puede_borrar,
+                                help="Borrar este escenario" if puede_borrar
+                                else "Debe quedar al menos un escenario",
+                            ):
+                                try:
+                                    era_activo = s == st.session_state.escenario_activo
+                                    _borrar_escenario(cfg, coords, s)
+                                    if era_activo:
+                                        restantes = sorted(
+                                            coords.keys(), key=lambda x: (len(x), x)
+                                        )
+                                        st.session_state.escenario_activo = restantes[0]
+                                    st.rerun()
+                                except ValueError as exc:
+                                    st.error(str(exc))
+                    st.divider()
+                    if st.button(
+                        "＋ Nuevo escenario",
+                        use_container_width=True,
+                        key="btn_nuevo_esc",
+                    ):
+                        nuevo = _crear_escenario(
+                            cfg, coords, _siguiente_id_escenario(escenarios), esc_activo
+                        )
                         st.session_state.escenario_activo = nuevo
                         st.session_state.punto_activo_rol = "origen"
-                        st.success(f"Escenario {nuevo} creado.")
+                        st.session_state._editando_esc = None
                         st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
 
-            st.markdown(
-                f'<div class="scenario-title">Escenario {esc_activo}</div>',
-                unsafe_allow_html=True,
-            )
+            esc_activo = st.session_state.escenario_activo
+
             # Sembrar el estado de cada widget una sola vez desde coords. A partir
             # de aqui el session_state del widget (clave f"{esc}_{rol}_{eje}") es la
             # fuente de verdad: asi el clic en el mapa puede escribir en el sin que
@@ -1608,37 +1932,42 @@ def _render_paso1():
                 if click_key != st.session_state._last_click:
                     st.session_state._last_click = click_key
                     rol = st.session_state.punto_activo_rol
-                    x_utm, y_utm = _latlon_to_utm(click["lat"], click["lng"])
-                    # Guardar el clic como pendiente: se aplica al estado de los
-                    # widgets al inicio del proximo run, antes de instanciarlos.
-                    st.session_state._pending_click = {
-                        "esc": esc_activo, "rol": rol,
-                        "x": round(x_utm), "y": round(y_utm),
-                    }
-                    st.rerun()
+                    # Si no hay punto activo (segmentos deseleccionados), el clic
+                    # no fija nada: las coordenadas se editan a mano.
+                    if rol in ("origen", "destino"):
+                        x_utm, y_utm = _latlon_to_utm(click["lat"], click["lng"])
+                        # Guardar el clic como pendiente: se aplica al estado de los
+                        # widgets al inicio del proximo run, antes de instanciarlos.
+                        st.session_state._pending_click = {
+                            "esc": esc_activo, "rol": rol,
+                            "x": round(x_utm), "y": round(y_utm),
+                        }
+                        st.rerun()
 
-            # Debajo del mapa, centrado: etiqueta + selector de punto activo, ambos
-            # con la misma tipografía y tamaño, alineados y centrados bajo el mapa.
+            # Debajo del mapa, centrado: la etiqueta "El próximo clic fija:" es la
+            # PROPIA etiqueta del control segmentado (no un markdown aparte). Así el
+            # CSS coloca etiqueta y botones en una fila flex y quedan alineados
+            # verticalmente sin depender de columnas de Streamlit (que colapsan).
+            # El modo "single" permite deseleccionar ambos (devuelve None): entonces
+            # el clic en el mapa no fija nada y todo se mete por coordenadas.
             with st.container(key="p1_map_selector"):
-                sp_l, lbl_col, rad_col, sp_r = st.columns(
-                    [1, 2.3, 1.8, 0.9], vertical_alignment="center"
+                # Sembrar la clave del widget una sola vez (no usar `default=` junto
+                # a `key=`: eso impide deseleccionar). Con "single" se puede volver a
+                # pulsar el segmento activo para dejar ninguno seleccionado.
+                if "seg_punto_rol" not in st.session_state:
+                    st.session_state.seg_punto_rol = (
+                        st.session_state.punto_activo_rol or "origen"
+                    )
+                st.session_state.punto_activo_rol = st.segmented_control(
+                    "El próximo clic fija:",
+                    options=["origen", "destino"],
+                    format_func=lambda r: (
+                        ":material/location_on: Origen" if r == "origen"
+                        else ":material/flag: Destino"
+                    ),
+                    selection_mode="single",
+                    key="seg_punto_rol",
                 )
-                with lbl_col:
-                    st.markdown(
-                        f'<p class="p1-sel-label">'
-                        f'Siguiente clic en el mapa fija ({esc_activo}):</p>',
-                        unsafe_allow_html=True,
-                    )
-                with rad_col:
-                    st.session_state.punto_activo_rol = st.radio(
-                        "Punto activo",
-                        options=["origen", "destino"],
-                        format_func=str.capitalize,
-                        index=0 if st.session_state.punto_activo_rol == "origen" else 1,
-                        label_visibility="collapsed",
-                        horizontal=False,
-                        key="radio_punto_rol",
-                    )
         else:
             from streamlit.components.v1 import html as _html
             _html(m._repr_html_(), height=560)
@@ -2098,14 +2427,27 @@ def _render_results():
 # ── Stepper de progreso ───────────────────────────────────────────────────────
 
 def _stepper(paso: int) -> None:
-    """Barra de pasos (1: Origen y Destino · 2: Pesos y Perfiles · 3: Resultados)."""
+    """Barra de pasos (1: Origen y Destino · 2: Pesos y Perfiles · 3: Resultados).
+
+    Anima el avance (relleno del conector + pulso del paso nuevo + rebote del que
+    se completa) SOLO cuando se avanza de paso, no en cada rerun de la misma
+    pantalla: se compara con el paso pintado la última vez (``_stepper_prev``).
+    """
     nombres = ["Origen y Destino", "Pesos y Perfiles", "Resultados"]
     kicker = {"done": "Completado", "active": "Paso actual", "pending": "Siguiente"}
+    prev = st.session_state.get("_stepper_prev", paso)
+    avanza = paso > prev  # solo animamos hacia delante
+
     partes = ['<div class="enagas-stepper">']
     for i, nombre in enumerate(nombres, start=1):
         estado = "done" if i < paso else ("active" if i == paso else "pending")
+        clases = ["step", estado]
+        if avanza and prev <= i < paso:            # pasos recién completados
+            clases.append("just-done")
+        if avanza and estado == "active":          # paso recién activado
+            clases.append("just-active")
         partes.append(
-            f'<div class="step {estado}">'
+            f'<div class="{" ".join(clases)}">'
             f'<div class="step-num">{i}</div>'
             f'<div class="step-txt">'
             f'<span class="step-kicker">{kicker[estado]}</span>'
@@ -2113,9 +2455,20 @@ def _stepper(paso: int) -> None:
             f'</div></div>'
         )
         if i < len(nombres):
-            partes.append(f'<div class="step-conn {"done" if paso > i else ""}"></div>')
+            conn = ["step-conn"]
+            if paso > i:
+                conn.append("done")
+            if avanza and prev <= i < paso:        # conector que acaba de rellenarse
+                conn.append("just-done")
+            partes.append(
+                f'<div class="{" ".join(conn)}"><div class="step-conn-fill"></div></div>'
+            )
     partes.append("</div>")
-    st.markdown("".join(partes), unsafe_allow_html=True)
+    # Envuelto en un contenedor con clave: el sticky se aplica al contenedor
+    # (hermano del resto de la página), no al markdown, para que tenga recorrido.
+    with st.container(key="stepper_wrap"):
+        st.markdown("".join(partes), unsafe_allow_html=True)
+    st.session_state["_stepper_prev"] = paso
 
 
 def _footer() -> None:
