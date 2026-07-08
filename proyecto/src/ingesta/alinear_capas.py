@@ -89,8 +89,7 @@ _SCENARIO_FILES: dict[str, str] = {
     "Hidrografía IGN":  "HID_{s}.gpkg",
     "IGME geológico":   "IGME_{s}.gpkg",
     "Zonas inundables": "INUND_{s}.gpkg",
-    # RN2000 no tiene sufijo de escenario: es una capa nacional única en data/raw/RN2000/.
-    # Se descubre por glob_patterns y se recorta al AOI de cada escenario.
+    "Red Natura 2000":  "RN2000_{s}.gpkg",  # descargado automáticamente por descargar_capas.py
 }
 
 LAYERS: list[LayerSpec] = [
