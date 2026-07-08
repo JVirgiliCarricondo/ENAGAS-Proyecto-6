@@ -16,10 +16,10 @@ Archivos generados en data/raw/ (sufijo _A o _B según el escenario):
   HID_{s}.gpkg     → Hidrografía IGN, WFS INSPIRE (HY.PhysicalWaters.Watercourses)
   IGME_{s}.gpkg    → Mapa geológico IGME MAGNA50, ArcGIS REST
   INUND_{s}.gpkg   → Zonas inundables SNCZI (MITECO), OGC API Features, unión T10+T100+T500
+  RN2000_{s}.gpkg  → Red Natura 2000 (ZEPA/LIC/ZEC), WFS INSPIRE IGN (PS.ProtectedSite)
 
-Red Natura 2000 y Catastro NO se descargan automáticamente (no se encontró
-servicio por bbox fiable): se colocan a mano en data/raw/RN2000/ y
-data/raw/Catastro/ y alinear_capas.py los recorta al AOI de cada escenario.
+Solo Catastro NO se descarga automáticamente (no hay servicio bbox fiable):
+se coloca a mano en data/raw/Catastro/ y alinear_capas.py lo recorta al AOI.
 
 Además se escribe un manifiesto de estado por capa en data/raw/manifiesto_estado.json
 que distingue tres situaciones que antes se confundían en "guardar vacío y seguir":
@@ -115,9 +115,10 @@ class LayerResult:
 # ──────────────────────────────────────────────────────────────────────────── #
 # Endpoints de servicios OGC públicos                                          #
 # ──────────────────────────────────────────────────────────────────────────── #
-_IGN_WFS_HID = "https://servicios.idee.es/wfs-inspire/hidrografia"
-_IGME_REST   = "https://mapas.igme.es/gis/rest/services/Cartografia_Geologica/IGME_MAGNA_50/MapServer/11/query"
-_OVERPASS    = "https://overpass-api.de/api/interpreter"
+_IGN_WFS_HID   = "https://servicios.idee.es/wfs-inspire/hidrografia"
+_IGN_WFS_RN2000 = "https://servicios.idee.es/wfs-inspire/redes-ecologicas"
+_IGME_REST     = "https://mapas.igme.es/gis/rest/services/Cartografia_Geologica/IGME_MAGNA_50/MapServer/11/query"
+_OVERPASS      = "https://overpass-api.de/api/interpreter"
 # SNCZI (Sistema Nacional de Cartografía de Zonas Inundables), MITECO.
 # El WFS clásico (wfs.aspx) no expone estas capas (error interno del servidor,
 # verificado); MITECO migró la descarga por bbox a OGC API Features:
@@ -125,7 +126,8 @@ _OVERPASS    = "https://overpass-api.de/api/interpreter"
 _MITECO_OAFEAT_ZI = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
 
 # Nombres de capa WFS INSPIRE (obtenidos vía GetCapabilities)
-_WFS_HID = "hy-n:WatercourseLink"      # enlaces de cursos de agua (tramos lineales)
+_WFS_HID    = "hy-n:WatercourseLink"   # enlaces de cursos de agua (tramos lineales)
+_WFS_RN2000 = "PS.ProtectedSite"       # zonas protegidas INSPIRE (ZEPA/LIC/ZEC)
 # SNCZI: láminas de inundación por periodo de retorno (T10, T100, T500 años).
 # IDs de colección confirmados en /collections del API-Features (29-jun-2026).
 # El modelo de coste solo usa la UNIÓN de las tres (binario, sin distinguir T).
@@ -629,6 +631,22 @@ def download_hidrografia(
     return _vector_result(gdf, out_path, log, "WFS IGN INSPIRE hidrografía")
 
 
+def download_rn2000(
+    bbox_25830: tuple[float, float, float, float],
+    out_path: Path,
+    log: logging.Logger,
+) -> LayerResult:
+    """Red Natura 2000 (ZEPA/LIC/ZEC) vía WFS INSPIRE IGN — redes-ecológicas.
+
+    Capa PS.ProtectedSite del servicio INSPIRE de redes ecológicas del IGN.
+    _wfs_bbox devuelve None si TODOS los intentos fallan (→ FAILED); una
+    respuesta correcta sin geometrías es ausencia confirmada en el AOI (→ EMPTY).
+    """
+    log.info(f"  WFS IGN INSPIRE → {_WFS_RN2000}")
+    gdf = _wfs_bbox(_IGN_WFS_RN2000, _WFS_RN2000, bbox_25830, log, max_features=2_000)
+    return _vector_result(gdf, out_path, log, "WFS IGN INSPIRE Red Natura 2000")
+
+
 def download_igme(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
@@ -671,13 +689,14 @@ def download_igme(
 # ──────────────────────────────────────────────────────────────────────────── #
 # (etiqueta, nombre_archivo con {s}=sufijo escenario, función descargadora)
 SOURCES: list[tuple[str, str, Callable]] = [
-    ("DEM Copernicus GLO-30", "DEM_{s}.tif", download_dem),
-    ("OSM",                "OSM_{s}.gpkg",  download_osm),
-    ("Hidrografía IGN",    "HID_{s}.gpkg",  download_hidrografia),
-    ("IGME geológico",     "IGME_{s}.gpkg", download_igme),
-    ("Zonas inundables",   "INUND_{s}.gpkg",download_zonas_inundables),
-    # RN2000: fuente nacional añadida manualmente a data/raw/RN2000/.
-    # alinear_capas.py la recorta al AOI de cada escenario.
+    ("DEM Copernicus GLO-30", "DEM_{s}.tif",   download_dem),
+    ("OSM",                   "OSM_{s}.gpkg",  download_osm),
+    ("Hidrografía IGN",       "HID_{s}.gpkg",  download_hidrografia),
+    ("IGME geológico",        "IGME_{s}.gpkg", download_igme),
+    ("Zonas inundables",      "INUND_{s}.gpkg",download_zonas_inundables),
+    ("Red Natura 2000",       "RN2000_{s}.gpkg",download_rn2000),
+    # Catastro: sin descarga automática (no hay servicio bbox fiable).
+    # Se coloca a mano en data/raw/Catastro/ y alinear_capas.py lo recorta.
 ]
 
 
