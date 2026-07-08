@@ -158,13 +158,20 @@ _CSS = """
     background: var(--surface-lowest);
     border-bottom: 1px solid var(--outline-variant);
     box-shadow: var(--shadow-card);
-    padding: 6px 28px;
+    padding: 0 28px;
     margin: -0.4rem 0 14px;
+    min-height: 52px;
+    display: flex;
+    flex-direction: row !important;
+    align-items: center !important;
   }
+  div[class*="st-key-topnav"] > * { width: 100%; }
+  div[class*="st-key-topnav"] [data-testid="stVerticalBlock"] { gap: 0 !important; }
+  div[class*="st-key-topnav"] * { margin-top: 0 !important; margin-bottom: 0 !important; }
   div[class*="st-key-topnav"] [data-testid="stHorizontalBlock"] {
     align-items: center;
   }
-  .topnav-left { display: flex; align-items: center; gap: 14px; margin-top: -12px; }
+  .topnav-left { display: flex; align-items: center; gap: 14px; min-height: 40px; }
   .topnav-logo { height: 34px; display: block; }
   .topnav-divider {
     width: 1px; height: 26px; background: var(--outline-variant); margin: 0 2px;
