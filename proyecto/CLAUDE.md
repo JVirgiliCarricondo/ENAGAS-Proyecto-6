@@ -1,11 +1,11 @@
-# Proyecto — Generación automatizada de trazados de ramales de H₂
+# Proyecto — Generación automatizada de trazados
 
 > Dimensión 3: el prototipo. Volver al [CLAUDE.md raíz](../CLAUDE.md).
 > Diseño técnico en [`arquitectura.md`](arquitectura.md). Contexto del reto en [`../docs/reto6_enagas.md`](../docs/reto6_enagas.md).
 
 ## Qué es
 
-Prototipo en Python que, dado un **origen** (planta de H₂), un **destino** (conexión a red troncal) y un **AOI**, genera **3-5 trazados alternativos diferenciados** sobre GIS público y los presenta en **comparativa multicriterio** (longitud, coste relativo, cruces, km en zona protegida/urbana, pendiente) + **mapa**.
+Prototipo en Python que, dado un **origen**, un **destino** y un **AOI**, genera **3-5 trazados alternativos diferenciados** sobre GIS público y los presenta en **comparativa multicriterio** (longitud, coste relativo, cruces, km en zona protegida/urbana, pendiente) + **mapa**.
 
 ## Arquitectura (resumen)
 

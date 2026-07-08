@@ -1,4 +1,4 @@
-"""Interfaz web — Generador de trazados de ramales de H2 (Enagás / CI2 Lab 2026).
+"""Interfaz web — Generador de trazados (Enagás / CI2 Lab 2026).
 
 Ejecutar desde proyecto/:
     streamlit run src/app/streamlit_app.py
@@ -29,7 +29,7 @@ from shapely.ops import unary_union
 # Page config — DEBE ser la primera llamada a Streamlit
 _ICON_PATH = Path(__file__).resolve().parent / "assets" / "Logo.png"
 st.set_page_config(
-    page_title="Trazados de Ramales de H₂",
+    page_title="Generador de Trazados",
     page_icon=str(_ICON_PATH) if _ICON_PATH.exists() else ":droplet:",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -1964,9 +1964,9 @@ def _render_results():
     head_l, head_r = st.columns([3.2, 1], vertical_alignment="center")
     with head_l:
         st.markdown(
-            '<div class="results-title">Comparativa de Trazados de Ramales H₂</div>'
-            '<p class="results-sub">Visualización métrica de indicadores de rendimiento para la red '
-            'de transporte de hidrógeno renovable. Proyecto H2 Lab 2026.</p>',
+            '<div class="results-title">Comparativa de Trazados</div>'
+            '<p class="results-sub">Visualización métrica de indicadores de rendimiento de los '
+            'trazados alternativos. Proyecto CI2 Lab 2026.</p>',
             unsafe_allow_html=True,
         )
     with head_r:
@@ -2181,7 +2181,7 @@ def _hero_visual() -> str:
                 f'background-size:cover;background-position:center;'
                 f'border:1px solid var(--outline-variant);"></div>'
             )
-    # Sin imagen: panel degradado con motivo de red H₂
+    # Sin imagen: panel degradado con motivo de red de conducciones
     return (
         '<div style="height:100%;min-height:480px;border-radius:var(--radius-xl);'
         'border:1px solid var(--outline-variant);overflow:hidden;position:relative;'
@@ -2262,12 +2262,12 @@ def _render_bienvenida() -> None:
         st.markdown(
             '<div style="font-family:var(--font-body);font-weight:700;font-size:0.72rem;'
             'letter-spacing:0.08em;text-transform:uppercase;color:var(--secondary);'
-            'margin-bottom:6px;">Hydrogen Infrastructure Tool</div>'
+            'margin-bottom:6px;">Infrastructure Routing Tool</div>'
             '<div style="font-family:var(--font-head);font-size:2.3rem;font-weight:800;'
             'color:var(--primary);line-height:1.1;letter-spacing:-0.02em;margin-bottom:14px;">'
-            'Generador de Trazados<br>de Ramales de H₂</div>'
+            'Generador<br>de Trazados</div>'
             '<p class="welcome-sub" style="text-align:justify;">Herramienta avanzada '
-            'para la optimización y diseño de infraestructuras de hidrógeno. Utilice algoritmos '
+            'para la optimización y diseño de trazados de infraestructuras lineales. Utilice algoritmos '
             'de última generación para calcular las rutas más eficientes basadas en criterios '
             'geográficos, ambientales y de coste.</p>',
             unsafe_allow_html=True,

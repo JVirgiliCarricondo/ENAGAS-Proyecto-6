@@ -27,7 +27,7 @@ def generar_trazados(escenario_path: str, perfiles_path: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
-    parser = argparse.ArgumentParser(description="Genera y compara trazados de ramales de H2.")
+    parser = argparse.ArgumentParser(description="Genera y compara trazados alternativos.")
     parser.add_argument("--escenario", default="data/config/escenario.yaml",
                         help="ruta al YAML del caso de estudio (AOI, origen, destino)")
     parser.add_argument("--perfiles", default="data/config/perfiles.yaml",

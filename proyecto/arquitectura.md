@@ -1,4 +1,4 @@
-# Arquitectura — Generación automatizada de trazados de ramales de H₂
+# Arquitectura — Generación automatizada de trazados
 
 > Diseño técnico del prototipo. Lectura previa: [`../docs/reto6_enagas.md`](../docs/reto6_enagas.md).
 
@@ -11,7 +11,7 @@ Todo el cálculo es reproducible y auditable: las capas se alinean a un CRS y re
 ## Diagrama de componentes
 
 ```
-   origen (planta H₂) + destino (conexión red troncal) + AOI
+   origen + destino + AOI
                           │
         ┌─────────────────▼──────────────────┐
         │   1. INGESTA  (src/ingesta/)        │
@@ -96,7 +96,7 @@ Multi-escenario: la herramienta guarda por defecto los escenarios `A` y `B`, y l
 crs_trabajo: EPSG:25830            # CRS común (península)
 resolucion_m: 30                   # tamaño de celda de la rejilla común (m)
 escenario_A:
-  origen:                          # planta de H₂
+  origen:                          # punto de origen
     nombre: A_inicial
     x: 741453
     y: 4561984
