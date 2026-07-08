@@ -965,10 +965,17 @@ def main() -> None:
         entry = download_manifest.get(raw_name) if raw_name else None
         if entry and entry.get("status") == "failed":
             detail = entry.get("detail", "sin detalle")
-            log.error(f"  ✗ descarga marcada como FAILED en el manifiesto: {detail}")
-            log.error(f"    → se omite la alineación (re-ejecuta descargar_capas.py "
-                      f"para {raw_name})")
-            failed_layers.append(spec.label)
+            # RN2000 es opcional: su fallo no bloquea el pipeline. Se trata
+            # como capa sin datos (missing) en lugar de fallo crítico.
+            _OPTIONAL_LABELS = {"Red Natura 2000"}
+            if spec.label in _OPTIONAL_LABELS:
+                log.warning(f"  ⚠ descarga de capa opcional FAILED ({detail}); se omite sin bloquear.")
+                missing_layers.append(spec.label)
+            else:
+                log.error(f"  ✗ descarga marcada como FAILED en el manifiesto: {detail}")
+                log.error(f"    → se omite la alineación (re-ejecuta descargar_capas.py "
+                          f"para {raw_name})")
+                failed_layers.append(spec.label)
             continue
 
         src_paths = _discover_layer_sources(spec, log, scenario=args.escenario)
