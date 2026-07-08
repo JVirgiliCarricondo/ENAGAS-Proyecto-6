@@ -461,19 +461,6 @@ _CSS = """
   }
   .st-key-p1_map_selector div[data-testid="stRadio"] { margin: 0 !important; }
 
-  /* ── Barra superior: botón de modo noche ──────────────────────────────── */
-  div[class*="st-key-topnav"] button {
-    background: transparent;
-    border: none;
-    color: var(--on-surface-variant);
-    border-radius: 50%;
-    width: 34px; height: 34px;
-    padding: 0;
-  }
-  div[class*="st-key-topnav"] button:hover {
-    background: var(--surface-container);
-    color: var(--primary);
-  }
   /* ── Footer técnico ───────────────────────────────────────────────────── */
   .enagas-footer {
     margin-top: 26px;
@@ -600,32 +587,6 @@ _CSS = """
   footer { display: none; }
   #MainMenu { display: none; }
   header[data-testid="stHeader"] { display: none; }
-</style>
-"""
-
-# Sobrescribe las variables de _CSS con la paleta oscura — se inyecta después
-# de _CSS, así que gana en la cascada sin duplicar el resto de reglas.
-_CSS_DARK = """
-<style>
-  :root {
-    --primary:            #6cb7e8;
-    --primary-container:  #004f7d;
-    --on-primary:         #00344f;
-    --secondary:          #a8d65a;
-    --secondary-container:#3a4d00;
-    --tertiary:           #7ecbfa;
-    --surface:            #101418;
-    --surface-lowest:     #0b0e11;
-    --surface-low:        #15191d;
-    --surface-container:  #1b2024;
-    --surface-high:       #23282c;
-    --surface-highest:    #2a2f33;
-    --on-surface:         #e2e6e9;
-    --on-surface-variant: #b8c0c7;
-    --outline:            #8b939b;
-    --outline-variant:    #3c4247;
-    --error:              #ffb4a9;
-  }
 </style>
 """
 
@@ -2322,21 +2283,10 @@ def _main():
         if _LOGO_PATH.exists() else ""
     )
 
-    st.session_state.setdefault("modo_noche", False)
-
     st.markdown(_CSS, unsafe_allow_html=True)
-    if st.session_state.modo_noche:
-        st.markdown(_CSS_DARK, unsafe_allow_html=True)
 
     with st.container(key="topnav"):
-        col_logo, col_toggle = st.columns([30, 1])
-        with col_logo:
-            st.markdown(f'<div class="topnav-left">{_logo_tag}</div>', unsafe_allow_html=True)
-        with col_toggle:
-            icono = ":material/light_mode:" if st.session_state.modo_noche else ":material/dark_mode:"
-            if st.button(icono, key="btn_modo_noche", help="Modo noche"):
-                st.session_state.modo_noche = not st.session_state.modo_noche
-                st.rerun()
+        st.markdown(f'<div class="topnav-left">{_logo_tag}</div>', unsafe_allow_html=True)
 
     if "pantalla" not in st.session_state:
         st.session_state.pantalla = "bienvenida"
