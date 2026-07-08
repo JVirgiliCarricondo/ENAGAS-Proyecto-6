@@ -1,7 +1,7 @@
 # Agente de Ingesta y Alineación de Capas GIS
 
 > Documentación del script `src/ingesta/alinear_capas.py`.
-> Proyecto: Reto 6 Enagás — Generación automatizada de trazados de ramales de H₂.
+> Proyecto: Reto 6 Enagás — Generación automatizada de trazados.
 
 ## Qué hace este agente
 

@@ -163,7 +163,7 @@ def construir_informe_pdf(
         buf, pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=16 * mm, bottomMargin=16 * mm,
-        title="Informe de Trazados de Ramales de H2",
+        title="Informe de Trazados",
         author="CI2 Lab 2026 — Grupo 6 (Reto 6, Enagás)",
     )
 
@@ -196,7 +196,7 @@ def construir_informe_pdf(
             story.append(Spacer(1, 4))
         except Exception:
             pass
-    story.append(Paragraph("Informe de Trazados de Ramales de H₂", h_title))
+    story.append(Paragraph("Informe de Trazados", h_title))
     story.append(Paragraph(
         "Comparativa multicriterio de trazados alternativos · "
         "Reto 6 (Enagás) — CI2 Lab 2026, Grupo 6", h_sub))

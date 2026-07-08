@@ -1,6 +1,6 @@
-# Generación automatizada de trazados de ramales de H₂
+# Generación automatizada de trazados
 
-Prototipo del Grupo 6 (CI2 Lab 2026, reto Enagás). Dado un origen (planta de H₂), un destino (conexión a red troncal) y un AOI, genera **3-5 trazados alternativos diferenciados** sobre GIS público y los compara por longitud, coste relativo, cruces, km en zona protegida/urbana y pendiente.
+Prototipo del Grupo 6 (CI2 Lab 2026, reto Enagás). Dado un origen, un destino y un AOI, genera **3-5 trazados alternativos diferenciados** sobre GIS público y los compara por longitud, coste relativo, cruces, km en zona protegida/urbana y pendiente.
 
 > Contexto del reto: [`../docs/reto6_enagas.md`](../docs/reto6_enagas.md) · Arquitectura: [`arquitectura.md`](arquitectura.md)
 
