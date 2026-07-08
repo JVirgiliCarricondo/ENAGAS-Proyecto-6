@@ -1,33 +1,44 @@
 """Generación del informe PDF de resultados (Reto 6, Enagás / CI2 Lab 2026).
 
-Construye un informe en PDF con: escenarios seleccionados (origen/destino),
-perfiles de prioridad usados (pesos por capa), y por cada escenario una imagen
-de los trazados generados junto con su tabla de métricas multicriterio.
+"Informe de trazados alternativos": explica brevemente cómo se combinan las
+capas de coste (con los pesos de cada perfil) en un único ráster de coste
+global y cómo el motor LCP traza la ruta sobre ese ráster; después desglosa
+el resultado en cuatro secciones, una por perfil de prioridad, cada una con
+la imagen del ráster de coste + ruta (rotada a horizontal) y la tabla de
+métricas de esa ruta en cada escenario.
 
-Las dependencias pesadas (matplotlib, reportlab) se importan aquí y no en el
-arranque de la app; este módulo se carga de forma perezosa desde streamlit_app.
+Las dependencias pesadas (matplotlib, reportlab, rasterio) se importan aquí
+y no en el arranque de la app; este módulo se carga de forma perezosa desde
+streamlit_app.
 """
 
 from __future__ import annotations
 
 import io
+import math
 from datetime import datetime
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
+import rasterio
 
 # Backend sin pantalla — imprescindible dentro de Streamlit/servidor.
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.transforms import Affine2D  # noqa: E402
 
 from reportlab.lib import colors  # noqa: E402
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT  # noqa: E402
 from reportlab.lib.pagesizes import A4  # noqa: E402
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # noqa: E402
 from reportlab.lib.units import mm  # noqa: E402
 from reportlab.platypus import (  # noqa: E402
     Image as RLImage,
+    KeepTogether,
+    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -52,6 +63,17 @@ _DECIMALES = {
 }
 
 
+def _primera_frase(texto: str) -> str:
+    """Primera frase de un texto más largo (p.ej. la 'descripcion' de un perfil
+    en perfiles.yaml), para usar como resumen breve en el informe."""
+    if not texto:
+        return ""
+    primera = texto.strip().split(". ")[0].strip()
+    if primera and not primera.endswith((".", "…")):
+        primera += "."
+    return primera
+
+
 def _fmt_valor(etiqueta: str, valor) -> str:
     """Formatea un valor de métrica con como mucho 3 decimales."""
     if valor is None:
@@ -69,23 +91,121 @@ def _fmt_valor(etiqueta: str, valor) -> str:
     return f"{num:.{dec}f}"
 
 
-def _figura_rutas(
+def _figura_raster_ruta(
+    sid: str,
+    perfil: str,
+    trazados_dir: Path,
+    rutas_dir: Path,
+    color: str,
+    origen: dict | None,
+    destino: dict | None,
+) -> bytes | None:
+    """Imagen PNG (bytes): ráster de coste del perfil (verde=barato, rojo=caro)
+    con la ruta encima, rotada para que el corredor origen→destino quede
+    siempre en horizontal (evita huecos en blanco cuando el trazado es
+    predominantemente norte-sur)."""
+    raster_path = trazados_dir / f"superficie_{sid}_{perfil}.tif"
+    if not raster_path.exists():
+        return None
+
+    with rasterio.open(raster_path) as src:
+        arr = src.read(1, masked=True)
+        b = src.bounds
+        transform = src.transform
+
+    angle_deg = 0.0
+    if origen and destino:
+        dx = destino["x"] - origen["x"]
+        dy = destino["y"] - origen["y"]
+        if dx or dy:
+            angle_deg = -math.degrees(math.atan2(dy, dx))
+
+    cx, cy = (b.left + b.right) / 2, (b.bottom + b.top) / 2
+
+    # El coste combinado NO está acotado a [0,1] (incluye BASE_LONG · peso
+    # longitud, ver combinar.py); se normaliza al rango real de la celda para
+    # que la rampa verde→rojo distinga barato/caro dentro de este perfil.
+    valid_arr = arr.compressed() if np.ma.is_masked(arr) else arr[np.isfinite(arr)]
+    vmin, vmax = (float(valid_arr.min()), float(valid_arr.max())) if valid_arr.size else (0.0, 1.0)
+    if vmin == vmax:
+        vmax = vmin + 1.0
+
+    # El AOI es un rectángulo orientado a lo largo de la línea origen→destino,
+    # recortado dentro de un ráster de almacenamiento con orientación norte
+    # (bounds axis-aligned): los datos válidos ya forman una banda diagonal
+    # dentro de ese cuadro, con nan en las esquinas. Encuadrar por los bounds
+    # (el cuadro completo) deja huecos enormes al rotar; hay que encuadrar por
+    # la extensión real de los píxeles con dato, ya rotados.
+    theta = math.radians(angle_deg)
+    rmat = np.array([[math.cos(theta), -math.sin(theta)],
+                      [math.sin(theta), math.cos(theta)]])
+    valid_mask = ~np.ma.getmaskarray(arr) if np.ma.is_masked(arr) else np.isfinite(arr)
+    rows, cols = np.nonzero(valid_mask)
+    if rows.size:
+        xs = transform.a * (cols + 0.5) + transform.b * (rows + 0.5) + transform.c
+        ys = transform.d * (cols + 0.5) + transform.e * (rows + 0.5) + transform.f
+        pts = np.column_stack([xs, ys]) - [cx, cy]
+        rotated = pts @ rmat.T + [cx, cy]
+        xmin, ymin = rotated.min(axis=0)
+        xmax, ymax = rotated.max(axis=0)
+    else:
+        xmin, xmax, ymin, ymax = b.left, b.right, b.bottom, b.top
+    padx, pady = (xmax - xmin) * 0.02, (ymax - ymin) * 0.06
+    xmin, xmax = xmin - padx, xmax + padx
+    ymin, ymax = ymin - pady, ymax + pady
+
+    # El lienzo se dimensiona con la MISMA proporción que los datos ya
+    # rotados y los ejes ocupan el 100% de la figura: así no queda ningún
+    # margen en blanco que recortar (evita el recorte "tight" poco fiable
+    # cuando se combina con transformaciones de rotación de artistas).
+    fig_h = 5.2
+    fig_w = max(3.5, min(fig_h * (xmax - xmin) / (ymax - ymin), 15.0))
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=150)
+    ax = fig.add_axes([0, 0, 1, 1])
+
+    cmap = plt.get_cmap("RdYlGn_r").copy()
+    cmap.set_bad("white")
+    rot = Affine2D().rotate_deg_around(cx, cy, angle_deg) + ax.transData
+
+    im = ax.imshow(arr, extent=(b.left, b.right, b.bottom, b.top),
+                    origin="upper", cmap=cmap, vmin=vmin, vmax=vmax)
+    im.set_transform(rot)
+
+    ruta_path = rutas_dir / f"ruta_{sid}_{perfil}.gpkg"
+    if ruta_path.exists():
+        try:
+            gdf = gpd.read_file(ruta_path)
+            gdf.plot(ax=ax, color="white", linewidth=3.4, transform=rot, zorder=3)
+            gdf.plot(ax=ax, color=color, linewidth=1.7, transform=rot, zorder=4)
+        except Exception:
+            pass
+
+    ax.set_xlim(xmin, xmax)
+    ax.set_ylim(ymin, ymax)
+    ax.set_aspect("equal")
+    ax.set_axis_off()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", facecolor="white")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+def _figura_todas_rutas(
     sid: str,
     rutas_dir: Path,
     perfiles_orden: list[str],
     colores: dict[str, str],
     nombre_perfil: dict[str, str],
 ) -> bytes | None:
-    """Imagen PNG (bytes) con los trazados del escenario coloreados por perfil."""
-    paths = [
-        (p, rutas_dir / f"ruta_{sid}_{p}.gpkg")
-        for p in perfiles_orden
-    ]
+    """Imagen PNG (bytes) con los 4 trazados de un escenario superpuestos
+    (uno por perfil, coloreados), con leyenda — sin ráster de fondo."""
+    paths = [(p, rutas_dir / f"ruta_{sid}_{p}.gpkg") for p in perfiles_orden]
     paths = [(p, pt) for p, pt in paths if pt.exists()]
     if not paths:
         return None
 
-    fig, ax = plt.subplots(figsize=(6.6, 4.4), dpi=150)
+    fig, ax = plt.subplots(figsize=(4.4, 4.4), dpi=150)
     handles = []
     for perfil, pt in paths:
         try:
@@ -101,7 +221,7 @@ def _figura_rutas(
 
     ax.set_aspect("equal")
     ax.set_axis_off()
-    ax.margins(0.06)
+    ax.margins(0.08)
     if handles:
         ax.legend(handles=handles, loc="best", fontsize=8, frameon=True,
                   framealpha=0.9, edgecolor="#c9d2da")
@@ -145,6 +265,7 @@ def construir_informe_pdf(
     perfiles: list[dict] | None,
     coords: dict,
     rutas_dir: Path,
+    trazados_dir: Path,
     perfiles_orden: list[str],
     colores: dict[str, str],
     nombre_perfil: dict[str, str],
@@ -154,23 +275,26 @@ def construir_informe_pdf(
 ) -> bytes:
     """Genera el informe PDF completo y devuelve sus bytes.
 
-    Incluye: portada, escenarios seleccionados (origen/destino), perfiles de
-    prioridad usados (pesos por capa) y, por escenario, imagen de trazados +
-    tabla de métricas (máx. 3 decimales).
+    Incluye: portada, explicación breve de cómo se genera el ráster de coste
+    global (capas de coste + pesos del perfil) y las rutas sobre él, los
+    escenarios seleccionados (origen/destino), los pesos de cada perfil de
+    prioridad y, por cada uno de los cuatro perfiles, la imagen del ráster de
+    coste con la ruta encima (horizontal) y la tabla de métricas de esa ruta
+    en cada escenario.
     """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=16 * mm, bottomMargin=16 * mm,
-        title="Informe de Trazados",
+        title="Informe de trazados alternativos",
         author="CI2 Lab 2026 — Grupo 6 (Reto 6, Enagás)",
     )
 
     ss = getSampleStyleSheet()
     h_title = ParagraphStyle(
         "h_title", parent=ss["Title"], fontName="Helvetica-Bold",
-        fontSize=20, textColor=_PRIMARY, spaceAfter=2,
+        fontSize=19, textColor=_PRIMARY, spaceAfter=2, alignment=TA_LEFT,
     )
     h_sub = ParagraphStyle(
         "h_sub", parent=ss["Normal"], fontSize=9.5, textColor=_GREY, spaceAfter=2,
@@ -179,30 +303,78 @@ def construir_informe_pdf(
         "h_sec", parent=ss["Heading2"], fontName="Helvetica-Bold",
         fontSize=13, textColor=_PRIMARY, spaceBefore=14, spaceAfter=6,
     )
-    h_esc = ParagraphStyle(
-        "h_esc", parent=ss["Heading2"], fontName="Helvetica-Bold",
+    h_perfil = ParagraphStyle(
+        "h_perfil", parent=ss["Heading2"], fontName="Helvetica-Bold",
         fontSize=12.5, textColor=colors.white, spaceBefore=2, spaceAfter=2,
         leftIndent=6,
     )
-    body = ParagraphStyle("body", parent=ss["Normal"], fontSize=9.5, textColor=colors.HexColor("#22272b"))
+    h_esc = ParagraphStyle(
+        "h_esc", parent=ss["Heading3"], fontName="Helvetica-Bold",
+        fontSize=10, textColor=_PRIMARY, spaceBefore=8, spaceAfter=4,
+    )
+    body = ParagraphStyle("body", parent=ss["Normal"], fontSize=9.5,
+                           textColor=colors.HexColor("#22272b"), leading=13.5,
+                           alignment=TA_JUSTIFY)
+    desc_perfil_style = ParagraphStyle(
+        "desc_perfil", parent=body, fontName="Helvetica-Oblique",
+        textColor=_GREY, spaceBefore=6, spaceAfter=2,
+    )
+    th_style = ParagraphStyle(
+        "th", fontName="Helvetica-Bold", fontSize=7.3, leading=8.6,
+        textColor=colors.white, alignment=TA_CENTER,
+    )
 
     story: list = []
 
-    # ── Cabecera / portada ────────────────────────────────────────────────────
+    # ── Cabecera / portada: logo pequeño arriba a la izquierda, título y
+    # subtítulo a su derecha ────────────────────────────────────────────────
+    logo_cell = ""
     if logo_path is not None and Path(logo_path).exists():
         try:
-            story.append(RLImage(str(logo_path), width=34 * mm, height=34 * mm,
-                                  kind="proportional"))
-            story.append(Spacer(1, 4))
+            logo_cell = RLImage(str(logo_path), width=20 * mm, height=20 * mm,
+                                 kind="proportional")
         except Exception:
-            pass
-    story.append(Paragraph("Informe de Trazados", h_title))
+            logo_cell = ""
+    info_cell = [
+        Paragraph("Informe de trazados alternativos", h_title),
+        Paragraph(
+            "Comparativa multicriterio de trazados alternativos · "
+            "Reto 6 (Enagás) — CI2 Lab 2026, Grupo 6", h_sub),
+        Paragraph(
+            "Generado el " + datetime.now().strftime("%d/%m/%Y %H:%M"), h_sub),
+    ]
+    cabecera_tbl = Table([[logo_cell, info_cell]], colWidths=[24 * mm, 146 * mm])
+    cabecera_tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (0, 0), "LEFT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(cabecera_tbl)
+    story.append(Spacer(1, 10))
+
+    # ── Metodología (primera parte) ───────────────────────────────────────────
+    story.append(Paragraph("Cómo se generan los trazados", h_sec))
     story.append(Paragraph(
-        "Comparativa multicriterio de trazados alternativos · "
-        "Reto 6 (Enagás) — CI2 Lab 2026, Grupo 6", h_sub))
-    story.append(Paragraph(
-        "Generado el " + datetime.now().strftime("%d/%m/%Y %H:%M"), h_sub))
+        "Cada condicionante del territorio (relieve, usos del suelo, zonas "
+        "protegidas, zonas inundables, cruces con vías y ríos, geotecnia) se "
+        "traduce en una <b>capa de coste</b> independiente: un valor entre 0 "
+        "(paso barato) y 1 (paso caro) en cada celda del terreno. Estas capas "
+        "se combinan celda a celda mediante una <b>suma ponderada</b>, usando "
+        "los pesos que define cada <b>perfil de prioridad</b> (más corto, "
+        "equilibrio, menor impacto ambiental, por relieve), en un único "
+        "<b>ráster de coste global</b> para ese perfil.", body))
     story.append(Spacer(1, 4))
+    story.append(Paragraph(
+        "Sobre ese ráster, el motor de <b>camino de mínimo coste</b> "
+        "(Dijkstra de 8 vecinos) calcula, celda a celda, el trayecto entre el "
+        "origen y el destino que acumula el menor coste total. Como cada "
+        "perfil pondera de forma distinta las mismas capas, cada uno da lugar "
+        "a un ráster de coste — y por tanto a una ruta — diferenciados. Las "
+        "páginas siguientes muestran, para cada uno de los cuatro perfiles, "
+        "ese ráster con la ruta resultante encima y sus métricas.", body))
 
     # ── Escenarios seleccionados ──────────────────────────────────────────────
     story.append(Paragraph("Escenarios seleccionados", h_sec))
@@ -221,7 +393,16 @@ def construir_informe_pdf(
     # ── Perfiles de prioridad usados ──────────────────────────────────────────
     if perfiles:
         story.append(Paragraph("Perfiles de prioridad usados (pesos por capa)", h_sec))
-        cabecera = ["Perfil"] + [et.split(" (")[0] for _, et in capas_peso]
+        # Cabecera como Paragraph (no texto plano): las etiquetas largas como
+        # "Zonas protegidas" o "Zonas inundables" pasan a una segunda línea en
+        # vez de desbordar sobre la columna vecina. "Expropiacion" se abrevia:
+        # es una única palabra sin espacio donde partir, y al no caber en el
+        # ancho de columna reportlab la corta en mitad de la palabra.
+        _abrev_cabecera = {"Expropiacion": "Expropiac."}
+        cabecera = [Paragraph("Perfil", th_style)] + [
+            Paragraph(_abrev_cabecera.get(et.split(" (")[0], et.split(" (")[0]), th_style)
+            for _, et in capas_peso
+        ]
         datos_perf = [cabecera]
         for p in perfiles:
             fila = [nombre_perfil.get(p.get("id"), p.get("id", "—"))]
@@ -234,49 +415,119 @@ def construir_informe_pdf(
         anchos = [34 * mm] + [(ancho_total - 34 * mm) / (n_cols - 1)] * (n_cols - 1)
         story.append(_tabla(datos_perf, anchos=anchos))
 
-    # ── Por escenario: imagen de trazados + métricas ──────────────────────────
-    for s in escenarios:
-        res = resultados.get(s, {})
-        rutas = res.get("rutas", [])
+    # ── Comparativa: los 4 perfiles superpuestos, uno al lado del otro por
+    # escenario ────────────────────────────────────────────────────────────
+    imgs_cmp = [(s, _figura_todas_rutas(s, rutas_dir, perfiles_orden, colores, nombre_perfil))
+                for s in escenarios]
+    if any(img is not None for _, img in imgs_cmp):
+        ancho_celda = 170 * mm / len(imgs_cmp)
+        # Tamaño moderado a propósito: esta comparativa va al pie de la
+        # primera página, debajo de las tres tablas previas, así que solo
+        # queda un margen de página acotado (no una página en blanco).
+        ancho_img = min(ancho_celda - 6 * mm, 62 * mm)
+        fila_cmp = []
+        for s, img in imgs_cmp:
+            celda = [Paragraph(f"Escenario {s}", h_esc)]
+            if img is not None:
+                celda.append(RLImage(io.BytesIO(img), width=ancho_img, height=ancho_img,
+                                      kind="proportional"))
+            else:
+                celda.append(Paragraph("Sin rutas disponibles.", body))
+            fila_cmp.append(celda)
+        tabla_cmp = Table([fila_cmp], colWidths=[ancho_celda] * len(fila_cmp))
+        tabla_cmp.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
+        ]))
+        story.append(KeepTogether([
+            Paragraph("Comparativa de perfiles superpuestos", h_sec),
+            tabla_cmp,
+        ]))
 
-        banda = _tabla([[Paragraph(f"Escenario {s}", h_esc)]], anchos=[170 * mm])
+    # ── Una sección por perfil: ráster+ruta (horizontal) + métricas ──────────
+    ids_disponibles = [p.get("id") for p in perfiles] if perfiles else list(perfiles_orden)
+    perfiles_a_incluir = [pid for pid in perfiles_orden if pid in ids_disponibles]
+
+    cols_metricas = [c for c in col_rename if c != "perfil"]
+    desc_por_perfil = {
+        p.get("id"): _primera_frase(p.get("descripcion", "")) for p in (perfiles or [])
+    }
+    comentario_metricas = (
+        "La tabla siguiente recoge, para cada escenario, la longitud y el coste "
+        "relativo del trazado, sus pendientes máxima y media, el número de "
+        "cruces con ríos, carreteras y ferrocarril, y los kilómetros del "
+        "recorrido en zona protegida, inundable o urbana."
+    )
+
+    # Cada perfil ocupa una página propia con SUS DOS escenarios juntos
+    # (imagen + métricas de cada uno) en la misma cara.
+    n_esc = max(len(escenarios), 1)
+    # Alto de imagen que garantiza que ambos escenarios + banda + descripción
+    # + comentario + tabla quepan en una sola página A4 (alto útil ≈ 265 mm).
+    alto_img_mm = 78 if n_esc > 1 else 92
+
+    for pid in perfiles_a_incluir:
+        descripcion = desc_por_perfil.get(pid, "")
+
+        banda = _tabla([[Paragraph(nombre_perfil.get(pid, pid), h_perfil)]],
+                        anchos=[170 * mm])
         banda.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), _PRIMARY),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(colores.get(pid, "#004e7e"))),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ]))
-        story.append(Spacer(1, 6))
-        story.append(banda)
-        story.append(Spacer(1, 8))
 
-        img = _figura_rutas(s, rutas_dir, perfiles_orden, colores, nombre_perfil)
-        if img is not None:
-            story.append(RLImage(io.BytesIO(img), width=150 * mm, height=100 * mm,
-                                 kind="proportional"))
-            story.append(Spacer(1, 8))
+        pagina: list = [banda]
+        if descripcion:
+            pagina.append(Paragraph(descripcion, desc_perfil_style))
+        pagina.append(Spacer(1, 6))
+
+        filas_perfil = []
+        for s in escenarios:
+            if len(escenarios) > 1:
+                pagina.append(Paragraph(f"Escenario {s}", h_esc))
+
+            pts = coords.get(s, {})
+            img = _figura_raster_ruta(
+                s, pid, trazados_dir, rutas_dir, colores.get(pid, "#004e7e"),
+                pts.get("origen"), pts.get("destino"),
+            )
+            if img is not None:
+                pagina.append(RLImage(io.BytesIO(img), width=165 * mm,
+                                       height=alto_img_mm * mm, kind="proportional"))
+                pagina.append(Spacer(1, 4))
+            else:
+                pagina.append(Paragraph(
+                    "Sin ráster de coste / trazado disponible para este escenario.", body))
+
+            ruta = next(
+                (r for r in resultados.get(s, {}).get("rutas", []) if r.perfil == pid),
+                None,
+            )
+            if ruta is not None:
+                filas_perfil.append({"escenario": s, **ruta.to_dict()})
+
+        if filas_perfil:
+            cols_usadas = [c for c in cols_metricas if any(c in f for f in filas_perfil)]
+            datos_met = [["Escenario"] + [col_rename[c] for c in cols_usadas]]
+            for f in filas_perfil:
+                datos_met.append(
+                    [f["escenario"]] + [_fmt_valor(col_rename[c], f.get(c)) for c in cols_usadas]
+                )
+            pagina.append(Paragraph(comentario_metricas, body))
+            pagina.append(Spacer(1, 4))
+            pagina.append(_tabla(datos_met))
         else:
-            story.append(Paragraph("Sin trazados disponibles para este escenario.", body))
+            pagina.append(Paragraph("Sin métricas calculadas para este perfil.", body))
 
-        if not rutas:
-            story.append(Paragraph("Sin métricas calculadas para este escenario.", body))
-            continue
-
-        filas = [r.to_dict() for r in rutas]
-        cols = [c for c in col_rename if any(c in f for f in filas)]
-        cabecera = [col_rename[c] for c in cols]
-        datos_met = [cabecera]
-        for f in filas:
-            fila = []
-            for c in cols:
-                et = col_rename[c]
-                val = f.get(c)
-                if c == "perfil":
-                    fila.append(nombre_perfil.get(val, val))
-                else:
-                    fila.append(_fmt_valor(et, val))
-            datos_met.append(fila)
-        story.append(_tabla(datos_met))
+        # Página nueva para cada perfil; KeepTogether es red de seguridad
+        # para que, si el contenido no cupiera exactamente, no se corte a
+        # mitad de un escenario dejando el otro en la página siguiente.
+        story.append(PageBreak())
+        story.append(KeepTogether(pagina))
 
     doc.build(story)
     return buf.getvalue()
