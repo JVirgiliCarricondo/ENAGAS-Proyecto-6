@@ -95,6 +95,9 @@ def _run_modulo(modulo: str, scenario: str) -> subprocess.CompletedProcess:
             env["PATH"] = str(qgis_bin) + os.pathsep + env.get("PATH", "")
         if proj_data.exists() and "PROJ_DATA" not in env and "PROJ_LIB" not in env:
             env["PROJ_DATA"] = str(proj_data)
+        gdal_data = qgis_root / "apps" / "gdal" / "share" / "gdal"
+        if gdal_data.exists() and "GDAL_DATA" not in env:
+            env["GDAL_DATA"] = str(gdal_data)
 
     cmd = [sys.executable, "-m", modulo, "--escenario", scenario, "-y"]
     return subprocess.run(
