@@ -80,6 +80,22 @@ def _escenario_en_config(scenario: str) -> bool:
 
 def _run_modulo(modulo: str, scenario: str) -> subprocess.CompletedProcess:
     """Ejecuta `python -m {modulo} --escenario {s} -y` desde proyecto/."""
+    import os
+    env = os.environ.copy()
+
+    # En Windows con QGIS Python las DLLs de GDAL/PROJ están en QGIS/bin/.
+    # subprocess no las encuentra si esa carpeta no está en PATH, lo que
+    # provoca que geopandas y pyproj fallen al importar en el subproceso.
+    if sys.platform == "win32":
+        python_exe = Path(sys.executable)
+        qgis_root = python_exe.parents[2]       # …/QGIS 4.x.x/
+        qgis_bin = qgis_root / "bin"
+        proj_data = qgis_root / "share" / "proj"
+        if qgis_bin.exists():
+            env["PATH"] = str(qgis_bin) + os.pathsep + env.get("PATH", "")
+        if proj_data.exists() and "PROJ_DATA" not in env and "PROJ_LIB" not in env:
+            env["PROJ_DATA"] = str(proj_data)
+
     cmd = [sys.executable, "-m", modulo, "--escenario", scenario, "-y"]
     return subprocess.run(
         cmd,
@@ -88,6 +104,7 @@ def _run_modulo(modulo: str, scenario: str) -> subprocess.CompletedProcess:
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=env,
     )
 
 
