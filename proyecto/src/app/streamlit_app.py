@@ -1904,6 +1904,57 @@ def _boton_informe_pdf(resultados: dict, escenarios: list[str]) -> None:
     )
 
 
+def _boton_descargar_rutas_zip(escenarios: list[str]) -> None:
+    """Botón que empaqueta las rutas .gpkg generadas en un ZIP descargable.
+
+    Estructura del archivo «Trazados de ramales.zip»: una carpeta por escenario
+    (`Escenario {s}/`) y dentro los .gpkg de las rutas generadas de ese
+    escenario (un fichero por perfil) junto a su .qml de estilo QGIS, cuando
+    existe. El ZIP se construye una sola vez por combinación de rutas y se
+    cachea en sesión; los reruns reutilizan los bytes.
+    """
+    import io
+    import zipfile
+
+    rutas = [
+        (s, perfil, _RUTAS_DIR / f"ruta_{s}_{perfil}.gpkg")
+        for s in escenarios
+        for perfil in PERFILES
+        if (_RUTAS_DIR / f"ruta_{s}_{perfil}.gpkg").exists()
+    ]
+    if not rutas:
+        st.button(
+            "Descargar rutas (.gpkg)", disabled=True,
+            use_container_width=True, icon=":material/folder_zip:",
+            help="No hay rutas generadas para descargar.",
+            key="dl_rutas_zip_disabled",
+        )
+        return
+
+    firma = tuple((s, perfil) for s, perfil, _ in rutas)
+    cache = st.session_state.get("_zip_rutas_cache")
+    if not (cache and cache[0] == firma):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for s, _perfil, path in rutas:
+                zf.write(path, f"Escenario {s}/{path.name}")
+                qml = path.with_suffix(".qml")   # estilo QGIS de la ruta
+                if qml.exists():
+                    zf.write(qml, f"Escenario {s}/{qml.name}")
+        cache = (firma, buf.getvalue())
+        st.session_state["_zip_rutas_cache"] = cache
+
+    st.download_button(
+        "Descargar rutas (.gpkg)",
+        data=cache[1],
+        file_name="Trazados de ramales.zip",
+        mime="application/zip",
+        use_container_width=True,
+        icon=":material/folder_zip:",
+        key="dl_rutas_zip",
+    )
+
+
 def _render_results():
     resultados = st.session_state.get("resultados", {})
     escenarios = st.session_state.get(
@@ -1921,6 +1972,7 @@ def _render_results():
     with head_r:
         with st.container(key="btn_pdf_informe"):
             _boton_informe_pdf(resultados, escenarios)
+        _boton_descargar_rutas_zip(escenarios)
 
     # Avisos de preparación: capas de coste que no se pudieron generar para
     # algún escenario nuevo (p. ej. sin cobertura o sin fuente de datos). Se
