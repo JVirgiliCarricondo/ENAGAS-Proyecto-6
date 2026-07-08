@@ -223,8 +223,11 @@ def _figura_todas_rutas(
     ax.set_axis_off()
     ax.margins(0.08)
     if handles:
-        ax.legend(handles=handles, loc="best", fontsize=8, frameon=True,
-                  framealpha=0.9, edgecolor="#c9d2da")
+        # Leyenda FUERA del área de trazado (a la derecha): dentro tapaba
+        # los propios trazados, sobre todo en corredores estrechos.
+        ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1.0),
+                  fontsize=8, frameon=True, framealpha=0.9,
+                  edgecolor="#c9d2da", borderaxespad=0)
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
