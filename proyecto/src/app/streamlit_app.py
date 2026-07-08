@@ -745,6 +745,119 @@ _CSS = """
     width: 100%;
   }
 
+  /* ── Tarjeta de Catastro (Datos para esta zona) ───────────────────────── */
+  .st-key-cat_card {
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline-variant);
+    border-radius: 14px;
+    padding: 13px 16px 15px 16px;
+    box-shadow: var(--shadow-card);
+  }
+  .cat-title { display: flex; align-items: center; gap: 8px; }
+  .cat-title .material-symbols-outlined { font-size: 19px; }
+  .cat-title .txt { font-family: var(--font-body); font-weight: 700;
+    font-size: 0.78rem; color: var(--on-surface); line-height: 1.2; }
+  .cat-sub { font-family: var(--font-body); font-size: 0.68rem;
+    color: var(--on-surface-variant); margin: 4px 0 0 27px; line-height: 1.3; }
+  hr.cat-div { border: none; border-top: 1px solid var(--surface-high);
+    margin: 12px 0 2px 0; }
+
+  /* Botón "Ver municipios" — pastilla suave centrada */
+  .st-key-btn_cat_municipios div[data-testid="stButton"] > button {
+    border: 1px solid var(--outline-variant) !important;
+    border-radius: 9px !important;
+    color: var(--on-surface-variant) !important;
+    -webkit-text-fill-color: var(--on-surface-variant) !important;
+    padding: 6px 18px !important;
+    font-size: 0.72rem !important;
+    box-shadow: var(--shadow-card);
+  }
+  .st-key-btn_cat_municipios div[data-testid="stButton"] > button * {
+    color: var(--on-surface-variant) !important;
+    -webkit-text-fill-color: var(--on-surface-variant) !important;
+  }
+  .st-key-btn_cat_municipios div[data-testid="stButton"] > button:hover {
+    background: var(--surface-low) !important;
+    border-color: var(--outline) !important;
+  }
+
+  /* Caja gris que agrupa los municipios del corredor — compacta y acotada */
+  .st-key-cat_muni_box {
+    background: var(--surface-low);
+    border: 1px solid var(--surface-high);
+    border-radius: 13px;
+    padding: 9px 11px 1px 11px;
+    margin-top: 12px;
+  }
+  .cat-count { display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-body); font-weight: 700; font-size: 0.78rem;
+    margin: 2px 2px 8px 2px; }
+
+  /* Cada municipio como expander → tarjeta blanca redondeada, compacta */
+  .st-key-cat_muni_box div[data-testid="stExpander"] {
+    background: var(--surface-lowest);
+    border: 1px solid var(--surface-high) !important;
+    border-radius: 10px !important;
+    margin-bottom: 7px;
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+  .st-key-cat_muni_box div[data-testid="stExpander"] details,
+  .st-key-cat_muni_box div[data-testid="stExpander"] summary {
+    border: none !important; background: transparent !important;
+  }
+  .st-key-cat_muni_box div[data-testid="stExpander"] summary {
+    padding: 7px 12px !important;
+  }
+  /* Mismo tipo de letra que el título de "Red Natura 2000" en la tabla */
+  .st-key-cat_muni_box div[data-testid="stExpander"] summary p {
+    font-family: var(--font-body) !important; font-weight: 700 !important;
+    font-size: 0.78rem !important; color: var(--on-surface) !important;
+  }
+  /* Enlaces Urbana/Rústica en AZUL, como el enlace a la API en RN2000 */
+  .st-key-cat_muni_box div[data-testid="stLinkButton"] > a {
+    border: 1px solid var(--outline-variant) !important;
+    border-radius: 8px !important;
+    min-height: 0 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: normal !important;
+    line-height: 1.2 !important;
+    padding: 7px 10px !important;
+    background: var(--surface-lowest) !important;
+    color: var(--primary) !important;
+    -webkit-text-fill-color: var(--primary) !important;
+    font-family: var(--font-body) !important;
+    font-weight: 400 !important;
+    font-size: 0.72rem !important;
+  }
+  .st-key-cat_muni_box div[data-testid="stLinkButton"] > a * {
+    color: var(--primary) !important;
+    -webkit-text-fill-color: var(--primary) !important;
+    font-weight: 400 !important;
+    font-size: 0.72rem !important;
+  }
+  .st-key-cat_muni_box div[data-testid="stLinkButton"] > a:hover {
+    background: var(--surface-low) !important;
+    border-color: var(--primary) !important;
+  }
+  /* Zona de subida como caja blanca redondeada */
+  .st-key-cat_muni_box div[data-testid="stFileUploaderDropzone"] {
+    border-radius: 10px !important;
+    background: var(--surface-lowest) !important;
+  }
+  /* Botón "Upload" y texto "200MB per file · ZIP": pequeños y sin negrita */
+  .st-key-cat_muni_box div[data-testid="stFileUploaderDropzone"] button,
+  .st-key-cat_muni_box div[data-testid="stFileUploaderDropzone"] button * {
+    font-size: 0.72rem !important;
+    font-weight: 400 !important;
+  }
+  .st-key-cat_muni_box [data-testid="stFileUploaderDropzoneInstructions"],
+  .st-key-cat_muni_box [data-testid="stFileUploaderDropzoneInstructions"] * {
+    font-size: 0.66rem !important;
+    font-weight: 400 !important;
+  }
+
   footer { display: none; }
   #MainMenu { display: none; }
   header[data-testid="stHeader"] { display: none; }
@@ -1468,10 +1581,18 @@ _CAT_INSPIRE_CP = "https://www.catastro.hacienda.gob.es/INSPIRE/CadastralParcels
 _CAT_VISOR = "https://www1.sedecatastro.gob.es/Cartografia/mapa.aspx?refcat="
 # Portales de descarga (fallback / fuentes recomendadas que se aportan a mano)
 _URL_CATASTRO_PORTAL = "https://www.catastro.hacienda.gob.es/webinspire/index.html"
-_URL_RN2000 = ("https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/"
-               "biodiversidad/rn2000.html")
-_URL_SNCZI = ("https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/"
-              "agua/zonas-inundables.html")
+# Sede Electronica del Catastro — descarga de datos (urbana/rustica por municipio).
+# Requiere identificacion con cl@ve o certificado; es un portal con formulario, no
+# admite deep-link por municipio, asi que enlazamos al portal y mostramos el codigo
+# DGC + nombre para que el usuario seleccione alli provincia → municipio → urbana/rustica.
+_CAT_SEDE_DESCARGA = "https://www.sedecatastro.gob.es/Accesos/SECAccDescargaDatos.aspx"
+# Carpeta donde aterrizan los ZIP catastrales subidos en la app (uno por municipio).
+_CAT_RAW_DIR = _ROOT / "data" / "raw" / "Catastro"
+# Fuentes oficiales de las capas que el pipeline descarga solo (mismos endpoints
+# que usa src.ingesta.descargar_capas). El .html del portal MITECO de zonas
+# inundables devolvía 404, así que apuntamos al servicio real (OGC API Features).
+_URL_RN2000 = "https://servicios.idee.es/wfs-inspire/redes-ecologicas"
+_URL_SNCZI = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
 
 
 def _xml_localname(tag: str) -> str:
@@ -1536,6 +1657,50 @@ def _catastro_cp_zip(dgc5: str) -> tuple[str, str] | None:
     return None
 
 
+# ── Subida de ZIP catastrales por municipio (paso manual con cl@ve) ────────────
+# El usuario descarga en la Sede Electronica (cl@ve) la cartografia urbana y
+# rustica de cada municipio y la sube aqui. Cada municipio tiene su carpeta
+# data/raw/Catastro/<dgc>/; se considera "listo" (tick) cuando hay un PARCELA.shp
+# legible por el pipeline (subido directamente o convertido desde GML INSPIRE).
+
+def _cat_upload_dir(dgc: str) -> Path:
+    """Carpeta destino de los ZIP subidos para el municipio <dgc>."""
+    return _CAT_RAW_DIR / dgc
+
+
+def _cat_es_legible(dgc: str) -> bool:
+    """True si el municipio <dgc> tiene un PARCELA.shp que el pipeline puede leer.
+
+    Es el tick "de verdad": un ZIP subido solo cuenta cuando existe (o se ha
+    convertido a) PARCELA.shp, el formato que consume alinear_capas.py.
+    """
+    d = _cat_upload_dir(dgc)
+    if not d.exists():
+        return False
+    return any(p.stem.lower() == "parcela" for p in d.rglob("*.shp"))
+
+
+def _cat_normalizar(dgc: str, zip_path: Path) -> dict:
+    """Convierte el ZIP subido al formato del pipeline (PARCELA.shp)."""
+    from ingesta.convertir_catastro import normalizar_zip_catastro
+    return normalizar_zip_catastro(zip_path, _cat_upload_dir(dgc))
+
+
+def _cat_guardar_subida(dgc: str, uploaded) -> Path:
+    """Guarda un fichero subido (UploadedFile) en data/raw/Catastro/<dgc>/.
+
+    Conserva el nombre original (p. ej. 50074_URBANA.zip); si ya existe uno con
+    ese nombre lo sobrescribe. Devuelve la ruta escrita.
+    """
+    d = _cat_upload_dir(dgc)
+    d.mkdir(parents=True, exist_ok=True)
+    # Sanea el nombre para evitar rutas raras; conserva extension.
+    nombre = Path(uploaded.name).name or f"{dgc}.zip"
+    dest = d / nombre
+    dest.write_bytes(uploaded.getbuffer())
+    return dest
+
+
 def _catastro_municipios_aoi(coords_esc: dict) -> list[dict]:
     """Municipios que cruza el corredor, con enlace directo al ZIP INSPIRE.
 
@@ -1562,6 +1727,82 @@ def _catastro_municipios_aoi(coords_esc: dict) -> list[dict]:
             "url_visor": _CAT_VISOR + urllib.parse.quote(refcat) if refcat else _URL_CATASTRO_PORTAL,
         }
     return list(municipios.values())
+
+
+def _render_municipios_catastro(municipios: list[dict]) -> None:
+    """Lista interactiva de municipios del corredor (paso 4 + 5).
+
+    Por cada municipio: enlace a la Sede Electronica (cl@ve) para descargar la
+    cartografia urbana y rustica, y un subidor de ZIP. Con ≥1 fichero subido el
+    municipio queda marcado con un tick. El estado se persiste en disco
+    (data/raw/Catastro/<dgc>/), asi que sobrevive a los reruns de Streamlit.
+    """
+    listos = sum(1 for m in municipios if _cat_es_legible(m["dgc"]))
+    total = len(municipios)
+    completo = listos == total
+    st.markdown(
+        f'<div class="cat-count" style="color:{"var(--secondary)" if completo else "#b26a00"};">'
+        f'<span class="material-symbols-outlined" style="font-size:19px;">expand_more</span>'
+        f'{listos}/{total} municipios con catastro listo (PARCELA.shp)</div>',
+        unsafe_allow_html=True,
+    )
+    for m in municipios:
+        dgc = m["dgc"]
+        nombre = (m["nombre"] or "Municipio").title()
+        subido = _cat_es_legible(dgc)
+        tick = "✅" if subido else "⚪"
+        # Expander por municipio: chevron + estado en la cabecera; el cuerpo
+        # (enlaces cl@ve + subidor) queda desplegado mientras falte el catastro.
+        with st.expander(f"{tick} **{nombre}** ({dgc})", expanded=not subido):
+            c_urb, c_rus = st.columns(2)
+            with c_urb:
+                st.link_button("Urbana · Sede (cl@ve)", _CAT_SEDE_DESCARGA,
+                               use_container_width=True,
+                               help="Abre la Sede Electronica. Identificate con cl@ve y "
+                                    f"descarga la cartografia URBANA del municipio {dgc}.")
+            with c_rus:
+                st.link_button("Rústica · Sede (cl@ve)", _CAT_SEDE_DESCARGA,
+                               use_container_width=True,
+                               help="Abre la Sede Electronica. Identificate con cl@ve y "
+                                    f"descarga la cartografia RÚSTICA del municipio {dgc}.")
+            ups = st.file_uploader(
+                f"Subir ZIP(s) de {nombre}", type=["zip"],
+                accept_multiple_files=True, key=f"cat_up_{dgc}",
+                label_visibility="collapsed",
+            )
+            # Guarda y NORMALIZA solo ficheros nuevos (evita re-procesar y bucles
+            # de rerun). Normalizar = dejar un PARCELA.shp legible por el pipeline:
+            # si el ZIP es shapefile Catastro se extrae; si es GML INSPIRE se convierte.
+            proc_key = f"_cat_proc_{dgc}"
+            res_key = f"_cat_res_{dgc}"
+            procesados = st.session_state.setdefault(proc_key, set())
+            hubo_nuevo = False
+            for up in ups or []:
+                sig = (up.name, up.size)
+                if sig in procesados:
+                    continue
+                dest = _cat_guardar_subida(dgc, up)
+                with st.spinner(f"Procesando catastro de {nombre}…"):
+                    try:
+                        st.session_state[res_key] = _cat_normalizar(dgc, dest)
+                    except Exception as exc:
+                        st.session_state[res_key] = {
+                            "estado": "error", "mensaje": str(exc)}
+                procesados.add(sig)
+                hubo_nuevo = True
+            # Feedback del último procesado.
+            res = st.session_state.get(res_key)
+            if _cat_es_legible(dgc):
+                shp = next((p for p in _cat_upload_dir(dgc).rglob("*.shp")
+                            if p.stem.lower() == "parcela"), None)
+                extra = ""
+                if res and res.get("estado") == "convertido":
+                    extra = f" · {res.get('mensaje', '')}"
+                st.caption(f"✓ Listo para el pipeline: {shp.name if shp else 'PARCELA.shp'}{extra}")
+            elif res and res.get("estado") in ("no_geom", "error"):
+                st.error(res.get("mensaje", "No se pudo preparar el catastro."))
+            if hubo_nuevo:
+                st.rerun()
 
 
 def _estado_datos_aoi(coords_esc: dict) -> list[dict]:
@@ -1591,34 +1832,18 @@ def _estado_datos_aoi(coords_esc: dict) -> list[dict]:
     else:
         cat = ("warn", "Fuera de lo descargado · aportar a mano (Sede Catastro INSPIRE)")
 
-    # Enlaces directos al ZIP INSPIRE por municipio del corredor (o portal si no hay red).
-    try:
-        municipios = _catastro_municipios_aoi(coords_esc)
-    except Exception:
-        municipios = []
-    if municipios:
-        cat_enlaces = []
-        for m in municipios:
-            nombre = f"{(m['nombre'] or 'Municipio').title()} ({m['dgc']})"
-            cat_enlaces.append(
-                {"label": nombre, "url": m["url_visor"], "icono": "map", "nivel": 0})
-            cat_enlaces.append(
-                {"label": "Descargar ZIP parcelas", "url": m["url_zip"],
-                 "icono": "download", "nivel": 1})
-    else:
-        cat_enlaces = [{"label": "Portal de descarga INSPIRE", "url": _URL_CATASTRO_PORTAL,
-                        "icono": "open_in_new", "nivel": 0}]
-
+    # Catastro es la única capa manual: sus municipios se resuelven bajo demanda
+    # (botón en la tarjeta), no aquí, porque son consultas OVC lentas por punto.
     return [
         {"nombre": "Catastro (expropiación)", "estado": cat[0], "detalle": cat[1],
-         "enlaces": cat_enlaces},
-        {"nombre": "Red Natura 2000", "estado": "warn",
-         "detalle": "Obtenible por zona (WFS IDEE); recomendado fichero nacional MITECO",
-         "enlaces": [{"label": "Fichero nacional MITECO", "url": _URL_RN2000,
+         "manual": True, "enlaces": []},
+        {"nombre": "Red Natura 2000", "estado": "ok",
+         "detalle": "Se descarga automáticamente por zona (WFS INSPIRE IGN)",
+         "enlaces": [{"label": "Fuente oficial (WFS IGN)", "url": _URL_RN2000,
                       "icono": "open_in_new", "nivel": 0}]},
-        {"nombre": "Zonas inundables (SNCZI)", "estado": "rec",
-         "detalle": "Obtenibles por zona · se recomienda incluirlas en el coste",
-         "enlaces": [{"label": "Portal SNCZI (MITECO)", "url": _URL_SNCZI,
+        {"nombre": "Zonas inundables (SNCZI)", "estado": "ok",
+         "detalle": "Se descarga automáticamente por zona (OGC API Features, MITECO)",
+         "enlaces": [{"label": "Fuente oficial (OGC API MITECO)", "url": _URL_SNCZI,
                       "icono": "open_in_new", "nivel": 0}]},
         {"nombre": "DEM · Hidrografía · Geología · Viario (OSM)", "estado": "ok",
          "detalle": "Se descargan automáticamente por zona (bbox)", "enlaces": []},
@@ -1660,41 +1885,124 @@ def _render_estado_datos(coords_esc: dict) -> None:
             f'{enlaces}</div>' if enlaces else ""
         )
         return (
-            f'<div style="border:1px solid var(--surface-high);border-radius:10px;'
-            f'padding:8px 10px;background:var(--surface-lowest);'
+            f'<div style="border:1px solid var(--outline-variant);'
+            f'border-radius:var(--radius-xl);padding:12px 14px;'
+            f'background:var(--surface-lowest);box-shadow:var(--shadow-card);'
             f'display:flex;flex-direction:column;{"flex:1 1 0;" if grow else ""}">'
-            f'<div style="display:flex;align-items:center;gap:7px;">'
-            f'<span class="material-symbols-outlined" style="font-size:17px;color:{icolor};'
+            f'<div style="display:flex;align-items:center;gap:8px;">'
+            f'<span class="material-symbols-outlined" style="font-size:19px;color:{icolor};'
             f'flex:none;">{icono}</span>'
-            f'<span style="font-family:var(--font-body);font-weight:700;font-size:0.76rem;'
+            f'<span style="font-family:var(--font-body);font-weight:700;font-size:0.78rem;'
             f'color:var(--on-surface);line-height:1.2;">{it["nombre"]}</span></div>'
             f'<div style="font-family:var(--font-body);font-size:0.68rem;'
-            f'color:var(--on-surface-variant);margin-top:3px;line-height:1.25;">'
+            f'color:var(--on-surface-variant);margin-top:4px;line-height:1.3;">'
             f'{it["detalle"]}</div>{enlaces_html}</div>'
         )
 
-    # Catastro (la capa manual, con enlaces por municipio) ocupa media tarjeta;
-    # las demas capas se apilan en la otra mitad.
-    catastro = next((it for it in items if it["nombre"].startswith("Catastro")), None)
+    def _lista_municipios_html(municipios: list[dict]) -> str:
+        """Enlaces al ZIP de parcelas (Catastro INSPIRE) de cada municipio que
+        cruza el corredor. Apunta al fichero oficial (catastro.hacienda.gob.es);
+        un clic lleva a la descarga del ZIP de ese municipio."""
+        if not municipios:
+            return (
+                f'<div style="font-family:var(--font-body);font-size:0.66rem;'
+                f'color:var(--on-surface-variant);margin-top:2px;">'
+                f'No se han podido localizar los municipios (sin conexión). '
+                f'<a href="{_URL_CATASTRO_PORTAL}" target="_blank" rel="noopener" '
+                f'style="color:var(--primary);font-weight:600;text-decoration:none;">'
+                f'Abrir portal INSPIRE del Catastro</a></div>'
+            )
+        filas = ""
+        for m in municipios:
+            nombre = f"{(m['nombre'] or 'Municipio').title()} ({m['dgc']})"
+            tiene_zip = str(m.get("url_zip", "")).lower().endswith(".zip")
+            icono, texto = (("download", "descargar ZIP de parcelas") if tiene_zip
+                            else ("open_in_new", "abrir portal de descarga INSPIRE"))
+            filas += (
+                f'<a href="{m["url_zip"]}" target="_blank" rel="noopener" '
+                f'style="font-family:var(--font-body);font-size:0.68rem;font-weight:600;'
+                f'color:var(--primary);text-decoration:none;display:inline-flex;'
+                f'align-items:center;gap:5px;padding:2px 0;">'
+                f'<span class="material-symbols-outlined" style="font-size:15px;">'
+                f'{icono}</span>{nombre} · {texto}</a>'
+            )
+        return (
+            f'<div style="margin-top:6px;display:flex;flex-direction:column;gap:1px;">'
+            f'{filas}</div>'
+        )
+
+    # Catastro (capa manual) ocupa media tarjeta; las demás capas, la otra mitad.
+    catastro = next((it for it in items if it.get("manual")), None)
     resto = [it for it in items if it is not catastro]
 
-    izq = _celda(catastro) if catastro else ""
-    der = "".join(_celda(it, grow=True) for it in resto)
+    with st.container(border=False):
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:6px;color:var(--primary);'
+            'font-weight:700;margin:10px 0 6px 0;">'
+            '<span class="material-symbols-outlined" style="font-size:18px;">dataset</span>'
+            '<span style="font-size:0.68rem;letter-spacing:0.05em;text-transform:uppercase;">'
+            'Datos para esta zona</span></div>',
+            unsafe_allow_html=True,
+        )
+        col_izq, col_der = st.columns(2, gap="small")
 
-    st.markdown(
-        f'<div style="background:var(--surface-lowest);border:1px solid var(--outline-variant);'
-        f'border-radius:14px;box-shadow:var(--shadow-card);padding:12px 16px;margin-top:10px;">'
-        f'<div style="display:flex;align-items:center;gap:6px;color:var(--primary);'
-        f'font-weight:700;margin-bottom:8px;">'
-        f'<span class="material-symbols-outlined" style="font-size:18px;">dataset</span>'
-        f'<span style="font-size:0.68rem;letter-spacing:0.05em;text-transform:uppercase;">'
-        f'Datos para esta zona</span></div>'
-        f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch;">'
-        f'{izq}'
-        f'<div style="display:flex;flex-direction:column;gap:8px;">{der}</div>'
-        f'</div></div>',
-        unsafe_allow_html=True,
-    )
+        with col_izq:
+            if catastro:
+                cat_ico, cat_col = _ICONO[catastro["estado"]]
+                with st.container(border=False, key="cat_card"):
+                    st.markdown(
+                        f'<div class="cat-title">'
+                        f'<span class="material-symbols-outlined" style="color:{cat_col};">'
+                        f'{cat_ico}</span>'
+                        f'<span class="txt">{catastro["nombre"]}</span></div>'
+                        f'<div class="cat-sub">{catastro["detalle"]}</div>'
+                        f'<hr class="cat-div">',
+                        unsafe_allow_html=True,
+                    )
+                    key_exp = "_cat_municipios_abierto"
+                    _, c_btn, _ = st.columns([1, 2, 1])
+                    with c_btn:
+                        if st.button(
+                            "Ver municipios",
+                            key="btn_cat_municipios",
+                            use_container_width=True,
+                            icon=":material/travel_explore:",
+                            help="Localiza los municipios que cruza el corredor y abre su "
+                                 "cartografía en la Sede Electrónica del Catastro.",
+                        ):
+                            st.session_state[key_exp] = not st.session_state.get(key_exp, False)
+                    if st.session_state.get(key_exp):
+                        # La localizacion OVC es lenta (consulta por punto); la cacheamos
+                        # por firma de coordenadas para no recalcular en cada rerun (p. ej.
+                        # tras cada subida de ZIP). Si cambia origen/destino, se recalcula.
+                        firma = (
+                            coords_esc["origen"]["x"], coords_esc["origen"]["y"],
+                            coords_esc["destino"]["x"], coords_esc["destino"]["y"],
+                        )
+                        if st.session_state.get("_cat_municipios_firma") != firma:
+                            with st.spinner("Localizando municipios del corredor…"):
+                                try:
+                                    municipios = _catastro_municipios_aoi(coords_esc)
+                                except Exception:
+                                    municipios = []
+                            st.session_state["_cat_municipios_firma"] = firma
+                            # Cacheamos la lista para que la puerta de paso (Paso 1 → Paso 2)
+                            # sepa qué municipios exigir subidos antes de continuar.
+                            st.session_state["_cat_municipios_lista"] = municipios
+                        else:
+                            municipios = st.session_state.get("_cat_municipios_lista") or []
+                        if municipios:
+                            with st.container(border=False, key="cat_muni_box"):
+                                _render_municipios_catastro(municipios)
+                        else:
+                            st.markdown(_lista_municipios_html(municipios), unsafe_allow_html=True)
+
+        with col_der:
+            st.markdown(
+                f'<div style="display:flex;flex-direction:column;gap:14px;">'
+                f'{"".join(_celda(it, grow=True) for it in resto)}</div>',
+                unsafe_allow_html=True,
+            )
 
 
 # ── Paso 1: Origen y Destino ───────────────────────────────────────────────────
@@ -1983,9 +2291,32 @@ def _render_paso1():
         )
         for s in escenarios
     }
-    can_next = all(d <= MAX_DIST_M for d in distancias.values())
+    can_next_dist = all(d <= MAX_DIST_M for d in distancias.values())
+
+    # Puerta de catastro: si se localizaron los municipios del corredor y falta
+    # subir el ZIP de alguno, avisamos. Se puede continuar igualmente, pero hay
+    # que confirmarlo explicitamente (checkbox). Si aun no se han localizado
+    # municipios, no bloquea (la lista es una consulta bajo demanda).
+    municipios_cat = st.session_state.get("_cat_municipios_lista") or []
+    faltan_cat = [m for m in municipios_cat if not _cat_es_legible(m["dgc"])]
 
     st.markdown("---")
+
+    confirmar_cat = False
+    if faltan_cat:
+        nombres = ", ".join((m["nombre"] or m["dgc"]).title() for m in faltan_cat)
+        st.warning(
+            f"Faltan catastros por subir en {len(faltan_cat)} de "
+            f"{len(municipios_cat)} municipios: {nombres}. Súbelos arriba en "
+            "«Ver municipios del corredor» o continúa sin ellos."
+        )
+        confirmar_cat = st.checkbox(
+            "Continuar sin todos los catastros subidos",
+            key="cat_confirmar_incompleto",
+        )
+
+    can_next = can_next_dist and (not faltan_cat or confirmar_cat)
+
     c_back, _, c_next = st.columns([1.4, 2, 1.4])
     with c_back:
         if st.button("← Inicio", use_container_width=True, key="btn_p1_inicio"):
@@ -1999,7 +2330,7 @@ def _render_paso1():
             st.session_state.pantalla = "paso2"
             st.rerun()
 
-    if not can_next:
+    if not can_next_dist:
         invalidos = [s for s, d in distancias.items() if d > MAX_DIST_M]
         st.warning(
             "Corrige las distancias antes de continuar. "
