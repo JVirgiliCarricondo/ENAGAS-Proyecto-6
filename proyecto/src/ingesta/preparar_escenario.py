@@ -146,13 +146,15 @@ def _superficie_steps():
 # --------------------------------------------------------------------------- #
 # Orquestación                                                                 #
 # --------------------------------------------------------------------------- #
-def preparar(scenario: str, progress_cb=None, overwrite: bool = True) -> dict:
+def preparar(scenario: str, progress_cb=None) -> dict:
     """Prepara todas las capas de coste de un escenario end-to-end.
+
+    Los pasos de descarga y alineación se lanzan siempre con -y (sobrescribir):
+    preparar un escenario regenera sus artefactos.
 
     Args:
         scenario:    id del escenario (p. ej. 'C'); debe existir en escenario.yaml.
         progress_cb: callback opcional (pct: float 0-1, msg: str) para la UI.
-        overwrite:   re-descargar/re-generar aunque haya archivos previos.
 
     Returns:
         dict con {'scenario', 'capas', 'avisos'}.

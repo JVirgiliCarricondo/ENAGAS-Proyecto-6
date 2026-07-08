@@ -138,7 +138,10 @@ def rasterizar_osm(path: Path, transform, width: int, height: int) -> np.ndarray
         else:
             valores.append(coste_highway(getattr(fila, "highway", None)))
 
-    shapes = list(zip(osm.geometry, valores))
+    # Orden ascendente por coste: rasterize quema en orden y la última geometría
+    # pisa a las anteriores, así el cruce MÁS restrictivo gana también donde dos
+    # vías de la misma fuente comparten celda (p. ej. camino × autopista).
+    shapes = sorted(zip(osm.geometry, valores), key=lambda gv: gv[1])
     return rasterize(
         shapes,
         out_shape=(height, width),
@@ -165,7 +168,8 @@ def rasterizar_hidro(path: Path, transform, width: int, height: int) -> np.ndarr
         for fila in hid.itertuples(index=False)
     ]
 
-    shapes = list(zip(hid.geometry, valores))
+    # Mismo criterio que rasterizar_osm: ascendente para que el más caro gane.
+    shapes = sorted(zip(hid.geometry, valores), key=lambda gv: gv[1])
     return rasterize(
         shapes,
         out_shape=(height, width),

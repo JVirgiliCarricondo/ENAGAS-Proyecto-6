@@ -55,8 +55,9 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # proyecto/
 DATA_RAW = PROJECT_ROOT / "data" / "raw"
 DATA_PROCESSED = PROJECT_ROOT / "data" / "processed"
-DATA_RECORTE = DATA_PROCESSED / "Recorte_AOI"   # vectores recortados al AOI (.gpkg)
-DATA_RASTERS = DATA_PROCESSED / "Rasters_AOI"   # rasters alineados (.tif)
+# Recorte_AOI recibe TODO el recorte alineado del AOI: vectores (.gpkg) y el
+# DEM (.tif). Las capas de coste derivadas van a Capas_Coste/ (superficie/).
+DATA_RECORTE = DATA_PROCESSED / "Recorte_AOI"
 CONFIG_ESCENARIO = PROJECT_ROOT / "data" / "config" / "escenario.yaml"
 LOG_PATH = DATA_PROCESSED / "log_alineacion.txt"
 # Manifiesto de estado por capa que escribe descargar_capas.py. Es la fuente de
@@ -223,7 +224,6 @@ _DOWNLOAD_HINTS: dict[str, str] = {
 def _setup_logging() -> logging.Logger:
     DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
     DATA_RECORTE.mkdir(parents=True, exist_ok=True)
-    DATA_RASTERS.mkdir(parents=True, exist_ok=True)
     if sys.platform == "win32":
         try:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -235,13 +235,15 @@ def _setup_logging() -> logging.Logger:
         "%(asctime)s  %(levelname)-8s  %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    # Guard sobre AMBOS handlers: llamadas repetidas en el mismo proceso no
+    # deben duplicar salidas ni dejar el fichero de log abierto dos veces.
     if not log.handlers:
         ch = logging.StreamHandler(sys.stdout)
         ch.setFormatter(fmt)
         log.addHandler(ch)
-    fh = logging.FileHandler(LOG_PATH, mode="w", encoding="utf-8")
-    fh.setFormatter(fmt)
-    log.addHandler(fh)
+        fh = logging.FileHandler(LOG_PATH, mode="w", encoding="utf-8")
+        fh.setFormatter(fmt)
+        log.addHandler(fh)
     return log
 
 
@@ -745,21 +747,6 @@ def detect_duplicates(
                     f"  Pueden representar la misma información. "
                     f"Revisa FUENTES.md y considera descartar una de las dos."
                 )
-                print(
-                    f"\n[AVISO] {name1!r} y {name2!r} se solapan en un {overlap:.0%}.\n"
-                    f"¿Conservar? [ambas / 1={name1} / 2={name2}]: ",
-                    end="",
-                )
-                try:
-                    ans = input().strip().lower()
-                    if ans == "1":
-                        log.info(f"  Usuario eligió conservar: {name1}")
-                    elif ans == "2":
-                        log.info(f"  Usuario eligió conservar: {name2}")
-                    else:
-                        log.info("  Usuario eligió conservar ambas capas.")
-                except EOFError:
-                    log.info("  Modo no interactivo — se conservan ambas capas.")
 
     if not found_any:
         log.info(
@@ -917,7 +904,6 @@ def main() -> None:
     # ── Comprobar sobreescritura ─────────────────────────────────────────  #
     DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
     DATA_RECORTE.mkdir(parents=True, exist_ok=True)
-    DATA_RASTERS.mkdir(parents=True, exist_ok=True)
 
     layers_to_run = LAYERS
     if args.only:

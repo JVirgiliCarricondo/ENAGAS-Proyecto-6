@@ -20,11 +20,13 @@ proyecto/
 ├── requirements.txt      # dependencias (stack geoespacial)
 ├── .env.example          # variables de entorno (claves de descarga si aplica) — copiar a .env
 ├── data/
-│   ├── raw/              # capas GIS originales (NO se versionan) + FUENTES.md
+│   ├── raw/              # capas GIS descargadas o aportadas a mano (NO se versionan) + FUENTES.md
 │   ├── processed/        # salidas del pipeline (NO se versionan)
-│   │   ├── Recorte_AOI/  #   vectores recortados al AOI (.gpkg); vacíos si sin datos
-│   │   └── Rasters_AOI/  #   rasters alineados (.tif): DEM de ingesta + rasters de superficie/
-│   └── config/           # AOI, origen/destino y perfiles de prioridad (sí se versionan)
+│   │   ├── Recorte_AOI/  #   recorte alineado del AOI: vectores (.gpkg) + DEM (.tif)
+│   │   ├── Capas_Coste/  #   una capa de coste [0,1] por criterio (.tif)
+│   │   ├── Trazados/     #   superficies combinadas (neutral + por perfil) — se regeneran por ejecución
+│   │   └── Rutas/        #   rutas LCP por perfil (.gpkg) — se regeneran por ejecución
+│   └── config/           # origen/destino por escenario y perfiles de prioridad (sí se versionan)
 ├── src/
 │   ├── ingesta/         # descarga, recorte, reproyección, remuestreo, rasterización
 │   ├── superficie/      # superficies de coste (raster multicriterio) + perfiles
@@ -47,7 +49,7 @@ proyecto/
 
 ## Estado del código
 
-Setup. Estructura y arquitectura del pipeline definidas; pendiente catalogar capas, fijar AOI/origen/destino y alinear (ver [`../estado.md`](../estado.md)). Los módulos de `src/` son por ahora esqueletos con su responsabilidad documentada.
+Operativo end-to-end (ver [`../estado.md`](../estado.md)): dado origen/destino (≤ 15 km), la app Streamlit descarga los datos del AOI, genera las capas de coste, traza 4 rutas por perfil (Dijkstra 8-conexo en `src/trazados/ruta_pendiente.py`), valida su diferenciación (solapamiento, buffer 60 m / umbral 50 %) y presenta métricas + mapa + informe PDF. `Trazados/` y `Rutas/` se regeneran en cada ejecución. Quedan como esqueletos documentados del Sprint 7: `src/comparacion/comparador.py` (scoring formal) y `src/app/cli.py`.
 
 ## Cómo empezar
 

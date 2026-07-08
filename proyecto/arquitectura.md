@@ -31,10 +31,11 @@ Todo el cálculo es reproducible y auditable: las capas se alinean a un CRS y re
         ┌─────────────────▼──────────────────┐
         │   3. MOTOR LCP  (src/trazados/)     │
         │   · camino de mínimo coste          │
-        │     (skimage.graph / networkx)      │
-        │   · DIFERENCIACIÓN: corridor masking│
+        │     (Dijkstra 8-conexo propio)      │
+        │   · diferenciación por perfiles +   │
+        │     validación de solapamiento      │
         └─────────────────┬──────────────────┘
-                          │ 3-5 rutas diferenciadas
+                          │ 4 rutas diferenciadas (validadas)
         ┌─────────────────▼──────────────────┐
         │   4. MÉTRICAS  (src/metricas/)      │
         │   longitud · coste relativo · cruces│
@@ -53,12 +54,16 @@ Todo el cálculo es reproducible y auditable: las capas se alinean a un CRS y re
 ## Componentes
 
 ### 1. Ingesta (`src/ingesta/`)
-Descarga/lee las capas de `data/raw/` (DEM, catastro, OSM, hidrografía IGN, Red Natura 2000, IGME), las **recorta al AOI**, las **reproyecta a EPSG:25830** y las **remuestrea a una rejilla común** (misma resolución y origen de celda). Salida en dos subcarpetas de `data/processed/`:
+Dado el origen y el destino (≤ 15 km), **descarga automáticamente a `data/raw/` la unidad mínima** de cada fuente que cubre el AOI (DEM Copernicus GLO-30, OSM vía Overpass, hidrografía IGN vía WFS, IGME vía ArcGIS REST, zonas inundables SNCZI vía OGC API Features). **Red Natura 2000 y Catastro no tienen servicio por bbox fiable y se colocan a mano** en `data/raw/RN2000/` y `data/raw/Catastro/`. Un manifiesto de estado por capa (`manifiesto_estado.json`) distingue "descargada", "AOI sin cobertura" y "descarga fallida".
 
-- **`Recorte_AOI/`** — capas vectoriales recortadas y reproyectadas (`.gpkg`). Si una capa no tiene geometrías en el AOI se guarda igualmente un `.gpkg` vacío.
-- **`Rasters_AOI/`** — rasters alineados a la rejilla común (`.tif`). El DEM sale aquí directamente; las capas vectoriales las rasteriza `src/superficie/` y también las deposita aquí.
+Después **recorta al AOI**, **reproyecta a EPSG:25830** y **remuestrea a la rejilla común** (anclada a una malla global, misma resolución y origen de celda). Cadena de carpetas en `data/processed/`:
 
-Librerías: `rasterio` (raster, reproyección, remuestreo), `geopandas`/`shapely` (vectores), `pyproj` (CRS), `osmnx` (OSM).
+- **`Recorte_AOI/`** — el recorte alineado del AOI: capas vectoriales (`.gpkg`, vacías si sin datos) y el DEM (`.tif`).
+- **`Capas_Coste/`** — una capa de coste `[0,1]` por criterio (las genera `src/superficie/`).
+- **`Trazados/`** — superficies de coste combinadas: la neutral (`superficie_{s}.tif`, pesos iguales, referencia del coste relativo) y una por perfil. **Se regeneran en cada ejecución.**
+- **`Rutas/`** — rutas LCP por perfil (`.gpkg`). **Se regeneran en cada ejecución.**
+
+Librerías: `rasterio` (raster, reproyección, remuestreo), `geopandas`/`shapely` (vectores), `pyproj` (CRS), `requests` (Overpass/WFS/REST).
 
 > **Regla de oro:** una capa no avanza al paso 2 si no comparte CRS y rejilla con las demás. La celda (i, j) debe representar el mismo trozo de terreno en todas las capas.
 
@@ -68,7 +73,9 @@ Convierte cada capa alineada en un **coste por celda** (p.ej. relieve vía TPI �
 > Diseño detallado de las funciones de coste por variable, umbrales y matriz de condicionantes en [`modelo_coste.md`](modelo_coste.md).
 
 ### 3. Motor de camino de mínimo coste (`src/trazados/`)
-Sobre cada superficie de coste calcula el **camino de mínimo coste** origen→destino con **A\*** sobre el grafo de la rejilla (`networkx.astar_path` o implementación propia; cada celda = nodo, aristas a 8 vecinos). Se elige A\* sobre Dijkstra por ser más eficiente para un único par origen→destino con la misma garantía de óptimo. Detalle de la representación en grafo en [`modelo_coste.md`](modelo_coste.md) §8.1. Para garantizar **rutas diferenciadas**, aplica **corridor masking**: tras generar una ruta, penaliza la proximidad a ella antes de generar la siguiente, y descarta rutas con solapamiento por encima de un umbral.
+Sobre la superficie de coste de cada perfil calcula el **camino de mínimo coste** origen→destino con **Dijkstra 8-conexo isótropo** (implementación propia con `heapq` en `ruta_pendiente.py`; cada celda = nodo, coste de paso `d · media(C_p, C_q)` con `d` = 1 ortogonal / √2 diagonal). Las celdas nodata (fuera del AOI o barrera dura de pendiente) son intransitables.
+
+La **diferenciación** de las 4 alternativas nace de los **perfiles de prioridad** (pesos distintos → superficies distintas → rutas distintas) y se **valida a posteriori** midiendo el solapamiento entre corredores (`metricas/diversidad_corredores.py`: buffer 60 m, umbral 50 %). **Decisión de diseño:** no se aplica penalización algorítmica (corridor masking) porque las rutas por perfil resultan suficientemente distintas; si un par supera el umbral, se reporta como redundante para que el usuario revise los pesos.
 
 ### 4. Métricas (`src/metricas/`)
 Para cada ruta calcula: **longitud** (km), **coste relativo** (suma normalizada de celdas atravesadas), **cruces especiales** (nº y tipo: río, carretera, ferrocarril…), **km en zona protegida** (Red Natura 2000), **km en zona urbana/periurbana** (catastro) y **pendiente máxima y media** (del DEM a lo largo de la ruta).
@@ -84,20 +91,21 @@ Lee el caso de estudio de `data/config/`, ejecuta el pipeline para cada perfil y
 ## Contrato de datos
 
 ### Caso de estudio — `data/config/escenario.yaml`
+Multi-escenario: la herramienta guarda por defecto los escenarios `A` y `B`, y la app puede crear otros (`C`, …). El AOI no se declara: se deriva de la línea origen→destino con 1 km de semiancho perpendicular (rectángulo orientado).
 ```yaml
-crs_trabajo: "EPSG:25830"          # CRS común (península)
-resolucion_m: 30                    # tamaño de celda de la rejilla común (m)
-aoi:                                # bounding box en crs_trabajo (o ruta a un .geojson)
-  xmin: 0
-  ymin: 0
-  xmax: 0
-  ymax: 0
-origen:                             # planta de H₂
-  x: 0
-  y: 0
-destino:                            # conexión a red troncal
-  x: 0
-  y: 0
+crs_trabajo: EPSG:25830            # CRS común (península)
+resolucion_m: 30                   # tamaño de celda de la rejilla común (m)
+escenario_A:
+  origen:                          # planta de H₂
+    nombre: A_inicial
+    x: 741453
+    y: 4561984
+  destino:                         # conexión a red troncal
+    nombre: A_final
+    x: 739098
+    y: 4550264
+escenario_B:
+  # ... misma estructura
 ```
 
 ### Perfil de prioridad — `data/config/perfiles.yaml`
@@ -125,31 +133,38 @@ destino:                            # conexión a red troncal
     longitud: 0.3
 ```
 
-### Métricas por ruta (salida)
+### Métricas por ruta (salida — `metricas.calculo.MetricasRuta.to_dict()`)
 ```python
 {
+  "escenario": "A",
   "perfil": "ambiental",
   "longitud_km": 0.0,
-  "coste_relativo": 0.0,          # índice normalizado 0-1, NUNCA €
-  "cruces": {"rio": 0, "carretera": 0, "ferrocarril": 0},
-  "km_protegida": 0.0,
-  "km_urbana": 0.0,
+  "coste_relativo": 0.0,           # índice [0,1] sobre la superficie neutral, NUNCA €
   "pendiente_max_pct": 0.0,
   "pendiente_media_pct": 0.0,
+  "km_protegida": 0.0, "pct_protegida": 0.0,
+  "km_inundable": 0.0, "pct_inundable": 0.0,
+  "km_suelo_urbano": 0.0, "km_suelo_diseminado": 0.0,
+  "km_suelo_rustico": 0.0, "km_suelo_especial": 0.0,
+  "n_cruces_rios": 0, "n_cruces_carreteras": 0,
+  "n_cruces_ferrocarril": 0,       # None = no comprobable (≠ 0 = "comprobado, no cruza")
 }
 ```
+Un módulo de métrica que falla no aborta el cálculo: sus campos se serializan
+como `None` («sin dato», mostrado como «—» en tabla y PDF) y el motivo queda en
+`MetricasRuta.errores`, que la app muestra como aviso.
 
 ## Decisiones de stack (revisables)
 
-| Pieza | Opción por defecto | Alternativas |
-|-------|--------------------|--------------|
+| Pieza | Opción en uso | Alternativas |
+|-------|---------------|--------------|
 | Lenguaje | Python 3.11+ | — |
-| Geoespacial | rasterio + geopandas + shapely + pyproj | — |
+| Geoespacial | rasterio + geopandas + shapely + pyproj + scipy | — |
 | CRS de trabajo | ETRS89 / UTM 30N (EPSG:25830) | según zona del trazado |
-| Descarga OSM | osmnx | Overpass directo |
-| Camino mínimo coste | A\* sobre grafo (`networkx.astar_path`) | Dijkstra (respaldo); scikit-image `MCP_Geometric` |
-| Visualización | folium + contextily | matplotlib, kepler.gl |
-| UI | Streamlit con mapa | mapa estático + tabla |
+| Descarga OSM | Overpass directo (`requests`) | osmnx |
+| Camino mínimo coste | Dijkstra 8-conexo propio (`heapq`) | A\* (misma garantía de óptimo, más rápido para un solo par) |
+| Visualización | folium (+ matplotlib en el informe PDF) | contextily, kepler.gl |
+| UI | Streamlit con mapa (+ informe PDF vía reportlab) | CLI (esqueleto, Sprint 5) |
 
 Registrar cualquier cambio de stack en [`../coordinacion/seguimiento.md`](../coordinacion/seguimiento.md).
 

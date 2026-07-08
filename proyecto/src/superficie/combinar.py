@@ -35,7 +35,10 @@ TRAZADOS = DATA / "processed" / "Trazados"
 
 BASE_LONG = 1.0  # coste constante por celda — garantiza que la distancia cuente
 NODATA = -9999.0
-BARRERA_DISCO = 999.0  # valor que representa barrera dura en el TIFF
+# Convenio de barreras: las capas de coste codifican la barrera dura como
+# NODATA (-9999) en disco (igual que "fuera del AOI"); al leer se convierte a
+# nan y se propaga por la suma, de modo que la celda queda intransitable para
+# el LCP. No existe ningún valor centinela adicional en los TIFF.
 
 # Mapeo peso (perfiles.yaml) → nombre de fichero de capa en Capas_Coste/.
 # La clave 'longitud' NO es una capa: escala el coste base por celda (BASE_LONG).
@@ -74,8 +77,8 @@ def combinar_pesos(
 
         superficie = BASE_LONG · peso('longitud') + Σ peso_capa · capa
 
-    Convenio de impasabilidad: NODATA (-9999) e inf → nan. Una celda es
-    impasable (nan) si cualquier capa usada lo es (fuera de AOI o barrera dura);
+    Convenio de impasabilidad: NODATA (-9999, cubre "fuera del AOI" y barrera
+    dura) → nan. Una celda es impasable (nan) si cualquier capa usada lo es;
     el nan se propaga por la suma. Solo se leen las capas con peso en `pesos`
     (`PESO_A_CAPA`); la clave 'longitud' escala el coste base por celda.
 
@@ -101,8 +104,7 @@ def combinar_pesos(
             if acc is None:
                 transform, crs = src.transform, src.crs
                 acc = np.full(arr.shape, base, dtype="float64")
-        arr = np.where(arr == NODATA, np.nan, arr)        # fuera del AOI → nan
-        arr = np.where(np.isposinf(arr), np.nan, arr)     # barrera dura → nan
+        arr = np.where(arr == NODATA, np.nan, arr)  # fuera del AOI o barrera → nan
         log.info("[combinar_%s]   %-22s  w=%.3f", s, path.name, float(w))
         acc = acc + float(w) * arr                        # nan se propaga
 
@@ -145,9 +147,8 @@ def run(scenario: str, pesos: dict[str, float] | None = None) -> Path:
             s, float(valid.min()), float(valid.max()), int(np.sum(outside_aoi)),
         )
 
-    # ── Convertir para escritura en disco ─────────────────────────────────────
-    out_arr = np.where(np.isposinf(superficie), BARRERA_DISCO, superficie)
-    out_arr = np.where(np.isnan(out_arr), NODATA, out_arr).astype("float32")
+    # ── Convertir para escritura en disco (nan → NODATA) ─────────────────────
+    out_arr = np.where(np.isnan(superficie), NODATA, superficie).astype("float32")
 
     profile = dict(
         driver="GTiff", dtype="float32", count=1,
@@ -200,13 +201,12 @@ def _write_qml(tif_path: Path, vmin: float, vmax: float) -> None:
 def _verify(path: Path) -> None:
     with rasterio.open(path) as src:
         arr = src.read(1)
-    valid = arr[(arr != NODATA) & (arr != BARRERA_DISCO)]
+    valid = arr[arr != NODATA]
     print(f"  Shape    : {src.height}×{src.width}")
     print(f"  dtype    : {arr.dtype}")
     print(f"  nodata   : {src.nodata}")
     print(f"  rango válido : [{valid.min():.4f}, {valid.max():.4f}]")
-    print(f"  barreras ({BARRERA_DISCO}): {int(np.sum(arr == BARRERA_DISCO))} celdas")
-    print(f"  fuera AOI ({NODATA}): {int(np.sum(arr == NODATA))} celdas")
+    print(f"  fuera AOI / barrera ({NODATA}): {int(np.sum(arr == NODATA))} celdas")
 
 
 if __name__ == "__main__":
@@ -216,7 +216,8 @@ if __name__ == "__main__":
         datefmt="%H:%M:%S",
     )
     parser = argparse.ArgumentParser(description="Superficie de coste combinada")
-    parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
+    parser.add_argument("--escenario", default="ambos",
+                        help="id de escenario.yaml (p. ej. A, B o C) o 'ambos' (=A y B)")
     parser.add_argument(
         "--perfil",
         default=None,
@@ -229,7 +230,7 @@ if __name__ == "__main__":
     if pesos:
         print(f"  Perfil: {args.perfil}  |  pesos: {pesos}")
 
-    scenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
+    scenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario.upper()]
     for sc in scenarios:
         print(f"\n{'='*60}\n  Escenario {sc}\n{'='*60}")
         try:

@@ -96,10 +96,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Calcula km por tipo de suelo catastral para todas las rutas."
     )
-    parser.add_argument("--escenario", choices=["A", "B", "ambos"], default="ambos")
+    parser.add_argument("--escenario", default="ambos",
+                        help="id de escenario.yaml (p. ej. A, B o C) o 'ambos' (=A y B)")
     args = parser.parse_args()
 
-    escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario]
+    escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario.upper()]
     perfiles = ["equilibrio", "corto", "ambiental", "pendiente"]
 
     for s in escenarios:

@@ -1,33 +1,32 @@
 # Dependencias del prototipo — Grupo 6 (Reto 6, Enagás)
-# Fijar versiones cuando el stack se estabilice. Lista inicial orientativa.
+# Versiones fijadas al entorno validado (pip freeze, 7-jul-2026).
 # En Windows, instalar el bloque geoespacial con conda (canal conda-forge) suele dar menos problemas que pip.
 
 # --- Geoespacial (núcleo) ---
-rasterio
-geopandas
-shapely
-pyproj
-numpy
+rasterio==1.5.0
+geopandas==1.1.3
+shapely==2.1.2
+pyproj==3.7.2
+numpy==2.5.0
+pandas==3.0.3
+scipy==1.18.0    # convolución del vecindario anular del TPI (superficie/tpi.py)
 
 # --- Configuración ---
-PyYAML         # lectura de escenario.yaml y perfiles.yaml (ingesta, superficie, trazados)
+PyYAML==6.0.3    # lectura de escenario.yaml y perfiles.yaml (ingesta, superficie, trazados)
 
 # --- Descarga de datos ---
-osmnx          # OpenStreetMap
-requests       # servicios WCS/WFS/WMS de Copernicus, IGN, IGME
-
-# --- Camino de mínimo coste (LCP) ---
-scikit-image   # skimage.graph (MCP_Geometric / route_through_array)
-networkx       # alternativa para LCP sobre grafo
+requests==2.34.2 # Overpass, WFS IGN, ArcGIS REST IGME, OGC API Features (SNCZI)
 
 # --- Visualización / UI ---
-folium
-matplotlib
-contextily
-streamlit
-streamlit-folium
-reportlab       # informe PDF de resultados (comparativa + rutas + metricas)
+folium==0.20.0
+streamlit==1.58.0
+streamlit-folium==0.27.2
+matplotlib       # figuras del informe PDF (src/app/informe.py)
+reportlab        # informe PDF de resultados (comparativa + rutas + metricas)
 
 # --- Calidad / pruebas ---
 pytest
 ruff
+
+# Opcional (no requerido): richdem — acelera la pendiente Horn en superficie/tpi.py;
+# sin él se usa la implementación numpy equivalente.

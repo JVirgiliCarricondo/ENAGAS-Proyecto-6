@@ -849,6 +849,7 @@ def _ejecutar_pipeline(
     from trazados.ruta_pendiente import run_perfiles
     from metricas.calculo import calcular_todas
     from ingesta.preparar_escenario import escenario_preparado, preparar
+    from superficie.combinar import run as combinar_run
 
     if not escenarios:
         raise ValueError("No hay escenarios configurados.")
@@ -880,12 +881,20 @@ def _ejecutar_pipeline(
             )
             if res_prep.get("avisos"):
                 avisos_prep[s] = res_prep["avisos"]
-        elif _tpimod is not None:
-            # Escenario ya preparado: regenerar solo la capa TPI (barrera) con
-            # el nuevo umbral, a partir del DEM ya existente.
-            progress_cb(base, f"Aplicando barrera de pendiente "
+        if _tpimod is not None:
+            # Regenerar la capa TPI (donde vive la barrera) con el umbral de la
+            # UI. También tras preparar un escenario nuevo: la preparación corre
+            # en subproceso con el umbral por defecto del YAML, así que sin este
+            # paso el valor elegido por el usuario se ignoraría.
+            progress_cb(base + span * 0.70, f"Aplicando barrera de pendiente "
                               f"({umbral_barrera_pct:.0f}%) — Escenario {s}…")
             _tpimod.procesar_escenario(s)
+        # Superficie neutral (pesos iguales) del escenario: es la referencia
+        # contra la que se normaliza coste_relativo en las métricas. Se
+        # regenera en cada ejecución, junto con las superficies por perfil
+        # y las rutas (Trazados/ y Rutas/ nunca se reutilizan de otra sesión).
+        progress_cb(base + span * 0.71, f"Superficie de referencia — Escenario {s}…")
+        combinar_run(s)
         progress_cb(base + span * 0.72, f"Calculando rutas — Escenario {s}…")
         run_perfiles(s, perfiles_override=perfiles)
 
@@ -1778,15 +1787,28 @@ def _kpis_resumen(resultados: dict, escenarios: list[str]) -> list[tuple[str, st
     rutas = [r.to_dict() for r in res.get("rutas", [])]
     if not rutas:
         return []
-    long_media = sum(r.get("longitud_km", 0.0) for r in rutas) / len(rutas)
-    coste_medio = sum(r.get("coste_relativo", 0.0) for r in rutas) / len(rutas)
-    pend_max = max((r.get("pendiente_max_pct", 0.0) for r in rutas), default=0.0)
-    km_prot = sum(r.get("km_protegida", 0.0) for r in rutas)
-    impacto = "Bajo" if km_prot < 0.5 else ("Medio" if km_prot < 2.0 else "Alto")
+
+    def _validos(campo: str) -> list[float]:
+        """Valores calculados del campo; excluye None (métrica fallida)."""
+        return [r[campo] for r in rutas if r.get(campo) is not None]
+
+    longs = _validos("longitud_km")
+    costes = _validos("coste_relativo")
+    pends = _validos("pendiente_max_pct")
+    prots = _validos("km_protegida")
+
+    long_txt = f"{sum(longs) / len(longs):.2f} km".replace(".", ",") if longs else "s/d"
+    coste_txt = f"{sum(costes) / len(costes):.3f}".replace(".", ",") if costes else "s/d"
+    pend_txt = f"{max(pends):.0f} %" if pends else "s/d"
+    if prots:
+        km_prot = sum(prots)
+        impacto = "Bajo" if km_prot < 0.5 else ("Medio" if km_prot < 2.0 else "Alto")
+    else:
+        impacto = "s/d"
     return [
-        ("route", "Longitud media", f"{long_media:.2f} km".replace(".", ",")),
-        ("stacked_line_chart", "Coste relativo (índice)", f"{coste_medio:.3f}".replace(".", ",")),
-        ("trending_up", "Pendiente máxima", f"{pend_max:.0f} %"),
+        ("route", "Longitud media", long_txt),
+        ("stacked_line_chart", "Coste relativo (índice)", coste_txt),
+        ("trending_up", "Pendiente máxima", pend_txt),
         ("eco", "Impacto ambiental", impacto),
     ]
 
@@ -1991,6 +2013,15 @@ def _render_results():
                         lambda v, _sp=spec: "—" if pd.isna(v) else _sp.format(v)
                     )
             st.dataframe(df_txt, use_container_width=True, hide_index=True)
+
+            # Métricas que fallaron al calcularse aparecen como «—» en la
+            # tabla; aquí se indica brevemente el motivo, sin interrumpir
+            # la lectura con un aviso destacado.
+            motivos_s = list(dict.fromkeys(
+                v for r in rutas for v in r.errores.values()
+            ))
+            if motivos_s:
+                st.caption("«—» sin dato — " + " · ".join(motivos_s))
 
             st.write("")
             _render_kpis(resultados, [s])
