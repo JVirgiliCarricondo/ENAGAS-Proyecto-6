@@ -118,7 +118,12 @@ class LayerResult:
 _IGN_WFS_HID   = "https://servicios.idee.es/wfs-inspire/hidrografia"
 _IGN_WFS_RN2000 = "https://servicios.idee.es/wfs-inspire/redes-ecologicas"
 _IGME_REST     = "https://mapas.igme.es/gis/rest/services/Cartografia_Geologica/IGME_MAGNA_50/MapServer/11/query"
-_OVERPASS      = "https://overpass-api.de/api/interpreter"
+# Endpoints Overpass en orden de preferencia; se prueban en secuencia si fallan.
+_OVERPASS_ENDPOINTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
+]
 # SNCZI (Sistema Nacional de Cartografía de Zonas Inundables), MITECO.
 # El WFS clásico (wfs.aspx) no expone estas capas (error interno del servidor,
 # verificado); MITECO migró la descarga por bbox a OGC API Features:
@@ -586,9 +591,21 @@ def download_osm(
         "out body;"
     )
     log.info(f"  Overpass API bbox ({s:.4f},{w:.4f}) → ({n:.4f},{e:.4f})")
-    resp = requests.post(_OVERPASS, data={"data": query}, headers=_HEADERS, timeout=120)
-    resp.raise_for_status()
-    data = resp.json()
+    last_exc: Exception | None = None
+    data: dict = {}
+    for endpoint in _OVERPASS_ENDPOINTS:
+        try:
+            resp = requests.post(endpoint, data={"data": query}, headers=_HEADERS, timeout=120)
+            resp.raise_for_status()
+            data = resp.json()
+            log.info(f"  Overpass OK ({endpoint})")
+            last_exc = None
+            break
+        except Exception as exc:
+            log.warning(f"  Overpass fallback: {endpoint} → {exc}")
+            last_exc = exc
+    if last_exc is not None:
+        raise last_exc
 
     nodes = {
         el["id"]: (el["lon"], el["lat"])
