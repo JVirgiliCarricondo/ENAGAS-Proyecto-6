@@ -99,7 +99,20 @@ def _run_modulo(modulo: str, scenario: str) -> subprocess.CompletedProcess:
         if gdal_data.exists() and "GDAL_DATA" not in env:
             env["GDAL_DATA"] = str(gdal_data)
 
-    cmd = [sys.executable, "-m", modulo, "--escenario", scenario, "-y"]
+    # Para descargar_capas: si los archivos crudos ya existen para este escenario,
+    # usar --keep-existing para no volver a descargarlos (Overpass y los WFS son
+    # servicios externos que pueden estar caídos). Para otros módulos, forzar -y.
+    from src.ingesta.descargar_capas import SOURCES, DATA_RAW  # noqa: PLC0415
+    raw_files_exist = all(
+        (DATA_RAW / tmpl.replace("{s}", scenario.upper())).exists()
+        for _, tmpl, *_ in SOURCES
+        if not tmpl.startswith("RN2000")  # RN2000 es opcional, no bloquea
+    )
+    if modulo == "src.ingesta.descargar_capas" and raw_files_exist:
+        extra_flag = "--keep-existing"
+    else:
+        extra_flag = "-y"
+    cmd = [sys.executable, "-m", modulo, "--escenario", scenario, extra_flag]
     return subprocess.run(
         cmd,
         cwd=str(PROJECT_ROOT),
