@@ -3,12 +3,12 @@ resolucion_m: 30
 escenario_A:
   origen:
     nombre: A_inicial
-    x: 741453
-    y: 4561984
+    x: 734570
+    y: 4555982
   destino:
     nombre: A_final
-    x: 739098
-    y: 4550264
+    x: 736185
+    y: 4549520
 escenario_B:
   origen:
     nombre: B_inicial
@@ -18,3 +18,12 @@ escenario_B:
     nombre: B_final
     x: 693832
     y: 4600576
+escenario_C:
+  origen:
+    nombre: C_inicial
+    x: 692698
+    y: 4596517
+  destino:
+    nombre: C_final
+    x: 694332
+    y: 4601076

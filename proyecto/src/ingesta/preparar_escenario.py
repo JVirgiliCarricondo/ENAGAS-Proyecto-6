@@ -36,7 +36,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]   # proyecto/
 DATA = PROJECT_ROOT / "data"
 CONFIG_ESCENARIO = DATA / "config" / "escenario.yaml"
 CAPAS_COSTE = DATA / "processed" / "Capas_Coste"
+RECORTE_AOI = DATA / "processed" / "Recorte_AOI"
 DOWNLOAD_MANIFEST_PATH = DATA / "raw" / "manifiesto_estado.json"
+
+# Tolerancias al comparar el AOI pedido por escenario.yaml con los rasters en
+# disco. El recorte procesado se ajusta a la rejilla común de 30 m (±2 celdas);
+# el DEM crudo se descarga con un margen de píxel de origen algo mayor.
+_TOL_RECORTE_M = 60.0
+_TOL_RAW_M = 150.0
 
 # Capas de coste que un escenario necesita tener en Capas_Coste/ para trazar.
 # tpi lo genera la alineación (Paso 5); el resto, los módulos de superficie.
@@ -59,9 +66,85 @@ def capas_faltantes(scenario: str) -> list[str]:
     ]
 
 
+def _aoi_vigente(scenario: str) -> tuple[float, float, float, float] | None:
+    """Bbox (xmin, ymin, xmax, ymax) del AOI según el escenario.yaml ACTUAL.
+
+    Devuelve None si el escenario no está en la config (no se puede comparar).
+    """
+    if not CONFIG_ESCENARIO.exists():
+        return None
+    cfg = yaml.safe_load(CONFIG_ESCENARIO.read_text(encoding="utf-8")) or {}
+    cfg_s = cfg.get(f"escenario_{scenario.upper()}")
+    if not cfg_s:
+        return None
+    try:
+        from src.ingesta.descargar_capas import _scenario_aoi  # noqa: PLC0415
+    except ImportError:
+        from ingesta.descargar_capas import _scenario_aoi  # type: ignore  # noqa: PLC0415
+    return _scenario_aoi(cfg_s)
+
+
+def recorte_desactualizado(scenario: str) -> bool:
+    """True si el recorte procesado no corresponde al AOI actual del YAML.
+
+    Detecta el caso "cambiaron las coordenadas del escenario": el DEM recortado
+    (dem_aoi_{s}.tif) fija la rejilla de todas las capas, así que si sus bounds
+    no encajan con el AOI que piden las coordenadas vigentes —o si el recorte
+    quedó sin ninguna celda válida— hay que volver a preparar el escenario.
+    """
+    s = scenario.upper()
+    esperado = _aoi_vigente(s)
+    if esperado is None:
+        return False   # sin config no hay con qué comparar
+    dem_path = RECORTE_AOI / f"dem_aoi_{s}.tif"
+    if not dem_path.exists():
+        return True
+    import numpy as np       # noqa: PLC0415
+    import rasterio          # noqa: PLC0415
+    with rasterio.open(dem_path) as src:
+        b = src.bounds
+        data = src.read(1)
+        nodata = src.nodata
+    if any(abs(real - esp) > _TOL_RECORTE_M
+           for real, esp in zip((b.left, b.bottom, b.right, b.top), esperado)):
+        return True
+    valid = np.isfinite(data)
+    if nodata is not None:
+        valid &= data != nodata
+    return not valid.any()   # recorte sin datos: preparado a partir de crudos de otra zona
+
+
+def _raw_cubre_aoi(scenario: str) -> bool:
+    """True si el DEM crudo descargado cubre el AOI actual del YAML.
+
+    El DEM crudo es el proxy de todos los crudos del escenario (todas las capas
+    se descargan juntas para el mismo bbox). Si no cubre el AOI vigente, los
+    crudos son de otra zona y hay que re-descargar en vez de reutilizarlos.
+    """
+    s = scenario.upper()
+    esperado = _aoi_vigente(s)
+    if esperado is None:
+        return True
+    try:
+        from src.ingesta.descargar_capas import DATA_RAW  # noqa: PLC0415
+    except ImportError:
+        from ingesta.descargar_capas import DATA_RAW  # type: ignore  # noqa: PLC0415
+    dem_path = DATA_RAW / f"DEM_{s}.tif"
+    if not dem_path.exists():
+        return False
+    import rasterio  # noqa: PLC0415
+    with rasterio.open(dem_path) as src:
+        b = src.bounds
+    xmin, ymin, xmax, ymax = esperado
+    return (b.left <= xmin + _TOL_RAW_M and b.bottom <= ymin + _TOL_RAW_M
+            and b.right >= xmax - _TOL_RAW_M and b.top >= ymax - _TOL_RAW_M)
+
+
 def escenario_preparado(scenario: str) -> bool:
-    """True si el escenario ya tiene todas sus capas de coste generadas."""
-    return not capas_faltantes(scenario)
+    """True si el escenario ya tiene todas sus capas de coste generadas
+    Y el recorte corresponde a las coordenadas actuales de escenario.yaml
+    (si cambian las coordenadas, el escenario deja de estar preparado)."""
+    return not capas_faltantes(scenario) and not recorte_desactualizado(scenario)
 
 
 # --------------------------------------------------------------------------- #
@@ -99,16 +182,19 @@ def _run_modulo(modulo: str, scenario: str) -> subprocess.CompletedProcess:
         if gdal_data.exists() and "GDAL_DATA" not in env:
             env["GDAL_DATA"] = str(gdal_data)
 
-    # Para descargar_capas: si los archivos crudos ya existen para este escenario,
-    # usar --keep-existing para no volver a descargarlos (Overpass y los WFS son
-    # servicios externos que pueden estar caídos). Para otros módulos, forzar -y.
+    # Para descargar_capas: si los archivos crudos ya existen para este escenario
+    # Y cubren el AOI vigente, usar --keep-existing para no volver a descargarlos
+    # (Overpass y los WFS son servicios externos que pueden estar caídos). Si las
+    # coordenadas del escenario cambiaron, los crudos son de OTRA zona: hay que
+    # forzar la re-descarga (-y) o el recorte al AOI nuevo saldría vacío.
     from src.ingesta.descargar_capas import SOURCES, DATA_RAW  # noqa: PLC0415
     raw_files_exist = all(
         (DATA_RAW / tmpl.replace("{s}", scenario.upper())).exists()
         for _, tmpl, *_ in SOURCES
         if not tmpl.startswith("RN2000")  # RN2000 es opcional, no bloquea
     )
-    if modulo == "src.ingesta.descargar_capas" and raw_files_exist:
+    if (modulo == "src.ingesta.descargar_capas" and raw_files_exist
+            and _raw_cubre_aoi(scenario)):
         extra_flag = "--keep-existing"
     else:
         extra_flag = "-y"
