@@ -269,6 +269,16 @@ def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
     cellsize = abs(transform.a)
     valid = np.isfinite(dem_data) & (dem_data != dem_nodata)
 
+    if not valid.any():
+        raise ValueError(
+            f"El DEM del escenario {s} ({dem_path.name}) no tiene ninguna celda "
+            f"válida: todo es nodata. Esto suele ocurrir cuando los datos crudos "
+            f"de data/raw se descargaron para OTRA zona (p. ej. tras cambiar las "
+            f"coordenadas del escenario {s} en escenario.yaml) y el recorte al "
+            f"AOI actual queda vacío. Vuelve a procesar para re-descargar las "
+            f"capas de la zona actual."
+        )
+
     # --- Paso 2: TPI (vecindario anular) + z-score + mapeo decreciente ---
     tpi = calcular_tpi(dem_data, valid, cellsize, radio_ext_m, radio_int_m)
     cost_array = mapeo_coste_tpi(tpi)
@@ -284,6 +294,14 @@ def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
     cost_array[~valid] = NODATA
     cost_array[~np.isfinite(slope_pct)] = NODATA
     cost_array[~np.isfinite(cost_array)] = NODATA
+
+    if not (cost_array != NODATA).any():
+        raise ValueError(
+            f"La capa TPI del escenario {s} quedó completamente vacía: la "
+            f"barrera de pendiente (>{UMBRAL_BARRERA_PCT:.0f} %) marcó como "
+            f"intransitable todo el AOI. Sube el umbral de la barrera en la "
+            f"interfaz y vuelve a procesar."
+        )
 
     # --- Paso 5: guardar con el profile del DEM ---
     SALIDA_DIR.mkdir(parents=True, exist_ok=True)
@@ -305,10 +323,12 @@ def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
     tpi_validos = tpi[np.isfinite(tpi)]
     n_cresta = int((validos < 0.25).sum())  # coste bajo = cresta
     n_valle = int((validos > 0.75).sum())   # coste alto = valle
+    rango_tpi = (f"[{tpi_validos.min():.1f}, {tpi_validos.max():.1f}]"
+                 if tpi_validos.size else "[sin datos]")
     print(
         f"[{s}] {salida.name}: {width}x{height} celdas | "
         f"radio={radio_ext_m:.0f} m ({radio_ext_m / cellsize:.1f} celdas) | "
-        f"TPI [{tpi_validos.min():.1f}, {tpi_validos.max():.1f}] m | "
+        f"TPI {rango_tpi} m | "
         f"coste [{validos.min():.3f}, {validos.max():.3f}] | "
         f"crestas(<0.25)={n_cresta} valles(>0.75)={n_valle} | "
         f"barreras(>{UMBRAL_BARRERA_PCT:.0f}%)={n_barreras}"
