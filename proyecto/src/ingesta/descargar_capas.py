@@ -48,6 +48,7 @@ import json
 import logging
 import math
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -427,6 +428,38 @@ def _cop_tile_url(lat: int, lon: int) -> str:
     return f"{_COP_S3}/{name}/{name}.tif"
 
 
+def _ensure_ascii_ca_bundle(log: logging.Logger) -> None:
+    """Reubica el CA bundle de certifi si su ruta contiene caracteres no ASCII.
+
+    El curl embebido de GDAL no puede leer el cacert.pem cuando el .venv vive
+    bajo una ruta con acentos (p. ej. "1º MII + ADE/ENAGÁS…"): toda apertura
+    /vsicurl falla con UnicodeDecodeError antes de tocar la red. Se copia el
+    bundle a una ruta ASCII y se apunta CURL_CA_BUNDLE / GDAL_CURL_CA_BUNDLE
+    a la copia. Solo afecta al DEM: el resto de fuentes usa `requests`, que sí
+    maneja rutas Unicode."""
+    try:
+        import certifi
+        src = Path(certifi.where())
+        if str(src).isascii():
+            return
+        dst = Path(tempfile.gettempdir()) / "enagas_p6_cacert.pem"
+        if not str(dst).isascii():
+            log.warning("  El directorio temporal tampoco es ASCII; no se puede reubicar el CA bundle.")
+            return
+        if not dst.exists() or dst.stat().st_size != src.stat().st_size:
+            shutil.copyfile(src, dst)
+        # Asignación directa: el propio import de rasterio ya deja
+        # GDAL_CURL_CA_BUNDLE apuntando al certifi de la ruta acentuada,
+        # así que un setdefault no lo corregiría.
+        for var in ("CURL_CA_BUNDLE", "GDAL_CURL_CA_BUNDLE"):
+            if not os.environ.get(var, "").isascii() or not os.environ.get(var):
+                os.environ[var] = str(dst)
+        log.debug(f"  CA bundle reubicado a ruta ASCII: {dst}")
+    except Exception as exc:
+        # No bloquear: si esto falla, la descarga fallará con su propio error.
+        log.debug(f"  No se pudo reubicar el CA bundle: {exc}")
+
+
 def download_dem(
     bbox_25830: tuple[float, float, float, float],
     out_path: Path,
@@ -458,6 +491,7 @@ def download_dem(
     os.environ.setdefault("GDAL_HTTP_CONNECTTIMEOUT", "30")
     os.environ.setdefault("GDAL_HTTP_TIMEOUT", "120")
     os.environ.setdefault("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", ".tif")
+    _ensure_ascii_ca_bundle(log)
 
     datasets: list = []
     for tile_url in tile_urls:
