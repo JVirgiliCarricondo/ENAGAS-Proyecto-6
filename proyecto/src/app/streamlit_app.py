@@ -83,6 +83,51 @@ try:
 except ImportError:
     _HAS_ST_FOLIUM = False
 
+# ── Relleno bicolor de los sliders (azul a la izquierda del pulgar, claro a
+# la derecha) ───────────────────────────────────────────────────────────────
+# Baseweb no genera un div de "relleno" proporcional al valor (solo la pista
+# completa + el pulgar posicionado con transform), así que el degradado no es
+# expresable en CSS puro sin conocer el valor de cada slider. Este script,
+# inyectado vía components.html (iframe same-origin: puede tocar
+# window.parent.document), lee aria-valuenow/min/max de cada pulgar y pinta
+# la pista con un linear-gradient partido en ese punto. Se reevalúa con un
+# MutationObserver (arrastre en vivo) + un intervalo de respaldo (nuevos
+# sliders tras un rerun de Streamlit).
+_SLIDER_FILL_JS = """
+<script>
+(function () {
+  function paintSliders() {
+    var doc = window.parent.document;
+    var sliders = doc.querySelectorAll('div[data-testid="stSlider"]');
+    sliders.forEach(function (sliderEl) {
+      var thumb = sliderEl.querySelector('div[role="slider"]');
+      var track = sliderEl.querySelector(
+        'div[data-baseweb="slider"] > div:not([data-testid="stSliderTickBar"]) > div > div:last-child'
+      );
+      if (!thumb || !track) return;
+      var min = parseFloat(thumb.getAttribute('aria-valuemin'));
+      var max = parseFloat(thumb.getAttribute('aria-valuemax'));
+      var val = parseFloat(thumb.getAttribute('aria-valuenow'));
+      if (isNaN(min) || isNaN(max) || isNaN(val) || max === min) return;
+      var pct = ((val - min) / (max - min)) * 100;
+      var grad = 'linear-gradient(to right, var(--primary) ' + pct +
+        '%, var(--outline-variant) ' + pct + '%)';
+      if (track.style.background !== grad) {
+        track.style.setProperty('background', grad, 'important');
+      }
+    });
+  }
+  try {
+    paintSliders();
+    new MutationObserver(paintSliders).observe(window.parent.document.body, {
+      attributes: true, attributeFilter: ['aria-valuenow'], subtree: true, childList: true,
+    });
+    setInterval(paintSliders, 400);
+  } catch (e) { /* iframe sin acceso al padre: la pista se queda en el tono claro base */ }
+})();
+</script>
+"""
+
 # ── CSS — design system "Enagás Engineering Core" (Stitch) ────────────────────
 # Tokens (paleta Material 3 corporativa Enagás), tipografías (Hanken Grotesk /
 # Inter / JetBrains Mono) y componentes trasladados del diseño de Stitch.
@@ -418,11 +463,16 @@ _CSS = """
     border: 2px solid #fff !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.25) !important;
   }
-  /* Relleno de la barra en primario, EXCLUYENDO la barra de marcas (0%/100%)
-     para no pintarles el fondo azul. */
+  /* Pista del slider: único elemento visual del track (baseweb no genera un
+     div de "relleno" aparte aquí). Color base claro ANTES de que el JS de
+     _SLIDER_FILL_JS calcule el degradado real (azul a la izquierda del
+     pulgar, claro a la derecha); evita un parpadeo de color sólido al
+     pintar. Es el ÚLTIMO div de los dos que cuelgan del contenedor del
+     pulgar; el primero es el área de arrastre del pulgar y no debe
+     colorearse (si no, tapa la pista con el mismo azul). */
   div[data-testid="stSlider"] div[data-baseweb="slider"]
-    > div:not([data-testid="stSliderTickBar"]) > div {
-    background: var(--primary) !important;
+    > div:not([data-testid="stSliderTickBar"]) > div > div:last-child {
+    background: var(--outline-variant) !important;
   }
   /* Etiquetas de extremos del slider (0% / 100%): sin fondo y en negro, siempre
      visibles. Alta especificidad para ganar a la regla de relleno de arriba. */
@@ -562,9 +612,14 @@ _CSS = """
     letter-spacing: 0.2px !important;
   }
 
-  /* ── Botón "Generar informe PDF" — texto e icono en blanco ──────────────── */
+  /* ── Botones "Generar informe PDF" y "Descargar rutas" — mismo azul,
+     texto e icono en blanco ───────────────────────────────────────────── */
   .st-key-btn_pdf_informe div[data-testid="stDownloadButton"] > button,
-  .st-key-btn_pdf_informe div[data-testid="stDownloadButton"] > button * {
+  .st-key-btn_pdf_informe div[data-testid="stDownloadButton"] > button *,
+  .st-key-btn_dl_rutas div[data-testid="stDownloadButton"] > button,
+  .st-key-btn_dl_rutas div[data-testid="stDownloadButton"] > button *,
+  .st-key-btn_dl_rutas div[data-testid="stButton"] > button,
+  .st-key-btn_dl_rutas div[data-testid="stButton"] > button * {
     color: #ffffff !important;
     fill: #ffffff !important;
   }
@@ -1592,7 +1647,9 @@ _CAT_RAW_DIR = _ROOT / "data" / "raw" / "Catastro"
 # Fuentes oficiales de las capas que el pipeline descarga solo (mismos endpoints
 # que usa src.ingesta.descargar_capas). El .html del portal MITECO de zonas
 # inundables devolvía 404, así que apuntamos al servicio real (OGC API Features).
-_URL_RN2000 = "https://servicios.idee.es/wfs-inspire/redes-ecologicas"
+# RN2000 usa el mismo OGC API Features de MITECO que SNCZI (el WFS del IGN
+# redes-ecologicas está caído/inestable de forma recurrente).
+_URL_RN2000 = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
 _URL_SNCZI = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
 
 
@@ -1839,8 +1896,8 @@ def _estado_datos_aoi(coords_esc: dict) -> list[dict]:
         {"nombre": "Catastro (expropiación)", "estado": cat[0], "detalle": cat[1],
          "manual": True, "enlaces": []},
         {"nombre": "Red Natura 2000", "estado": "ok",
-         "detalle": "Se descarga automáticamente por zona (WFS INSPIRE IGN)",
-         "enlaces": [{"label": "Fuente oficial (WFS IGN)", "url": _URL_RN2000,
+         "detalle": "Se descarga automáticamente por zona (OGC API Features, MITECO)",
+         "enlaces": [{"label": "Fuente oficial (OGC API MITECO)", "url": _URL_RN2000,
                       "icono": "open_in_new", "nivel": 0}]},
         {"nombre": "Zonas inundables (SNCZI)", "estado": "ok",
          "detalle": "Se descarga automáticamente por zona (OGC API Features, MITECO)",
@@ -2554,7 +2611,7 @@ def _boton_descargar_rutas_zip(escenarios: list[str]) -> None:
     ]
     if not rutas:
         st.button(
-            "Descargar rutas (.gpkg)", disabled=True,
+            "Descargar rutas (.gpkg)", disabled=True, type="primary",
             use_container_width=True, icon=":material/folder_zip:",
             help="No hay rutas generadas para descargar.",
             key="dl_rutas_zip_disabled",
@@ -2579,6 +2636,7 @@ def _boton_descargar_rutas_zip(escenarios: list[str]) -> None:
         data=cache[1],
         file_name="Trazados de ramales.zip",
         mime="application/zip",
+        type="primary",
         use_container_width=True,
         icon=":material/folder_zip:",
         key="dl_rutas_zip",
@@ -2602,7 +2660,8 @@ def _render_results():
     with head_r:
         with st.container(key="btn_pdf_informe"):
             _boton_informe_pdf(resultados, escenarios)
-        _boton_descargar_rutas_zip(escenarios)
+        with st.container(key="btn_dl_rutas"):
+            _boton_descargar_rutas_zip(escenarios)
 
     # Avisos de preparación: capas de coste que no se pudieron generar para
     # algún escenario nuevo (p. ej. sin cobertura o sin fuente de datos). Se
@@ -2977,6 +3036,7 @@ def _main():
     )
 
     st.markdown(_CSS, unsafe_allow_html=True)
+    st.components.v1.html(_SLIDER_FILL_JS, height=0)
 
     with st.container(key="topnav"):
         st.markdown(f'<div class="topnav-left">{_logo_tag}</div>', unsafe_allow_html=True)

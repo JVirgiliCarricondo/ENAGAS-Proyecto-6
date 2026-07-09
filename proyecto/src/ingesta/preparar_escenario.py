@@ -147,13 +147,14 @@ def _superficie_steps():
             cruces_viario_rios, expropiacion, geotecnia  # type: ignore
 
     # (etiqueta, callable(s), pista si falta la fuente de datos).
-    # RN2000 y Catastro NO se descargan automáticamente: son fuentes que el
-    # usuario coloca a mano en data/raw/. Si faltan, la capa se omite con una
-    # pista clara (no es un error del pipeline).
+    # Catastro NO se descarga automáticamente (única capa manual, por diseño);
+    # RN2000 sí (OGC API Features de MITECO), pero si su descarga falló la capa
+    # se omite con una pista clara (no es un error del pipeline).
     return [
         ("Zonas protegidas", zonas_protegidas.procesar_escenario,
-         "coloca la capa nacional Red Natura 2000 en data/raw/RN2000/ "
-         "(o data/raw/RN2000.gpkg) y vuelve a procesar."),
+         "la descarga automática de Red Natura 2000 (OGC API Features MITECO) "
+         "no dejó datos — reintenta el procesado o coloca la capa nacional en "
+         "data/raw/RN2000/ (o data/raw/RN2000.gpkg) y vuelve a procesar."),
         ("Zonas inundables", zonas_inundables.procesar_escenario, ""),
         ("Cruces (viario y ríos)", cruces_viario_rios.procesar_escenario, ""),
         ("Expropiación (catastro)", expropiacion.run,

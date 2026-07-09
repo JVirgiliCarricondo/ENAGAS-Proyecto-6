@@ -11,14 +11,15 @@
 | OSM | OpenStreetMap | Automática (`descargar_capas.py`) | 2026-06-16 | EPSG:4326 | Vector |
 | HID | Hidrografía IGN INSPIRE | Automática (`descargar_capas.py`) | 2026-06-16 | EPSG:25830 | Vector |
 | IGME | Mapa Geológico IGME | Automática (`descargar_capas.py`) | 2026-06-16 | EPSG:25830 | Vector |
-| RN2000 | Red Natura 2000 (MITECO) | **Manual** (leer instrucciones) | 2025 (ed. final) | EPSG:25830 | Vector |
+| INUND | Zonas inundables SNCZI (MITECO) | Automática (`descargar_capas.py`) | 2026-06-29 | EPSG:4326 | Vector |
+| RN2000 | Red Natura 2000 (MITECO) | Automática (`descargar_capas.py`) | 2026-07-09 | EPSG:4326 | Vector |
 | CATASTRO | Catastro INSPIRE (DGC) | **Manual** (leer instrucciones) | 2026-06-16 | EPSG:25830 | Vector |
 
 ---
 
 ## Capas descargadas automáticamente
 
-Estas cuatro capas se obtienen ejecutando `src/ingesta/descargar_capas.py` con los puntos del `escenario.yaml`. No requieren ninguna acción manual.
+Estas capas se obtienen ejecutando `src/ingesta/descargar_capas.py` con los puntos del `escenario.yaml`. No requieren ninguna acción manual.
 
 ### DEM — Modelo Digital de Elevaciones Copernicus GLO-30
 
@@ -73,28 +74,39 @@ Estas cuatro capas se obtienen ejecutando `src/ingesta/descargar_capas.py` con l
 
 ---
 
-## Capas de obtención manual
+### INUND — Zonas inundables SNCZI (MITECO)
 
-Estas dos capas **no se descargan automáticamente** por el pipeline. Deben obtenerse manualmente y colocarse en las rutas indicadas antes de ejecutar `alinear_capas.py`.
+- **Qué aporta:** láminas de inundación fluvial (periodos de retorno T10, T100 y T500, unidas en una sola capa binaria) → penalización de zonas inundables en la superficie de coste.
+- **Fuente:** OGC API Features de MITECO — colecciones `agua:Zi_laminas_q10`, `agua:Zi_laminas_q100` y `agua:Zi_laminas_q500`.
+  - Endpoint: `https://wmts.mapama.gob.es/sig-api/ogc/features/v1`
+  - Referencia oficial: `https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/agua/mapas-peligrosidad-por-inundacion-fluvial.html`
+- **CRS original:** EPSG:4326 (WGS84), reproyectado a EPSG:25830 durante la descarga.
+- **Geometría:** Polygon (láminas de inundación).
+- **Archivos en `raw/`:** `INUND_A.gpkg`, `INUND_B.gpkg`
+- **Salida en `Recorte_AOI/`:** `inundable_aoi_A.gpkg`, `inundable_aoi_B.gpkg`
+- **Licencia:** datos públicos MITECO, reutilización libre con atribución.
+
+---
 
 ### RN2000 — Red Natura 2000 (MITECO)
 
 - **Qué aporta:** espacios protegidos ZEC y ZEPA → penalización alta en la superficie de coste (mínima afección a áreas protegidas).
-- **Fuente:** Ministerio para la Transición Ecológica y el Reto Demográfico (MITECO), sección Biodiversidad → Redes y áreas protegidas → Red Natura 2000 → Descargas SIG.
-  - Portal: `https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/biodiversidad/rn2000.html`
-- **Fichero a descargar:** dataset espacial para **Península e Islas Baleares**, proyección ETRS89 (EPSG:25830). Edición de final de 2025 (`end25`).
-- **CRS original:** EPSG:25830.
+- **Fuente:** OGC API Features de MITECO — colección `biodiversidad:RedNatura` (mismo servicio que las zonas inundables).
+  - Endpoint: `https://wmts.mapama.gob.es/sig-api/ogc/features/v1`
+  - Referencia oficial: `https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/biodiversidad/rn2000.html`
+  - Nota: hasta jul-2026 se usaba el WFS INSPIRE del IGN (`redes-ecologicas`, capa `PS.ProtectedSite`), pero ese servicio está caído/inestable de forma recurrente y se sustituyó por el de MITECO.
+- **CRS original:** EPSG:4326 (WGS84), reproyectado a EPSG:25830 durante la descarga.
 - **Geometría:** Polygon (áreas ZEC/ZEPA).
-- **Ruta esperada en `raw/`:**
-  ```
-  data/raw/RN2000/
-      n2000_spatial_es_pibal_proy_end25.geojson   ← usado por el pipeline
-      n2000_spatial_es_can_proy_end25.geojson     ← Canarias (no usado)
-  ```
-- **Fecha de los datos:** edición final 2025 (nombre de archivo `end25`).
+- **Archivos en `raw/`:** `RN2000_A.gpkg`, `RN2000_B.gpkg`
+- **Salida en `Recorte_AOI/`:** `natura2000_aoi_A.gpkg`, `natura2000_aoi_B.gpkg`
+- **Alternativa manual (fallback):** si el servicio no responde, se puede descargar el dataset nacional (Península e Islas Baleares, edición final 2025 `end25`) desde el portal de MITECO y guardarlo en `data/raw/RN2000/` (o como `data/raw/RN2000.gpkg`); `alinear_capas.py` lo detecta automáticamente.
 - **Licencia:** datos públicos MITECO, reutilización libre con atribución.
 
 ---
+
+## Capas de obtención manual
+
+Esta capa **no se descarga automáticamente** por el pipeline (no hay servicio por bbox fiable). Debe obtenerse manualmente y colocarse en la ruta indicada antes de ejecutar `alinear_capas.py`.
 
 ### CATASTRO — Catastro INSPIRE (Dirección General del Catastro)
 
@@ -137,11 +149,11 @@ data/raw/CATASTRO/
 ## Procedimiento para reproducir la ingesta
 
 ```bash
-# 1. Descargar capas automáticas (DEM, OSM, HID, IGME)
+# 1. Descargar capas automáticas (DEM, OSM, HID, IGME, INUND, RN2000)
 python src/ingesta/descargar_capas.py --escenario A
 python src/ingesta/descargar_capas.py --escenario B
 
-# 2. Colocar manualmente RN2000 y CATASTRO en las rutas indicadas arriba
+# 2. Colocar manualmente CATASTRO en la ruta indicada arriba
 
 # 3. Alinear y recortar al AOI (genera Recorte_AOI/)
 python src/ingesta/alinear_capas.py --escenario A

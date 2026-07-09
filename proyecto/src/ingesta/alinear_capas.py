@@ -190,8 +190,11 @@ _DOWNLOAD_HINTS: dict[str, str] = {
         "    (si ya tienes rasters_COP30.tar.gz, extráelo primero)"
     ),
     "Red Natura 2000": (
-        "  → https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/biodiversidad/rn2000.html\n"
-        "    Guárdalo como: data/raw/RN2000.gpkg  (o RN2000.geojson)"
+        "  → Se descarga automáticamente (descargar_capas.py, OGC API Features de\n"
+        "    MITECO, colección biodiversidad:RedNatura); ejecuta la descarga o, como\n"
+        "    alternativa manual, baja el dataset nacional de\n"
+        "    https://www.miteco.gob.es/es/cartografia-y-sig/ide/descargas/biodiversidad/rn2000.html\n"
+        "    y guárdalo como: data/raw/RN2000.gpkg  (o RN2000.geojson)"
     ),
     "OSM": (
         "  → https://download.geofabrik.de/europe/spain.html\n"
