@@ -10,6 +10,7 @@ import copy
 import json
 import math
 import re
+import shutil
 import sys
 import unicodedata
 import urllib.parse
@@ -46,9 +47,20 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "src"))
 
 _CONFIG_PATH = _ROOT / "data" / "config" / "escenario.yaml"
+_CONFIG_BASE_PATH = _ROOT / "data" / "config" / "escenario_base.yaml"
 _PERFILES_PATH = _ROOT / "data" / "config" / "perfiles.yaml"
 _RUTAS_DIR     = _ROOT / "data" / "processed" / "Rutas"
 _TRAZADOS_DIR  = _ROOT / "data" / "processed" / "Trazados"
+
+# Restaurar la configuración canónica de escenarios al abrir la app: los
+# cambios de origen/destino y los escenarios creados en la interfaz duran solo
+# la sesión (escenario.yaml es efímero; los valores "de fábrica" viven en
+# escenario_base.yaml). El flag de session_state limita la copia al primer
+# rerun de cada sesión del navegador.
+if "_config_escenarios_restaurada" not in st.session_state:
+    if _CONFIG_BASE_PATH.exists():
+        shutil.copyfile(_CONFIG_BASE_PATH, _CONFIG_PATH)
+    st.session_state["_config_escenarios_restaurada"] = True
 
 # Constantes
 MAX_DIST_M = 15_000.0
