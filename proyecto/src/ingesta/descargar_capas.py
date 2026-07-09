@@ -16,7 +16,7 @@ Archivos generados en data/raw/ (sufijo _A o _B según el escenario):
   HID_{s}.gpkg     → Hidrografía IGN, WFS INSPIRE (HY.PhysicalWaters.Watercourses)
   IGME_{s}.gpkg    → Mapa geológico IGME MAGNA50, ArcGIS REST
   INUND_{s}.gpkg   → Zonas inundables SNCZI (MITECO), OGC API Features, unión T10+T100+T500
-  RN2000_{s}.gpkg  → Red Natura 2000 (ZEPA/LIC/ZEC), WFS INSPIRE IGN (PS.ProtectedSite)
+  RN2000_{s}.gpkg  → Red Natura 2000 (ZEPA/LIC/ZEC), OGC API Features MITECO (biodiversidad:RedNatura)
 
 Solo Catastro NO se descarga automáticamente (no hay servicio bbox fiable):
 se coloca a mano en data/raw/Catastro/ y alinear_capas.py lo recorta al AOI.
@@ -116,7 +116,6 @@ class LayerResult:
 # Endpoints de servicios OGC públicos                                          #
 # ──────────────────────────────────────────────────────────────────────────── #
 _IGN_WFS_HID   = "https://servicios.idee.es/wfs-inspire/hidrografia"
-_IGN_WFS_RN2000 = "https://servicios.idee.es/wfs-inspire/redes-ecologicas"
 _IGME_REST     = "https://mapas.igme.es/gis/rest/services/Cartografia_Geologica/IGME_MAGNA_50/MapServer/11/query"
 # Endpoints Overpass en orden de preferencia; se prueban en secuencia si fallan.
 _OVERPASS_ENDPOINTS = [
@@ -124,19 +123,22 @@ _OVERPASS_ENDPOINTS = [
     "https://overpass.kumi.systems/api/interpreter",
     "https://z.overpass-api.de/api/interpreter",
 ]
-# SNCZI (Sistema Nacional de Cartografía de Zonas Inundables), MITECO.
-# El WFS clásico (wfs.aspx) no expone estas capas (error interno del servidor,
+# OGC API Features de MITECO — sirve zonas inundables (SNCZI) y Red Natura 2000.
+# El WFS clásico (wfs.aspx) no expone las capas SNCZI (error interno del servidor,
 # verificado); MITECO migró la descarga por bbox a OGC API Features:
 # GetCapabilities → https://wmts.mapama.gob.es/sig-api/ogc/features/v1/collections
-_MITECO_OAFEAT_ZI = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
+_MITECO_OAFEAT = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
 
 # Nombres de capa WFS INSPIRE (obtenidos vía GetCapabilities)
 _WFS_HID    = "hy-n:WatercourseLink"   # enlaces de cursos de agua (tramos lineales)
-_WFS_RN2000 = "PS.ProtectedSite"       # zonas protegidas INSPIRE (ZEPA/LIC/ZEC)
 # SNCZI: láminas de inundación por periodo de retorno (T10, T100, T500 años).
 # IDs de colección confirmados en /collections del API-Features (29-jun-2026).
 # El modelo de coste solo usa la UNIÓN de las tres (binario, sin distinguir T).
 _OAFEAT_ZI = ["agua:Zi_laminas_q10", "agua:Zi_laminas_q100", "agua:Zi_laminas_q500"]
+# Red Natura 2000 (ZEPA/LIC/ZEC): colección confirmada en /collections (9-jul-2026).
+# Sustituye al WFS INSPIRE del IGN (redes-ecologicas), caído/inestable de forma
+# recurrente (timeouts y conexiones reseteadas verificados).
+_OAFEAT_RN2000 = "biodiversidad:RedNatura"
 
 # Cabeceras HTTP que evitan el reseteo de conexión en servicios IGN
 # Connection: close desactiva keepalive, que causa ConnectionResetError(10054) en Windows
@@ -538,11 +540,11 @@ def download_zonas_inundables(
     afirmar que el AOI esté libre de inundables → FAILED. Si al menos una responde
     (aunque todas vengan vacías), es una ausencia de cobertura legítima → EMPTY.
     """
-    log.info(f"  OGC API Features SNCZI/MITECO → {_MITECO_OAFEAT_ZI}")
+    log.info(f"  OGC API Features SNCZI/MITECO → {_MITECO_OAFEAT}")
     partes = []
     respondidas = 0
     for collection_id in _OAFEAT_ZI:
-        gdf_t = _ogc_features_bbox(_MITECO_OAFEAT_ZI, collection_id, bbox_25830, log)
+        gdf_t = _ogc_features_bbox(_MITECO_OAFEAT, collection_id, bbox_25830, log)
         if gdf_t is None:
             log.warning(f"    {collection_id} → descarga fallida")
             continue
@@ -653,15 +655,18 @@ def download_rn2000(
     out_path: Path,
     log: logging.Logger,
 ) -> LayerResult:
-    """Red Natura 2000 (ZEPA/LIC/ZEC) vía WFS INSPIRE IGN — redes-ecológicas.
+    """Red Natura 2000 (ZEPA/LIC/ZEC) vía OGC API Features de MITECO.
 
-    Capa PS.ProtectedSite del servicio INSPIRE de redes ecológicas del IGN.
-    _wfs_bbox devuelve None si TODOS los intentos fallan (→ FAILED); una
+    Colección biodiversidad:RedNatura del mismo servicio que las zonas
+    inundables (SNCZI). Sustituye al WFS INSPIRE del IGN (redes-ecologicas),
+    caído/inestable de forma recurrente.
+
+    _ogc_features_bbox devuelve None si el servicio falla (→ FAILED); una
     respuesta correcta sin geometrías es ausencia confirmada en el AOI (→ EMPTY).
     """
-    log.info(f"  WFS IGN INSPIRE → {_WFS_RN2000}")
-    gdf = _wfs_bbox(_IGN_WFS_RN2000, _WFS_RN2000, bbox_25830, log, max_features=2_000)
-    return _vector_result(gdf, out_path, log, "WFS IGN INSPIRE Red Natura 2000")
+    log.info(f"  OGC API Features MITECO → {_OAFEAT_RN2000}")
+    gdf = _ogc_features_bbox(_MITECO_OAFEAT, _OAFEAT_RN2000, bbox_25830, log)
+    return _vector_result(gdf, out_path, log, "OGC API Features MITECO Red Natura 2000")
 
 
 def download_igme(
