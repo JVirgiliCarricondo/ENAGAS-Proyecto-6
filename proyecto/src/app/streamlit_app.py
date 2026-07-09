@@ -605,6 +605,22 @@ _CSS = """
     transform: translateY(0);
     box-shadow: var(--shadow-card) !important;
   }
+  /* Primario deshabilitado: mismo azul y texto blanco legible (sin la caja
+     clara que hereda de la regla generica de :disabled). Se distingue del
+     activo por el cursor y la ausencia de sombra/hover. */
+  div[data-testid="stButton"] > button[kind="primary"]:disabled {
+    background: var(--primary) !important;
+    border: none !important;
+    box-shadow: none !important;
+    cursor: not-allowed !important;
+  }
+  div[data-testid="stButton"] > button[kind="primary"]:disabled p,
+  div[data-testid="stButton"] > button[kind="primary"]:disabled span,
+  div[data-testid="stButton"] > button[kind="primary"]:disabled div {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    background: transparent !important;
+  }
 
   /* Botón verde (secundario Enagás) — "Comenzar simulación" en bienvenida */
   .st-key-btn_welcome_start div[data-testid="stButton"] > button {
