@@ -1,0 +1,35 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            // Se ejecuta AUTOMÁTICAMENTE al abrir la carpeta en VS Code
+            // (la primera vez VS Code pide permiso: "Allow Automatic Tasks").
+            // Es idempotente: crea proyecto/.venv si no existe, instala las
+            // versiones exactas de requirements.txt, verifica los imports y
+            // activa los hooks de git (.githooks) para el resto del equipo.
+            "label": "Setup entorno (proyecto/.venv)",
+            "type": "shell",
+            "options": {
+                "cwd": "${workspaceFolder}/proyecto"
+            },
+            "windows": {
+                "command": "powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1"
+            },
+            "linux": {
+                "command": "bash setup.sh"
+            },
+            "osx": {
+                "command": "bash setup.sh"
+            },
+            "runOptions": {
+                "runOn": "folderOpen"
+            },
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated",
+                "showReuseMessage": false
+            },
+            "problemMatcher": []
+        }
+    ]
+}

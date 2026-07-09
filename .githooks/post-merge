@@ -1,0 +1,33 @@
+#!/bin/sh
+# Hook post-merge: se ejecuta automaticamente tras cada `git pull` con cambios.
+# Si el pull trajo un requirements.txt nuevo, actualiza proyecto/.venv al momento,
+# sin que nadie tenga que acordarse de reinstalar.
+#
+# Este hook se activa solo: setup.ps1 / setup.sh configuran
+#   git config core.hooksPath .githooks
+# y la tarea de VS Code (.vscode/tasks.json) ejecuta el setup al abrir la carpeta.
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+# ¿El merge del pull tocó requirements.txt?
+if ! git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD 2>/dev/null \
+        | grep -q '^proyecto/requirements.txt$'; then
+    exit 0
+fi
+
+echo "[post-merge] El pull cambió proyecto/requirements.txt: actualizando proyecto/.venv ..."
+
+if [ -x "$repo_root/proyecto/.venv/Scripts/python.exe" ]; then
+    py="$repo_root/proyecto/.venv/Scripts/python.exe"     # Windows
+elif [ -x "$repo_root/proyecto/.venv/bin/python" ]; then
+    py="$repo_root/proyecto/.venv/bin/python"             # macOS/Linux
+else
+    echo "[post-merge] No existe proyecto/.venv; ejecuta proyecto/setup.ps1 (Windows) o setup.sh."
+    exit 0
+fi
+
+"$py" -m pip install -r "$repo_root/proyecto/requirements.txt" \
+    && "$py" "$repo_root/proyecto/check_entorno.py" \
+    || echo "[post-merge] AVISO: la actualización falló; ejecuta proyecto/setup.ps1 a mano."
+
+exit 0

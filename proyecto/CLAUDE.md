@@ -17,7 +17,10 @@ Pipeline geoespacial determinista: **ingesta y alineación de capas** → **supe
 proyecto/
 ├── README.md             # puesta en marcha
 ├── arquitectura.md       # diseño técnico
-├── requirements.txt      # dependencias (stack geoespacial)
+├── requirements.txt      # dependencias pineadas (pip freeze del entorno validado)
+├── .python-version       # versión de Python del entorno validado (3.10)
+├── setup.ps1 / setup.sh  # crean proyecto/.venv, instalan requirements y verifican imports
+├── check_entorno.py      # verificación OK/FALTA de dependencias (útil tras cada git pull)
 ├── .env.example          # variables de entorno (claves de descarga si aplica) — copiar a .env
 ├── data/
 │   ├── raw/              # capas GIS descargadas o aportadas a mano (NO se versionan) + FUENTES.md
@@ -40,7 +43,7 @@ proyecto/
 
 ## Convenciones de código
 
-- Python 3.11+. Código y nombres en **inglés**; docstrings pueden ir en español.
+- Python 3.10 (fijado en `.python-version`; el entorno oficial es `proyecto/.venv`, creado por `setup.ps1`/`setup.sh`). Código y nombres en **inglés**; docstrings pueden ir en español.
 - Formato con `ruff` (a fijar). Type hints donde aporten.
 - **Alineación:** ninguna capa entra en el pipeline sin estar reproyectada a **EPSG:25830** y remuestreada a la **rejilla común**. Sin alineación, los costes mienten.
 - **Coste relativo:** todo coste es un índice adimensional; nunca operar ni mostrar costes en €.

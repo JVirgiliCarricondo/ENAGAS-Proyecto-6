@@ -1,0 +1,15 @@
+{
+    // Intérprete oficial del equipo: proyecto/.venv (creado por proyecto/setup.ps1 o setup.sh).
+    // El .venv de la raíz del repo está deprecado y no debe usarse.
+    "python.defaultInterpreterPath": "${workspaceFolder}/proyecto/.venv/Scripts/python.exe",
+    "python.terminal.activateEnvironment": true,
+
+    // Que el buscador de entornos no ofrezca el .venv deprecado de la raíz
+    "files.watcherExclude": {
+        "**/.venv/**": true
+    },
+
+    // Tests del prototipo
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": ["proyecto/tests"]
+}
