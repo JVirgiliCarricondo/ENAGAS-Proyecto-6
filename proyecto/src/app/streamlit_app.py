@@ -7,12 +7,16 @@ Ejecutar desde proyecto/:
 from __future__ import annotations
 
 import copy
+import json
 import math
 import re
 import sys
+import unicodedata
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pathlib import Path
 
 import folium
@@ -22,8 +26,10 @@ import pandas as pd
 import streamlit as st
 import yaml
 from pyproj import Transformer
-from shapely.geometry import LineString
+from shapely import wkt as _shp_wkt
+from shapely.geometry import LineString, Point
 from shapely.geometry import box as _shp_box
+from shapely.geometry import shape as _shp_shape
 from shapely.ops import unary_union
 
 # Page config — DEBE ser la primera llamada a Streamlit
@@ -818,23 +824,43 @@ _CSS = """
   hr.cat-div { border: none; border-top: 1px solid var(--surface-high);
     margin: 12px 0 2px 0; }
 
-  /* Botón "Ver municipios" — pastilla suave centrada */
+  /* Botones "Ver municipios" / "Reintentar" — pastilla clara (azul suave),
+     letra pequeña como el cuerpo de las tarjetas */
+  .st-key-btn_cat_reintentar div[data-testid="stButton"] > button,
   .st-key-btn_cat_municipios div[data-testid="stButton"] > button {
-    border: 1px solid var(--outline-variant) !important;
+    background: #eef5fb !important;
+    border: 1px solid #d9e7f2 !important;
     border-radius: 9px !important;
-    color: var(--on-surface-variant) !important;
-    -webkit-text-fill-color: var(--on-surface-variant) !important;
-    padding: 6px 18px !important;
-    font-size: 0.72rem !important;
-    box-shadow: var(--shadow-card);
+    color: var(--primary) !important;
+    -webkit-text-fill-color: var(--primary) !important;
+    padding: 4px 12px !important;
+    min-height: 0 !important;
+    font-size: 0.6rem !important;
+    box-shadow: none !important;
   }
+  .st-key-btn_cat_reintentar div[data-testid="stButton"] > button *,
   .st-key-btn_cat_municipios div[data-testid="stButton"] > button * {
-    color: var(--on-surface-variant) !important;
-    -webkit-text-fill-color: var(--on-surface-variant) !important;
+    color: var(--primary) !important;
+    -webkit-text-fill-color: var(--primary) !important;
+    font-size: 0.6rem !important;
   }
+  .st-key-btn_cat_reintentar div[data-testid="stButton"] > button:hover,
   .st-key-btn_cat_municipios div[data-testid="stButton"] > button:hover {
-    background: var(--surface-low) !important;
-    border-color: var(--outline) !important;
+    background: #e2eef8 !important;
+    border-color: #c4dbec !important;
+  }
+
+  /* Spinner "Localizando municipios…" — texto pequeño como el subtítulo del card */
+  .st-key-cat_muni_spinner div[data-testid="stSpinner"] {
+    font-size: 0.68rem !important;
+  }
+  .st-key-cat_muni_spinner div[data-testid="stSpinner"] * {
+    font-size: 0.68rem !important;
+    color: var(--on-surface-variant) !important;
+  }
+  .st-key-cat_muni_spinner div[data-testid="stSpinner"] i,
+  .st-key-cat_muni_spinner div[data-testid="stSpinner"] svg {
+    width: 0.9rem !important; height: 0.9rem !important;
   }
 
   /* Caja gris que agrupa los municipios del corredor — compacta y acotada */
@@ -846,7 +872,7 @@ _CSS = """
     margin-top: 12px;
   }
   .cat-count { display: flex; align-items: center; gap: 6px;
-    font-family: var(--font-body); font-weight: 700; font-size: 0.78rem;
+    font-family: var(--font-body); font-weight: 700; font-size: 0.68rem;
     margin: 2px 2px 8px 2px; }
 
   /* Cada municipio como expander → tarjeta blanca redondeada, compacta */
@@ -885,13 +911,14 @@ _CSS = """
     -webkit-text-fill-color: var(--primary) !important;
     font-family: var(--font-body) !important;
     font-weight: 400 !important;
-    font-size: 0.72rem !important;
+    font-size: 0.64rem !important;
   }
   .st-key-cat_muni_box div[data-testid="stLinkButton"] > a * {
     color: var(--primary) !important;
     -webkit-text-fill-color: var(--primary) !important;
+    font-family: var(--font-body) !important;
     font-weight: 400 !important;
-    font-size: 0.72rem !important;
+    font-size: 0.64rem !important;
   }
   .st-key-cat_muni_box div[data-testid="stLinkButton"] > a:hover {
     background: var(--surface-low) !important;
@@ -902,16 +929,33 @@ _CSS = """
     border-radius: 10px !important;
     background: var(--surface-lowest) !important;
   }
-  /* Botón "Upload" y texto "200MB per file · ZIP": pequeños y sin negrita */
+  /* Botón "Upload" y texto del límite por fichero: pequeños y sin negrita */
   .st-key-cat_muni_box div[data-testid="stFileUploaderDropzone"] button,
   .st-key-cat_muni_box div[data-testid="stFileUploaderDropzone"] button * {
-    font-size: 0.72rem !important;
+    font-family: var(--font-body) !important;
+    font-size: 0.64rem !important;
     font-weight: 400 !important;
   }
   .st-key-cat_muni_box [data-testid="stFileUploaderDropzoneInstructions"],
   .st-key-cat_muni_box [data-testid="stFileUploaderDropzoneInstructions"] * {
-    font-size: 0.66rem !important;
+    font-family: var(--font-body) !important;
+    font-size: 0.68rem !important;
     font-weight: 400 !important;
+  }
+  /* Ficheros subidos (nombre + tamaño), caption "✓ Listo…" y avisos de error:
+     mismo cuerpo que el subtítulo "Cubierto por lo ya descargado" (.cat-sub) */
+  .st-key-cat_muni_box [data-testid="stFileUploaderFile"],
+  .st-key-cat_muni_box [data-testid="stFileUploaderFile"] *,
+  .st-key-cat_muni_box [data-testid="stCaptionContainer"],
+  .st-key-cat_muni_box [data-testid="stCaptionContainer"] * {
+    font-family: var(--font-body) !important;
+    font-size: 0.68rem !important;
+  }
+  .st-key-cat_muni_box [data-testid="stAlert"] p,
+  .st-key-cat_muni_box [data-testid="stAlert"] div[data-testid="stMarkdownContainer"] * {
+    font-family: var(--font-body) !important;
+    font-size: 0.68rem !important;
+    line-height: 1.35 !important;
   }
 
   footer { display: none; }
@@ -1619,6 +1663,29 @@ def _catastro_cobertura_wkt(recorte_dir: str) -> str | None:
     return unary_union(cajas).wkt
 
 
+@st.cache_data(show_spinner=False)
+def _recorte_bbox_wkt(path_str: str, mtime: float) -> str | None:
+    """BBox (WKT) de los datos de un recorte alineado (.gpkg o .tif) del AOI.
+
+    None si el fichero no se puede leer o el vector no tiene geometrías (recorte
+    vacío legítimo: ausencia confirmada de la capa en la zona). mtime forma parte
+    de la clave de caché: si la ingesta regenera el fichero, se relee.
+    """
+    p = Path(path_str)
+    try:
+        if p.suffix == ".tif":
+            import rasterio
+            with rasterio.open(p) as src:
+                b = src.bounds  # left, bottom, right, top
+            return _shp_box(b.left, b.bottom, b.right, b.top).wkt
+        b = gpd.read_file(p).total_bounds
+        if b is None or any(np.isnan(b)):
+            return None
+        return _shp_box(*b).wkt
+    except Exception:
+        return None
+
+
 # ── Acceso directo a las descargas manuales (Catastro INSPIRE, RN2000, SNCZI) ──
 #
 # La capa realmente manual es CATASTRO: se descarga por municipio en la Sede del
@@ -1630,11 +1697,11 @@ def _catastro_cobertura_wkt(recorte_dir: str) -> str | None:
 #      ZIP INSPIRE de parcelas de ese municipio.
 # Todo cacheado y tolerante a fallos: sin red, se cae al portal general.
 
-_OVC_RCCOOR = ("http://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/"
+# HTTPS: el HTTP plano del Catastro está deprecado y algunas redes corporativas
+# lo bloquean (lo que se manifestaba como falso "sin conexión").
+_OVC_RCCOOR = ("https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/"
                "OVCCoordenadas.asmx/Consulta_RCCOOR")
 _CAT_INSPIRE_CP = "https://www.catastro.hacienda.gob.es/INSPIRE/CadastralParcels"
-# Visor oficial de cartografía del Catastro, centrado por referencia catastral.
-_CAT_VISOR = "https://www1.sedecatastro.gob.es/Cartografia/mapa.aspx?refcat="
 # Portales de descarga (fallback / fuentes recomendadas que se aportan a mano)
 _URL_CATASTRO_PORTAL = "https://www.catastro.hacienda.gob.es/webinspire/index.html"
 # Sede Electronica del Catastro — descarga de datos (urbana/rustica por municipio).
@@ -1657,22 +1724,26 @@ def _xml_localname(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
-@st.cache_data(show_spinner=False, ttl=86400)
+@lru_cache(maxsize=4096)
 def _ovc_parcela(xq: int, yq: int) -> tuple[str, str] | None:
-    """(dgc5, refcat14) de la parcela en (xq, yq) EPSG:25830 vía OVC. None si falla.
+    """(dgc5, refcat14) de la parcela en (xq, yq) EPSG:25830 vía OVC.
 
     dgc5 = código DGC del municipio (provincia[2]+municipio[3]); refcat14 = pc1+pc2,
     referencia catastral con la que se centra el visor del Catastro. Se consulta con
     coordenadas redondeadas a rejilla gruesa (500 m) para reaprovechar la caché.
+
+    Caché en proceso (lru_cache, no st.cache_data) para poder consultar en paralelo
+    desde varios hilos sin ScriptRunContext. IMPORTANTE: si hay fallo de red, la
+    excepción se PROPAGA a propósito — lru_cache no memoriza llamadas que lanzan,
+    así que un corte puntual no envenena la caché (el bug del falso "sin conexión"
+    persistente). Solo se cachea None cuando el servicio responde de verdad pero
+    no hay parcela en esas coordenadas.
     """
     q = urllib.parse.urlencode({
         "SRS": "EPSG:25830", "Coordenada_X": str(xq), "Coordenada_Y": str(yq),
     })
-    try:
-        with urllib.request.urlopen(f"{_OVC_RCCOOR}?{q}", timeout=6) as r:
-            root = ET.fromstring(r.read())
-    except Exception:
-        return None
+    with urllib.request.urlopen(f"{_OVC_RCCOOR}?{q}", timeout=6) as r:
+        root = ET.fromstring(r.read())
     pc1 = pc2 = ""
     for el in root.iter():
         name = _xml_localname(el.tag)
@@ -1687,31 +1758,80 @@ def _ovc_parcela(xq: int, yq: int) -> tuple[str, str] | None:
 
 
 @st.cache_data(show_spinner=False, ttl=86400)
-def _catastro_cp_zip(dgc5: str) -> tuple[str, str] | None:
-    """(nombre_municipio, url_zip) del ZIP INSPIRE de parcelas, desde el feed ATOM
-    provincial. None si el municipio no aparece o no hay red."""
-    prov = dgc5[:2]
+def _catastro_atom_tabla(prov: str) -> list[dict]:
+    """Tabla [{dgc, nombre, url_zip}] del feed ATOM provincial de parcelas INSPIRE.
+
+    Un feed por provincia con TODOS sus municipios (código DGC + nombre + enlace
+    directo al ZIP). Los fallos de red se propagan (no se cachean), igual que en
+    _ovc_parcela."""
     url = f"{_CAT_INSPIRE_CP}/{prov}/ES.SDGC.CP.atom_{prov}.xml"
-    try:
-        with urllib.request.urlopen(url, timeout=8) as r:
-            root = ET.fromstring(r.read())
-    except Exception:
-        return None
+    with urllib.request.urlopen(url, timeout=10) as r:
+        root = ET.fromstring(r.read())
+    filas: list[dict] = []
     for link in root.iter("{http://www.w3.org/2005/Atom}link"):
         if link.get("rel") != "enclosure":
             continue
         href = link.get("href", "")
         # .../{prov}/{dgc5}-NOMBRE/A.ES.SDGC.CP.{dgc5}.zip
-        if f"/{dgc5}-" in href and href.endswith(f".CP.{dgc5}.zip"):
-            nombre = href.split(f"/{dgc5}-", 1)[1].split("/", 1)[0]
-            # El nombre del municipio lleva espacios/acentos (p. ej. "FUENTES DE
-            # EBRO", "ALCAÑIZ"); hay que percent-encodear la ruta o el navegador
-            # no descarga el ZIP.
-            sp = urllib.parse.urlsplit(href)
-            url = urllib.parse.urlunsplit(
-                (sp.scheme, sp.netloc, urllib.parse.quote(sp.path), sp.query, sp.fragment)
-            )
-            return nombre.replace("%20", " ").strip(), url
+        m = re.search(r"/(\d{5})-([^/]+)/[^/]*\.CP\.\1\.zip$", href)
+        if not m:
+            continue
+        dgc, nombre = m.group(1), m.group(2)
+        # El nombre del municipio lleva espacios/acentos (p. ej. "FUENTES DE
+        # EBRO", "ALCAÑIZ"); hay que percent-encodear la ruta o el navegador
+        # no descarga el ZIP.
+        sp = urllib.parse.urlsplit(href)
+        url_zip = urllib.parse.urlunsplit(
+            (sp.scheme, sp.netloc, urllib.parse.quote(sp.path), sp.query, sp.fragment)
+        )
+        filas.append({"dgc": dgc, "nombre": nombre.replace("%20", " ").strip(),
+                      "url_zip": url_zip})
+    return filas
+
+
+def _catastro_cp_zip(dgc5: str) -> tuple[str, str] | None:
+    """(nombre_municipio, url_zip) del ZIP INSPIRE de parcelas por código DGC."""
+    for fila in _catastro_atom_tabla(dgc5[:2]):
+        if fila["dgc"] == dgc5:
+            return fila["nombre"], fila["url_zip"]
+    return None
+
+
+def _normalizar_nombre(s: str) -> str:
+    """Normaliza un nombre de municipio para casarlo entre fuentes (IGN ↔ Catastro):
+    sin acentos, mayúsculas, y guiones/apóstrofes/barras como espacio (el Catastro
+    escribe "VILA REAL" donde el IGN dice "Vila-real")."""
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[-'’/·.,()]", " ", s)
+    return re.sub(r"\s+", " ", s).strip().upper()
+
+
+def _catastro_atom_por_nombre(prov: str, nombre: str) -> dict | None:
+    """Fila del feed ATOM cuyo municipio casa con <nombre> (del IGN).
+
+    Necesario porque el código municipal del IGN es el INE y el del Catastro es
+    el DGC, y NO coinciden (p. ej. Fuentes de Ebro: INE 50115, DGC 50116); el
+    nombre es la clave común. Prueba igualdad exacta normalizada y después
+    contención (nombres bilingües o con coletillas)."""
+    tabla = _catastro_atom_tabla(prov)
+    objetivo = _normalizar_nombre(nombre)
+    if not objetivo:
+        return None
+    for fila in tabla:
+        if _normalizar_nombre(fila["nombre"]) == objetivo:
+            return fila
+    for fila in tabla:
+        fn = _normalizar_nombre(fila["nombre"])
+        if fn and (objetivo in fn or fn in objetivo):
+            return fila
+    # Último nivel: por tokens — casa "VILAFRANCA DEL CID" con la entrada doble
+    # "VILAFRANCA VILLAFRANCA DEL CID" (feed con el nombre en ambos idiomas).
+    tok_obj = set(objetivo.split())
+    for fila in tabla:
+        tok_fila = set(_normalizar_nombre(fila["nombre"]).split())
+        if tok_obj and (tok_obj <= tok_fila or tok_fila <= tok_obj):
+            return fila
     return None
 
 
@@ -1759,31 +1879,163 @@ def _cat_guardar_subida(dgc: str, uploaded) -> Path:
     return dest
 
 
-def _catastro_municipios_aoi(coords_esc: dict) -> list[dict]:
-    """Municipios que cruza el corredor, con enlace directo al ZIP INSPIRE.
+# Centinela para distinguir "fallo de red" de "sin parcela" en el muestreo paralelo.
+_OVC_NET_ERROR = object()
 
-    Devuelve [{dgc, nombre, url_zip, url_visor}]. Muestrea el eje origen-destino
-    cada ~500 m (puntos ajustados a rejilla de 500 m para aprovechar la caché de OVC).
+
+def _puntos_ovc_aoi(coords_esc: dict) -> tuple[list[tuple[int, int]], LineString]:
+    """Puntos de muestreo (rejilla de 500 m) que cubren el AOI COMPLETO del
+    corredor: la línea origen-destino con buffer de 1 km a cada lado — el mismo
+    corredor que usa la ingesta (_AOI_BUFFER_M). Antes solo se muestreaba el eje,
+    con lo que un municipio que entrara en el AOI solo por los flancos no salía.
+
+    Los puntos van snapeados a la rejilla (reaprovechan la caché OVC) y ordenados
+    por avance a lo largo del eje, para listar los municipios origen → destino.
     """
     line = LineString([
         (coords_esc["origen"]["x"], coords_esc["origen"]["y"]),
         (coords_esc["destino"]["x"], coords_esc["destino"]["y"]),
     ])
-    n = max(4, int(line.length // 500) + 1)
-    municipios: dict[str, dict] = {}
-    for i in range(n + 1):
-        p = line.interpolate(i / n, normalized=True)
-        parc = _ovc_parcela(round(p.x / 500) * 500, round(p.y / 500) * 500)
-        if not parc or parc[0] in municipios:
+    aoi = line.buffer(_AOI_BUFFER_M, cap_style=2)
+    paso = 500
+    xmin, ymin, xmax, ymax = aoi.bounds
+    pts: list[tuple[int, int]] = []
+    for gx in range(int(xmin // paso) * paso, (int(xmax // paso) + 1) * paso + 1, paso):
+        for gy in range(int(ymin // paso) * paso, (int(ymax // paso) + 1) * paso + 1, paso):
+            if aoi.intersects(Point(gx, gy)):
+                pts.append((gx, gy))
+    # Origen y destino siempre incluidos aunque su nodo de rejilla caiga fuera.
+    for rol in ("origen", "destino"):
+        p = (round(coords_esc[rol]["x"] / paso) * paso,
+             round(coords_esc[rol]["y"] / paso) * paso)
+        if p not in pts:
+            pts.append(p)
+    pts.sort(key=lambda p: line.project(Point(p)))
+    return pts, line
+
+
+# OGC API Features del IGN — límites municipales oficiales (INSPIRE AU).
+_URL_IGN_AU = "https://api-features.ign.es/collections/administrativeunit/items"
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def _ign_municipios_bbox(xmin: float, ymin: float, xmax: float, ymax: float) -> list[dict]:
+    """Municipios (IGN) cuyo término toca el bbox (EPSG:25830), CON su geometría.
+
+    Devuelve [{ine, nombre, geom_wkt}] con la geometría ya en 25830 para poder
+    intersectarla con el corredor exacto. Los fallos de red se propagan (no se
+    cachean)."""
+    lon1, lat1 = _to_wgs84.transform(xmin, ymin)
+    lon2, lat2 = _to_wgs84.transform(xmax, ymax)
+    q = urllib.parse.urlencode({
+        "f": "json", "limit": "100",
+        "bbox": f"{lon1:.6f},{lat1:.6f},{lon2:.6f},{lat2:.6f}",
+        "nationallevelname": "Municipio",
+        "crs": "http://www.opengis.net/def/crs/EPSG/0/25830",
+    })
+    req = urllib.request.Request(f"{_URL_IGN_AU}?{q}",
+                                 headers={"Accept": "application/geo+json"})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        fc = json.load(r)
+    out = []
+    for f in fc.get("features", []):
+        props = f.get("properties", {})
+        geom = f.get("geometry")
+        if not geom:
             continue
-        dgc, refcat = parc
-        info = _catastro_cp_zip(dgc)
+        out.append({
+            "ine": str(props.get("nationalcode", ""))[-5:],
+            "nombre": props.get("nameunit", "") or "",
+            "geom_wkt": _shp_shape(geom).wkt,
+        })
+    return out
+
+
+def _catastro_municipios_aoi(coords_esc: dict) -> list[dict]:
+    """Municipios cuyo término toca el AOI del corredor (línea origen-destino
+    + buffer de 1 km por lado), con enlace directo a su ZIP INSPIRE.
+
+    Fuente primaria: límites municipales oficiales del IGN (OGC API Features) —
+    intersección EXACTA término ↔ corredor, no muestreo por puntos, así no se
+    escapa ningún municipio por estrecho que sea su término. El código DGC y el
+    ZIP salen del feed ATOM del Catastro casando el nombre (el código INE del
+    IGN no es el DGC). Si el servicio del IGN falla, se cae al muestreo OVC.
+    Devuelve [{dgc, nombre, url_zip}] en orden origen → destino.
+    """
+    line = LineString([
+        (coords_esc["origen"]["x"], coords_esc["origen"]["y"]),
+        (coords_esc["destino"]["x"], coords_esc["destino"]["y"]),
+    ])
+    corredor = line.buffer(_AOI_BUFFER_M, cap_style=2)
+    try:
+        candidatos = _ign_municipios_bbox(*corredor.bounds)
+    except Exception:
+        return _catastro_municipios_ovc(coords_esc)
+
+    dentro: list[tuple[float, dict]] = []
+    for c in candidatos:
+        try:
+            geom = _shp_wkt.loads(c["geom_wkt"])
+        except Exception:
+            continue
+        if not geom.intersects(corredor):
+            continue  # tocaba el bbox pero no el corredor real de 1 km
+        avance = line.project(geom.intersection(corredor).centroid)
+        dentro.append((avance, c))
+    dentro.sort(key=lambda t: t[0])
+
+    municipios: list[dict] = []
+    for _, c in dentro:
+        fila = None
+        try:
+            fila = _catastro_atom_por_nombre(c["ine"][:2], c["nombre"])
+        except Exception:
+            fila = None  # sin feed ATOM: se cae al portal general
+        municipios.append({
+            "dgc": fila["dgc"] if fila else f"INE-{c['ine']}",
+            "nombre": (fila["nombre"] if fila else c["nombre"]) or "",
+            "url_zip": fila["url_zip"] if fila else _URL_CATASTRO_PORTAL,
+        })
+    return municipios
+
+
+def _catastro_municipios_ovc(coords_esc: dict) -> list[dict]:
+    """Fallback por muestreo OVC (rejilla de 500 m sobre el corredor) cuando el
+    servicio de límites municipales del IGN no responde. Menos exhaustivo: un
+    término que no caiga en ningún nodo de la rejilla no se detecta."""
+    pts, _ = _puntos_ovc_aoi(coords_esc)
+
+    def _consulta(p: tuple[int, int]):
+        try:
+            return _ovc_parcela(*p)
+        except Exception:
+            # Fallo de red en este punto: lo marcamos pero seguimos; basta con
+            # que responda algún punto para localizar municipios.
+            return _OVC_NET_ERROR
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        resultados = list(pool.map(_consulta, pts))
+
+    errores_red = sum(1 for r in resultados if r is _OVC_NET_ERROR)
+    municipios: dict[str, dict] = {}
+    for parc in resultados:  # ya en orden origen → destino
+        if parc is _OVC_NET_ERROR or not parc or parc[0] in municipios:
+            continue
+        dgc, _refcat = parc
+        try:
+            info = _catastro_cp_zip(dgc)
+        except Exception:
+            info = None  # sin enlace directo al ZIP; se cae al portal general
         municipios[dgc] = {
             "dgc": dgc,
             "nombre": info[0] if info else "",
             "url_zip": info[1] if info else _URL_CATASTRO_PORTAL,
-            "url_visor": _CAT_VISOR + urllib.parse.quote(refcat) if refcat else _URL_CATASTRO_PORTAL,
         }
+    # Sin ningún municipio Y todas las consultas fallaron por red → es un problema
+    # de conexión, no de cobertura. Lo señalamos para que el caller no memorice una
+    # lista vacía y permita reintentar (en vez de quedar pegado en "sin conexión").
+    if not municipios and errores_red and errores_red == len(pts):
+        raise ConnectionError("Servicio OVC del Catastro no accesible")
     return list(municipios.values())
 
 
@@ -1801,7 +2053,7 @@ def _render_municipios_catastro(municipios: list[dict]) -> None:
     st.markdown(
         f'<div class="cat-count" style="color:{"var(--secondary)" if completo else "#b26a00"};">'
         f'<span class="material-symbols-outlined" style="font-size:19px;">expand_more</span>'
-        f'{listos}/{total} municipios con catastro listo (PARCELA.shp)</div>',
+        f'{listos}/{total} municipios con catastro listo (shapefile de parcelas)</div>',
         unsafe_allow_html=True,
     )
     for m in municipios:
@@ -1851,32 +2103,61 @@ def _render_municipios_catastro(municipios: list[dict]) -> None:
             # Feedback del último procesado.
             res = st.session_state.get(res_key)
             if _cat_es_legible(dgc):
-                shp = next((p for p in _cat_upload_dir(dgc).rglob("*.shp")
-                            if p.stem.lower() == "parcela"), None)
                 extra = ""
                 if res and res.get("estado") == "convertido":
                     extra = f" · {res.get('mensaje', '')}"
-                st.caption(f"✓ Listo para el pipeline: {shp.name if shp else 'PARCELA.shp'}{extra}")
+                # Mostramos "shapefile de parcelas" (no el nombre técnico PARCELA.shp)
+                st.caption(f"✓ Listo para el pipeline: shapefile de parcelas{extra}")
             elif res and res.get("estado") in ("no_geom", "error"):
                 st.error(res.get("mensaje", "No se pudo preparar el catastro."))
             if hubo_nuevo:
                 st.rerun()
 
 
-def _estado_datos_aoi(coords_esc: dict) -> list[dict]:
-    """Estado por capa para el corredor actual.
+def _estado_datos_aoi(coords_esc: dict, esc: str) -> list[dict]:
+    """Estado por capa para el corredor actual — comprobado contra disco.
 
-    Cada item: {nombre, estado ∈ {ok, warn, rec}, detalle}. 'ok' verde (se tiene
-    o se descarga sola), 'warn' ambar (verificar / aportar a mano), 'rec' azul
-    (recomendado incluir).
+    Cada item: {nombre, estado ∈ {ok, warn, rec, pend}, detalle}. 'ok' verde
+    (los datos de esta zona YA están en disco), 'pend' gris (aún no descargado;
+    la ingesta lo bajará sola), 'warn' ambar (verificar / aportar a mano),
+    'rec' azul (recomendado incluir).
     """
     from shapely import wkt as _wkt
 
     xmin, ymin, xmax, ymax = _aoi_bounds(coords_esc)
     aoi = _shp_box(xmin, ymin, xmax, ymax)
+    recorte_dir = _ROOT / "data" / "processed" / "Recorte_AOI"
+
+    def _capa_lista(stem: str, ext: str = ".gpkg") -> bool:
+        """True si el recorte <stem>_aoi_<esc> existe y sus datos tocan el AOI
+        actual. Un vector vacío también cuenta (ausencia confirmada de la capa
+        en la zona, contrato de la ingesta); si los datos no tocan el AOI es un
+        recorte de otras coordenadas (obsoleto) y la capa queda pendiente."""
+        p = recorte_dir / f"{stem}_aoi_{esc}{ext}"
+        if not p.exists():
+            return False
+        bbox_wkt = _recorte_bbox_wkt(str(p), p.stat().st_mtime)
+        if bbox_wkt is None:
+            return ext == ".gpkg"  # vector vacío legítimo; un .tif ilegible no vale
+        try:
+            return _wkt.loads(bbox_wkt).intersects(aoi)
+        except Exception:
+            return False
+
+    def _capa_auto(nombre: str, stems: list[tuple[str, str]], fuente: str,
+                   enlaces: list[dict]) -> dict:
+        """Tarjeta de capa automática con tick real: verde si TODOS sus recortes
+        están en disco para esta zona; gris (pendiente de descarga) si falta alguno."""
+        if all(_capa_lista(s, ext) for s, ext in stems):
+            return {"nombre": nombre, "estado": "ok",
+                    "detalle": f"Ya descargado para esta zona ({fuente})",
+                    "enlaces": enlaces}
+        return {"nombre": nombre, "estado": "pend",
+                "detalle": f"Aún no descargado — se descargará automáticamente ({fuente})",
+                "enlaces": enlaces}
 
     # Catastro — comprobacion real de cobertura contra lo ya descargado/preparado
-    cob_wkt = _catastro_cobertura_wkt(str(_ROOT / "data" / "processed" / "Recorte_AOI"))
+    cob_wkt = _catastro_cobertura_wkt(str(recorte_dir))
     frac = 0.0
     if cob_wkt and aoi.area > 0:
         try:
@@ -1895,30 +2176,34 @@ def _estado_datos_aoi(coords_esc: dict) -> list[dict]:
     return [
         {"nombre": "Catastro (expropiación)", "estado": cat[0], "detalle": cat[1],
          "manual": True, "enlaces": []},
-        {"nombre": "Red Natura 2000", "estado": "ok",
-         "detalle": "Se descarga automáticamente por zona (OGC API Features, MITECO)",
-         "enlaces": [{"label": "Fuente oficial (OGC API MITECO)", "url": _URL_RN2000,
-                      "icono": "open_in_new", "nivel": 0}]},
-        {"nombre": "Zonas inundables (SNCZI)", "estado": "ok",
-         "detalle": "Se descarga automáticamente por zona (OGC API Features, MITECO)",
-         "enlaces": [{"label": "Fuente oficial (OGC API MITECO)", "url": _URL_SNCZI,
-                      "icono": "open_in_new", "nivel": 0}]},
-        {"nombre": "DEM · Hidrografía · Geología · Viario (OSM)", "estado": "ok",
-         "detalle": "Se descargan automáticamente por zona (bbox)", "enlaces": []},
+        # Ticks reales (nuestra rama) + fuente RN2000 actualizada a MITECO (main)
+        _capa_auto("Red Natura 2000", [("natura2000", ".gpkg")],
+                   "OGC API Features, MITECO",
+                   [{"label": "Fuente oficial (OGC API MITECO)", "url": _URL_RN2000,
+                     "icono": "open_in_new", "nivel": 0}]),
+        _capa_auto("Zonas inundables (SNCZI)", [("inundable", ".gpkg")],
+                   "OGC API Features, MITECO",
+                   [{"label": "Fuente oficial (OGC API MITECO)", "url": _URL_SNCZI,
+                     "icono": "open_in_new", "nivel": 0}]),
+        _capa_auto("DEM · Hidrografía · Geología · Viario (OSM)",
+                   [("dem", ".tif"), ("hidrografia", ".gpkg"),
+                    ("igme", ".gpkg"), ("osm", ".gpkg")],
+                   "por zona, bbox", []),
     ]
 
 
-def _render_estado_datos(coords_esc: dict) -> None:
+def _render_estado_datos(coords_esc: dict, esc: str) -> None:
     """Tarjeta de disponibilidad de capas para el corredor origen-destino actual."""
     try:
-        items = _estado_datos_aoi(coords_esc)
+        items = _estado_datos_aoi(coords_esc, esc)
     except Exception:
         return  # ante cualquier fallo (ficheros/shapely) no romper el Paso 1
 
     _ICONO = {
-        "ok":   ("check_circle", "var(--secondary)"),
-        "warn": ("warning",      "#b26a00"),
-        "rec":  ("lightbulb",    "var(--primary)"),
+        "ok":   ("check_circle",   "var(--secondary)"),
+        "pend": ("cloud_download", "var(--on-surface-variant)"),
+        "warn": ("warning",        "#b26a00"),
+        "rec":  ("lightbulb",      "var(--primary)"),
     }
 
     def _celda(it: dict, grow: bool = False) -> str:
@@ -1957,15 +2242,19 @@ def _render_estado_datos(coords_esc: dict) -> None:
             f'{it["detalle"]}</div>{enlaces_html}</div>'
         )
 
-    def _lista_municipios_html(municipios: list[dict]) -> str:
+    def _lista_municipios_html(municipios: list[dict], offline: bool = False) -> str:
         """Enlaces al ZIP de parcelas (Catastro INSPIRE) de cada municipio que
         cruza el corredor. Apunta al fichero oficial (catastro.hacienda.gob.es);
         un clic lleva a la descarga del ZIP de ese municipio."""
         if not municipios:
+            msg = ("No se han podido localizar los municipios (sin conexión con el "
+                   "Catastro). Comprueba tu red y pulsa «Reintentar». "
+                   if offline else
+                   "No se han encontrado municipios en este corredor. ")
             return (
                 f'<div style="font-family:var(--font-body);font-size:0.66rem;'
                 f'color:var(--on-surface-variant);margin-top:2px;">'
-                f'No se han podido localizar los municipios (sin conexión). '
+                f'{msg}'
                 f'<a href="{_URL_CATASTRO_PORTAL}" target="_blank" rel="noopener" '
                 f'style="color:var(--primary);font-weight:600;text-decoration:none;">'
                 f'Abrir portal INSPIRE del Catastro</a></div>'
@@ -2018,6 +2307,22 @@ def _render_estado_datos(coords_esc: dict) -> None:
                         unsafe_allow_html=True,
                     )
                     key_exp = "_cat_municipios_abierto"
+                    # Firma del corredor actual. La versión ("v2-ign") invalida
+                    # listas memorizadas por el algoritmo anterior (muestreo por eje).
+                    firma = (
+                        coords_esc["origen"]["x"], coords_esc["origen"]["y"],
+                        coords_esc["destino"]["x"], coords_esc["destino"]["y"],
+                        "v2-ign",
+                    )
+                    # Si cambian origen/destino (a mano, por clic en el mapa o al
+                    # cambiar de escenario), la lista de municipios deja de valer:
+                    # se borra, se cierra el desplegable y hay que volver a pulsar
+                    # "Ver municipios" para recalcular sobre el nuevo AOI.
+                    if st.session_state.get("_cat_municipios_firma") not in (None, firma):
+                        st.session_state.pop("_cat_municipios_firma", None)
+                        st.session_state.pop("_cat_municipios_lista", None)
+                        st.session_state.pop("_cat_municipios_offline", None)
+                        st.session_state[key_exp] = False
                     _, c_btn, _ = st.columns([1, 2, 1])
                     with c_btn:
                         if st.button(
@@ -2030,30 +2335,52 @@ def _render_estado_datos(coords_esc: dict) -> None:
                         ):
                             st.session_state[key_exp] = not st.session_state.get(key_exp, False)
                     if st.session_state.get(key_exp):
-                        # La localizacion OVC es lenta (consulta por punto); la cacheamos
-                        # por firma de coordenadas para no recalcular en cada rerun (p. ej.
-                        # tras cada subida de ZIP). Si cambia origen/destino, se recalcula.
-                        firma = (
-                            coords_esc["origen"]["x"], coords_esc["origen"]["y"],
-                            coords_esc["destino"]["x"], coords_esc["destino"]["y"],
-                        )
                         if st.session_state.get("_cat_municipios_firma") != firma:
-                            with st.spinner("Localizando municipios del corredor…"):
+                            with st.container(key="cat_muni_spinner"), \
+                                    st.spinner("Localizando municipios del corredor…"):
                                 try:
                                     municipios = _catastro_municipios_aoi(coords_esc)
+                                    offline = False
+                                except ConnectionError:
+                                    municipios = []
+                                    offline = True
                                 except Exception:
                                     municipios = []
-                            st.session_state["_cat_municipios_firma"] = firma
-                            # Cacheamos la lista para que la puerta de paso (Paso 1 → Paso 2)
-                            # sepa qué municipios exigir subidos antes de continuar.
-                            st.session_state["_cat_municipios_lista"] = municipios
+                                    offline = False
+                            st.session_state["_cat_municipios_offline"] = offline
+                            # Solo memorizamos la firma si el resultado es fiable (éxito,
+                            # aunque sea lista vacía legítima). Si fue un corte de red NO
+                            # la fijamos: así el próximo intento reintenta en vez de quedar
+                            # pegado a una lista vacía por coordenadas.
+                            if not offline:
+                                st.session_state["_cat_municipios_firma"] = firma
+                                # Cacheamos la lista para que la puerta de paso (Paso 1 →
+                                # Paso 2) sepa qué municipios exigir subidos antes de seguir.
+                                st.session_state["_cat_municipios_lista"] = municipios
                         else:
                             municipios = st.session_state.get("_cat_municipios_lista") or []
+                            st.session_state["_cat_municipios_offline"] = False
                         if municipios:
                             with st.container(border=False, key="cat_muni_box"):
                                 _render_municipios_catastro(municipios)
                         else:
-                            st.markdown(_lista_municipios_html(municipios), unsafe_allow_html=True)
+                            offline = st.session_state.get("_cat_municipios_offline", False)
+                            st.markdown(
+                                _lista_municipios_html(municipios, offline=offline),
+                                unsafe_allow_html=True,
+                            )
+                            if offline and st.button(
+                                "Reintentar",
+                                key="btn_cat_reintentar",
+                                icon=":material/refresh:",
+                            ):
+                                # Fuerza recomputar en el rerun: borra la firma y limpia
+                                # la caché de datos por si algún None transitorio quedó.
+                                st.session_state.pop("_cat_municipios_firma", None)
+                                _ovc_parcela.cache_clear()
+                                _ign_municipios_bbox.clear()
+                                _catastro_atom_tabla.clear()
+                                st.rerun()
 
         with col_der:
             st.markdown(
@@ -2339,7 +2666,7 @@ def _render_paso1():
             _html(m._repr_html_(), height=560)
 
     # Disponibilidad de capas para el corredor — a ancho completo, bajo el mapa.
-    _render_estado_datos(coords[esc_activo])
+    _render_estado_datos(coords[esc_activo], esc_activo)
 
     # ── Navegación ────────────────────────────────────────────────────────────
     distancias = {
@@ -2352,16 +2679,19 @@ def _render_paso1():
     can_next_dist = all(d <= MAX_DIST_M for d in distancias.values())
 
     # Puerta de catastro: si se localizaron los municipios del corredor y falta
-    # subir el ZIP de alguno, avisamos. Se puede continuar igualmente, pero hay
-    # que confirmarlo explicitamente (checkbox). Si aun no se han localizado
-    # municipios, no bloquea (la lista es una consulta bajo demanda).
+    # subir el ZIP de alguno, avisamos — pero SOLO al pulsar "Pesos y Perfiles →"
+    # (no de forma preventiva). El primer clic con catastros pendientes muestra
+    # el aviso y pide confirmación explícita (checkbox) en vez de navegar.
     municipios_cat = st.session_state.get("_cat_municipios_lista") or []
     faltan_cat = [m for m in municipios_cat if not _cat_es_legible(m["dgc"])]
+    if not faltan_cat:
+        # Ya está todo subido (o no hay lista): retiramos el aviso si estaba.
+        st.session_state.pop("_cat_aviso_pendiente", None)
 
     st.markdown("---")
 
     confirmar_cat = False
-    if faltan_cat:
+    if faltan_cat and st.session_state.get("_cat_aviso_pendiente"):
         nombres = ", ".join((m["nombre"] or m["dgc"]).title() for m in faltan_cat)
         st.warning(
             f"Faltan catastros por subir en {len(faltan_cat)} de "
@@ -2373,7 +2703,7 @@ def _render_paso1():
             key="cat_confirmar_incompleto",
         )
 
-    can_next = can_next_dist and (not faltan_cat or confirmar_cat)
+    can_next = can_next_dist
 
     c_back, _, c_next = st.columns([1.4, 2, 1.4])
     with c_back:
@@ -2383,10 +2713,16 @@ def _render_paso1():
     with c_next:
         if st.button("Pesos y Perfiles  →", type="primary",
                      disabled=not can_next, use_container_width=True, key="btn_p1_next"):
-            cfg = _aplicar_coords_a_cfg(cfg, coords)
-            _guardar_cfg(cfg)
-            st.session_state.pantalla = "paso2"
-            st.rerun()
+            if faltan_cat and not confirmar_cat:
+                # Primer intento con catastros pendientes: enseñar el aviso y
+                # esperar confirmación en vez de pasar de pantalla.
+                st.session_state["_cat_aviso_pendiente"] = True
+                st.rerun()
+            else:
+                cfg = _aplicar_coords_a_cfg(cfg, coords)
+                _guardar_cfg(cfg)
+                st.session_state.pantalla = "paso2"
+                st.rerun()
 
     if not can_next_dist:
         invalidos = [s for s, d in distancias.items() if d > MAX_DIST_M]

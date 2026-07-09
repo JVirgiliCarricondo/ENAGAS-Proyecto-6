@@ -9,3 +9,9 @@ font = "sans-serif"
 
 [client]
 toolbarMode = "minimal"  # oculta el botón Deploy / menú (incluye "Iniciar sesión")
+
+[server]
+# Límite por fichero subido (MB). El default de Streamlit son 200 MB, que se
+# queda corto para la cartografía catastral de municipios grandes (p. ej. la
+# urbana de Zaragoza). El texto "X per file" del subidor se actualiza solo.
+maxUploadSize = 1024
