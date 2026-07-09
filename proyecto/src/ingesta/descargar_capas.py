@@ -817,6 +817,11 @@ def _parse_args() -> argparse.Namespace:
         "-y", "--yes", action="store_true",
         help="Sobrescribir archivos existentes sin preguntar.",
     )
+    p.add_argument(
+        "--keep-existing", action="store_true",
+        help="Reutilizar archivos ya descargados sin preguntar ni sobrescribir. "
+             "Útil para relanzar el pipeline sin repetir descargas.",
+    )
     return p.parse_args()
 
 
@@ -839,8 +844,13 @@ def main() -> None:
     escenarios = ["A", "B"] if args.escenario == "ambos" else [args.escenario.upper()]
 
     # Preguntar sobre sobreescritura si hay archivos existentes
-    overwrite = args.yes
-    if not overwrite:
+    if getattr(args, "keep_existing", False):
+        overwrite = False  # reutilizar sin preguntar
+    elif args.yes:
+        overwrite = True
+    else:
+        overwrite = False
+    if not overwrite and not getattr(args, "keep_existing", False):
         existing = [
             DATA_RAW / tmpl.replace("{s}", s)
             for s in escenarios
