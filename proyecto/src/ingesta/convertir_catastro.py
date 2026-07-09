@@ -130,9 +130,11 @@ def normalizar_zip_catastro(zip_path: Path, dest_dir: Path) -> dict:
                     "salida": None, "n_parcelas": 0,
                     "mensaje": f"No se pudo extraer: {exc}"}
         shp = _existe_parcela_legible(dest_dir)
+        # Mensajes de cara al usuario: "shapefile de parcelas" (el nombre técnico
+        # del fichero, PARCELA.shp, se queda en código y docstrings).
         return {"estado": "shp", "formato": "shapefile Catastro",
                 "salida": shp, "n_parcelas": -1,
-                "mensaje": "PARCELA.shp listo para el pipeline."}
+                "mensaje": "Shapefile de parcelas listo para el pipeline."}
 
     gml = _gml_parcela(nombres)
     if gml is not None:
@@ -144,12 +146,13 @@ def normalizar_zip_catastro(zip_path: Path, dest_dir: Path) -> dict:
                     "mensaje": f"Conversión GML→SHP falló: {exc}"}
         return {"estado": "convertido", "formato": "GML INSPIRE",
                 "salida": out_shp, "n_parcelas": n,
-                "mensaje": f"Convertido a PARCELA.shp ({n} parcelas)."}
+                "mensaje": f"Convertido a shapefile de parcelas ({n} parcelas)."}
 
     return {"estado": "no_geom", "formato": "desconocido / CAT", "salida": None,
             "n_parcelas": 0,
-            "mensaje": ("El ZIP no contiene parcelas con geometría (ni PARCELA.shp "
-                        "ni GML INSPIRE). Descarga el formato SHAPEFILE del Catastro.")}
+            "mensaje": ("El ZIP no contiene parcelas con geometría (ni shapefile de "
+                        "parcelas ni GML INSPIRE). Descarga el formato SHAPEFILE "
+                        "del Catastro.")}
 
 
 if __name__ == "__main__":
