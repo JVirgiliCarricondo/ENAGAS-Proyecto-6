@@ -2483,18 +2483,21 @@ def _kpis_resumen(resultados: dict, escenarios: list[str]) -> list[tuple[str, st
     pends = _validos("pendiente_max_pct")
     prots = _validos("km_protegida")
 
+    # Los 4 KPI son la MEDIA de ese parámetro entre las rutas de los 4 perfiles
+    # (no el máximo ni la suma), para que "resumen del escenario" signifique
+    # siempre lo mismo: el promedio de las alternativas generadas.
     long_txt = f"{sum(longs) / len(longs):.2f} km".replace(".", ",") if longs else "s/d"
     coste_txt = f"{sum(costes) / len(costes):.3f}".replace(".", ",") if costes else "s/d"
-    pend_txt = f"{max(pends):.0f} %" if pends else "s/d"
+    pend_txt = f"{sum(pends) / len(pends):.0f} %" if pends else "s/d"
     if prots:
-        km_prot = sum(prots)
-        impacto = "Bajo" if km_prot < 0.5 else ("Medio" if km_prot < 2.0 else "Alto")
+        km_prot_medio = sum(prots) / len(prots)
+        impacto = "Bajo" if km_prot_medio < 0.5 else ("Medio" if km_prot_medio < 2.0 else "Alto")
     else:
         impacto = "s/d"
     return [
         ("route", "Longitud media", long_txt),
         ("stacked_line_chart", "Coste relativo (índice)", coste_txt),
-        ("trending_up", "Pendiente máxima", pend_txt),
+        ("trending_up", "Pendiente máx. media", pend_txt),
         ("eco", "Impacto ambiental", impacto),
     ]
 
@@ -2518,6 +2521,12 @@ def _render_kpis(resultados: dict, escenarios: list[str]) -> None:
                     f'color:var(--on-surface);margin-top:8px;">{value}</div>',
                     unsafe_allow_html=True,
                 )
+    st.caption(
+        "Los 4 valores son la media entre las rutas de los cuatro perfiles de "
+        "este escenario. Impacto ambiental, según la media de km en zona "
+        "protegida (Red Natura 2000) por ruta: **Bajo** < 0,5 km · "
+        "**Medio** 0,5-2 km · **Alto** > 2 km."
+    )
 
 
 _COL_RENAME_METRICAS = {
@@ -2535,22 +2544,51 @@ _COL_RENAME_METRICAS = {
 }
 
 
+def _firma_pdf_informe(
+    resultados: dict, escenarios: list[str], perfiles: list[dict] | None,
+) -> tuple:
+    """Firma de caché del informe PDF: además de escenarios/pesos (que ya
+    cambian si se reprocesa con otro perfil), incluye el CONTENIDO de las
+    métricas y la fecha de modificación de los ficheros de ráster/ruta que
+    ilustran el informe. Sin esto, reprocesar el MISMO escenario con los
+    mismos pesos (p. ej. tras arreglar una descarga que antes fallaba) no
+    cambia la firma y el botón sigue sirviendo el PDF viejo."""
+    pesos = tuple(
+        (p.get("id"), tuple(sorted(p.get("pesos", {}).items())))
+        for p in (perfiles or [])
+    )
+    metricas = tuple(
+        (s, tuple(
+            (r.perfil, tuple(sorted(r.to_dict().items(), key=lambda kv: kv[0])))
+            for r in resultados.get(s, {}).get("rutas", [])
+        ))
+        for s in escenarios
+    )
+
+    def _mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return -1.0
+
+    ficheros = tuple(
+        (s, pid,
+         _mtime(_TRAZADOS_DIR / f"superficie_{s}_{pid}.tif"),
+         _mtime(_RUTAS_DIR / f"ruta_{s}_{pid}.gpkg"))
+        for s in escenarios for pid in PERFILES
+    )
+    return (tuple(escenarios), pesos, metricas, ficheros)
+
+
 def _boton_informe_pdf(resultados: dict, escenarios: list[str]) -> None:
     """Botón que genera y descarga el informe PDF completo de resultados.
 
     El PDF (matplotlib + reportlab) se construye una sola vez por combinación de
-    escenarios/perfiles y se cachea en sesión; los reruns (cambio de pestaña,
-    etc.) reutilizan los bytes ya generados.
+    escenarios/perfiles/métricas/ficheros y se cachea en sesión; los reruns
+    (cambio de pestaña, etc.) reutilizan los bytes ya generados.
     """
     perfiles = st.session_state.get("perfiles_procesados")
-    # Firma para no regenerar el PDF en cada rerun.
-    firma = (
-        tuple(escenarios),
-        tuple(
-            (p.get("id"), tuple(sorted(p.get("pesos", {}).items())))
-            for p in (perfiles or [])
-        ),
-    )
+    firma = _firma_pdf_informe(resultados, escenarios, perfiles)
     cache = st.session_state.get("_pdf_informe_cache")
     if not (cache and cache[0] == firma):
         try:

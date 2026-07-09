@@ -91,6 +91,32 @@ def _fmt_valor(etiqueta: str, valor) -> str:
     return f"{num:.{dec}f}"
 
 
+def _marcar_origen_destino(ax, origen: dict | None, destino: dict | None, transform=None) -> list:
+    """Dibuja el origen (círculo verde) y el destino (cuadrado rojo) de un
+    escenario sobre unos ejes ya construidos. `transform` se pasa cuando la
+    figura está rotada (ver _figura_raster_ruta) para que los marcadores
+    queden en el mismo sistema de coordenadas que el ráster/ruta. Devuelve
+    los handles de leyenda (Origen/Destino) para que el llamante decida cómo
+    combinarlos con el resto de su leyenda (una figura solo puede tener una)."""
+    kwargs = {"transform": transform} if transform is not None else {}
+    handles = []
+    if origen:
+        ax.scatter([origen["x"]], [origen["y"]], s=75, marker="o",
+                   facecolor="#2e7d32", edgecolor="white", linewidth=1.3,
+                   zorder=6, **kwargs)
+        handles.append(Line2D([0], [0], marker="o", color="none",
+                               markerfacecolor="#2e7d32", markeredgecolor="white",
+                               markersize=8, label="Origen"))
+    if destino:
+        ax.scatter([destino["x"]], [destino["y"]], s=75, marker="s",
+                   facecolor="#c62828", edgecolor="white", linewidth=1.3,
+                   zorder=6, **kwargs)
+        handles.append(Line2D([0], [0], marker="s", color="none",
+                               markerfacecolor="#c62828", markeredgecolor="white",
+                               markersize=8, label="Destino"))
+    return handles
+
+
 def _figura_raster_ruta(
     sid: str,
     perfil: str,
@@ -180,6 +206,11 @@ def _figura_raster_ruta(
         except Exception:
             pass
 
+    od_handles = _marcar_origen_destino(ax, origen, destino, transform=rot)
+    if od_handles:
+        ax.legend(handles=od_handles, loc="lower right", fontsize=7.5, frameon=True,
+                  framealpha=0.9, edgecolor="#c9d2da", handletextpad=0.4)
+
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
     ax.set_aspect("equal")
@@ -197,9 +228,12 @@ def _figura_todas_rutas(
     perfiles_orden: list[str],
     colores: dict[str, str],
     nombre_perfil: dict[str, str],
+    origen: dict | None = None,
+    destino: dict | None = None,
 ) -> bytes | None:
     """Imagen PNG (bytes) con los 4 trazados de un escenario superpuestos
-    (uno por perfil, coloreados), con leyenda — sin ráster de fondo."""
+    (uno por perfil, coloreados) y el origen/destino, con leyenda — sin
+    ráster de fondo."""
     paths = [(p, rutas_dir / f"ruta_{sid}_{p}.gpkg") for p in perfiles_orden]
     paths = [(p, pt) for p, pt in paths if pt.exists()]
     if not paths:
@@ -218,6 +252,8 @@ def _figura_todas_rutas(
             Line2D([0], [0], color=color, lw=2.6,
                    label=nombre_perfil.get(perfil, perfil))
         )
+
+    handles += _marcar_origen_destino(ax, origen, destino)
 
     ax.set_aspect("equal")
     ax.set_axis_off()
@@ -420,8 +456,13 @@ def construir_informe_pdf(
 
     # ── Comparativa: los 4 perfiles superpuestos, uno al lado del otro por
     # escenario ────────────────────────────────────────────────────────────
-    imgs_cmp = [(s, _figura_todas_rutas(s, rutas_dir, perfiles_orden, colores, nombre_perfil))
-                for s in escenarios]
+    imgs_cmp = [
+        (s, _figura_todas_rutas(
+            s, rutas_dir, perfiles_orden, colores, nombre_perfil,
+            origen=coords.get(s, {}).get("origen"), destino=coords.get(s, {}).get("destino"),
+        ))
+        for s in escenarios
+    ]
     if any(img is not None for _, img in imgs_cmp):
         ancho_celda = 170 * mm / len(imgs_cmp)
         # Tamaño moderado a propósito: esta comparativa va al pie de la
