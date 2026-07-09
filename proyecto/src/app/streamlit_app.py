@@ -7,6 +7,7 @@ Ejecutar desde proyecto/:
 from __future__ import annotations
 
 import copy
+import html
 import json
 import math
 import re
@@ -433,6 +434,47 @@ _CSS = """
     font-family: var(--font-body);
   }
   .constraints-box b { color: var(--primary); }
+
+  /* ── Avisos con la estética de la app (en vez de st.warning/info/error) ── */
+  .app-alert {
+    border: 1px solid;
+    border-left: 4px solid;
+    border-radius: var(--radius);
+    padding: 13px 18px 12px;
+    margin: 2px 0 14px;
+    font-family: var(--font-body);
+    box-shadow: var(--shadow-card);
+  }
+  .app-alert--warning { background: #fffbea; border-color: #ecdfae; border-left-color: #d9a514; }
+  .app-alert--info    { background: rgba(0,103,163,0.05); border-color: rgba(0,103,163,0.25); border-left-color: var(--primary-container); }
+  .app-alert--error   { background: #fdf1f0; border-color: #ecccc9; border-left-color: var(--error); }
+  .app-alert-head {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-head);
+    font-size: 0.95rem; font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .app-alert-head .material-symbols-outlined { font-size: 20px; }
+  .app-alert--warning .app-alert-head { color: #6b5200; }
+  .app-alert--warning .material-symbols-outlined { color: #d9a514; }
+  .app-alert--info .app-alert-head { color: var(--primary); }
+  .app-alert--info .material-symbols-outlined { color: var(--primary-container); }
+  .app-alert--error .app-alert-head { color: #8c1a15; }
+  .app-alert--error .material-symbols-outlined { color: var(--error); }
+  .app-alert p, .app-alert li {
+    color: var(--on-surface-variant);
+    font-size: 0.86rem; line-height: 1.5; margin: 0;
+  }
+  .app-alert ul { margin: 8px 0 2px; padding-left: 20px; }
+  .app-alert li + li { margin-top: 6px; }
+  .app-alert li b { color: var(--on-surface); }
+  .app-alert code {
+    font-family: var(--font-mono); font-size: 0.78rem;
+    background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 4px;
+  }
+  /* Variante sin título: icono y texto en la misma fila */
+  .app-alert-row { display: flex; align-items: flex-start; gap: 8px; }
+  .app-alert-row .material-symbols-outlined { font-size: 19px; margin-top: 1px; }
 
   /* ── Etiquetas de sección (label-caps) ────────────────────────────────── */
   .section-label {
@@ -981,6 +1023,39 @@ _CSS = """
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+_ALERTA_ICONO = {"warning": "warning", "info": "info", "error": "error"}
+
+
+def _alerta(tipo: str, texto: str = "", titulo: str | None = None,
+            cuerpo_html: str | None = None) -> None:
+    """Aviso con la estética de la app en lugar de st.warning/info/error.
+
+    `texto` se escapa siempre (a menudo viene de excepciones); si el aviso
+    necesita marcado propio (listas, <code>…), pasarlo ya construido y
+    escapado en `cuerpo_html`. Con `titulo` se pinta una cabecera con icono;
+    sin él, el icono va en línea con el texto.
+    """
+    icono = _ALERTA_ICONO.get(tipo, "info")
+    if cuerpo_html is None:
+        cuerpo_html = f"<p>{html.escape(texto)}</p>"
+    if titulo:
+        inner = (
+            f'<div class="app-alert-head">'
+            f'<span class="material-symbols-outlined">{icono}</span>'
+            f'{html.escape(titulo)}</div>{cuerpo_html}'
+        )
+    else:
+        inner = (
+            f'<div class="app-alert-row">'
+            f'<span class="material-symbols-outlined">{icono}</span>'
+            f'{cuerpo_html}</div>'
+        )
+    st.markdown(
+        f'<div class="app-alert app-alert--{tipo}">{inner}</div>',
+        unsafe_allow_html=True,
+    )
+
 
 def _utm_to_latlon(x: float, y: float) -> tuple[float, float]:
     lon, lat = _to_wgs84.transform(x, y)
@@ -2109,7 +2184,7 @@ def _render_municipios_catastro(municipios: list[dict]) -> None:
                 # Mostramos "shapefile de parcelas" (no el nombre técnico PARCELA.shp)
                 st.caption(f"✓ Listo para el pipeline: shapefile de parcelas{extra}")
             elif res and res.get("estado") in ("no_geom", "error"):
-                st.error(res.get("mensaje", "No se pudo preparar el catastro."))
+                _alerta("error", res.get("mensaje", "No se pudo preparar el catastro."))
             if hubo_nuevo:
                 st.rerun()
 
@@ -2468,7 +2543,7 @@ def _render_paso1():
                                         st.session_state._editando_esc = None
                                         st.rerun()
                                     except ValueError as exc:
-                                        st.error(str(exc))
+                                        _alerta("error", str(exc))
                             with c_no:
                                 if st.button(
                                     ":material/close:", use_container_width=True,
@@ -2524,7 +2599,7 @@ def _render_paso1():
                                         st.session_state.escenario_activo = restantes[0]
                                     st.rerun()
                                 except ValueError as exc:
-                                    st.error(str(exc))
+                                    _alerta("error", str(exc))
                     st.divider()
                     if st.button(
                         "＋ Nuevo escenario",
@@ -2693,10 +2768,12 @@ def _render_paso1():
     confirmar_cat = False
     if faltan_cat and st.session_state.get("_cat_aviso_pendiente"):
         nombres = ", ".join((m["nombre"] or m["dgc"]).title() for m in faltan_cat)
-        st.warning(
+        _alerta(
+            "warning",
             f"Faltan catastros por subir en {len(faltan_cat)} de "
             f"{len(municipios_cat)} municipios: {nombres}. Súbelos arriba en "
-            "«Ver municipios del corredor» o continúa sin ellos."
+            "«Ver municipios del corredor» o continúa sin ellos.",
+            titulo="Catastros pendientes",
         )
         confirmar_cat = st.checkbox(
             "Continuar sin todos los catastros subidos",
@@ -2726,9 +2803,10 @@ def _render_paso1():
 
     if not can_next_dist:
         invalidos = [s for s, d in distancias.items() if d > MAX_DIST_M]
-        st.warning(
+        _alerta(
+            "warning",
             "Corrige las distancias antes de continuar. "
-            f"Escenarios fuera de limite: {', '.join(invalidos)}"
+            f"Escenarios fuera de límite: {', '.join(invalidos)}",
         )
 
 
@@ -2796,7 +2874,7 @@ def _render_paso2():
             st.session_state.pantalla = "resultados"
             st.rerun()
         except Exception as exc:
-            st.error(f"Error durante el procesamiento: {exc}")
+            _alerta("error", str(exc), titulo="Error durante el procesamiento")
 
 
 # ── Página de resultados ──────────────────────────────────────────────────────
@@ -3042,13 +3120,36 @@ def _render_results():
     # muestran para que el usuario sepa que ese criterio no entró en el coste.
     avisos_prep = st.session_state.get("avisos_preparacion", {})
     if avisos_prep:
-        detalle = "\n".join(
-            f"- **Escenario {s}**: " + "; ".join(a for a in avisos)
-            for s, avisos in avisos_prep.items()
-        )
-        st.warning(
-            "Algunas capas de coste no se generaron y **no entraron en el "
-            "cálculo** de las rutas de estos escenarios:\n" + detalle
+        # Cada aviso llega como "Capa: causa — acción sugerida" (ver
+        # preparar_escenario.py); se parte en título y cuerpo para
+        # presentarlo redactado en vez de como una ristra de dos puntos.
+        items = []
+        for s, avisos in avisos_prep.items():
+            for a in avisos:
+                capa, sep, resto = a.partition(": ")
+                if not sep:
+                    capa, resto = "", a
+                causa, _, accion = resto.partition(" — ")
+                cuerpo = html.escape(causa.strip().rstrip("."))
+                if cuerpo:
+                    cuerpo = cuerpo[0].upper() + cuerpo[1:] + "."
+                if accion.strip():
+                    acc = html.escape(accion.strip())
+                    cuerpo += " " + acc[0].upper() + acc[1:]
+                cuerpo = re.sub(r"(data/[\w./-]+)", r"<code>\1</code>", cuerpo)
+                titulo = html.escape(
+                    f"Escenario {s}" + (f" · {capa}" if capa else "")
+                )
+                items.append(f"<li><b>{titulo}</b><br>{cuerpo}</li>")
+        _alerta(
+            "warning",
+            titulo="Capas no incluidas en el cálculo",
+            cuerpo_html=(
+                '<p>Las rutas se generaron correctamente, pero los siguientes '
+                'criterios no entraron en el coste porque su capa no pudo '
+                'generarse:</p>'
+                f'<ul>{"".join(items)}</ul>'
+            ),
         )
 
     perfiles_usados = st.session_state.get("perfiles_procesados")
@@ -3075,7 +3176,7 @@ def _render_results():
     with tab_mapa:
         m = _mapa_resultados(escenarios)
         if m is None:
-            st.warning("No se encontraron archivos de rutas en Rutas/")
+            _alerta("warning", "No se encontraron archivos de rutas en Rutas/.")
         elif _HAS_ST_FOLIUM:
             _st_folium(m, key="mapa_resultados", height=460,
                        use_container_width=True, returned_objects=[])
@@ -3105,7 +3206,7 @@ def _render_results():
             res = resultados.get(s, {})
             rutas = res.get("rutas", [])
             if not rutas:
-                st.info("Sin rutas calculadas para este escenario.")
+                _alerta("info", "Sin rutas calculadas para este escenario.")
                 continue
 
             rows = [r.to_dict() for r in rutas]
@@ -3149,7 +3250,7 @@ def _render_results():
             st.markdown(f"#### Escenario {s}")
 
             if not div:
-                st.info("Diversidad no calculada.")
+                _alerta("info", "Diversidad no calculada.")
                 continue
 
             perfiles_div = div.get("perfiles", [])
@@ -3161,7 +3262,7 @@ def _render_results():
             )
 
             if len(perfiles_div) < 2:
-                st.info("Se necesitan al menos 2 rutas para comparar.")
+                _alerta("info", "Se necesitan al menos 2 rutas para comparar.")
             else:
                 matriz = div.get("matriz", {})
                 nombres = [_NOMBRE_PERFIL.get(p, p) for p in perfiles_div]
