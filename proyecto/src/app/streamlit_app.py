@@ -53,14 +53,134 @@ _PERFILES_PATH = _ROOT / "data" / "config" / "perfiles.yaml"
 _RUTAS_DIR     = _ROOT / "data" / "processed" / "Rutas"
 _TRAZADOS_DIR  = _ROOT / "data" / "processed" / "Trazados"
 
-# Restaurar la configuración canónica de escenarios al abrir la app: los
-# cambios de origen/destino y los escenarios creados en la interfaz duran solo
-# la sesión (escenario.yaml es efímero; los valores "de fábrica" viven en
-# escenario_base.yaml). El flag de session_state limita la copia al primer
-# rerun de cada sesión del navegador.
+# Manifiesto persistente escenario→municipios de catastro (dgc). Lo escribe
+# _cat_registrar_dgc_escenario() al resolver los municipios de un corredor y
+# lo consume la limpieza de arranque para saber qué carpetas de catastro
+# aportó el escenario efímero de la sesión anterior.
+_CAT_ESC_DGC_PATH = _ROOT / "data" / "raw" / "Catastro" / "_escenarios_dgc.json"
+
+
+def _restaurar_escenarios_fabrica() -> None:
+    """Reset "de fábrica" al arrancar cada sesión del navegador.
+
+    Restaura escenario.yaml desde escenario_base.yaml (los cambios de
+    origen/destino y los escenarios creados en la interfaz duran solo la
+    sesión) y BORRA de disco todo lo derivado de los escenarios efímeros
+    (los que no están en la base): capas de coste, trazados, rutas, recortes,
+    crudos descargados, sus entradas en los manifiestos y su catastro por
+    municipio — salvo municipios que también use un escenario de la base.
+    Los escenarios de la base (A y B) no se tocan JAMÁS aquí: ni coordenadas
+    ni ficheros; su regeneración tras una edición manual dentro de la sesión
+    la resuelve preparar_escenario.recorte_desactualizado() al procesar.
+    """
+    if not _CONFIG_BASE_PATH.exists():
+        return
+    base = yaml.safe_load(_CONFIG_BASE_PATH.read_text(encoding="utf-8")) or {}
+    sagrados = {k.removeprefix("escenario_") for k in base
+                if k.startswith("escenario_")}
+    try:
+        vigente = yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        vigente = {}
+    efimeros = {k.removeprefix("escenario_") for k in vigente
+                if k.startswith("escenario_")} - sagrados
+
+    # Registro catastral: sus claves también delatan escenarios efímeros de
+    # sesiones que no llegaron a este reset (p. ej. el servidor se reinició).
+    try:
+        reg_cat = json.loads(_CAT_ESC_DGC_PATH.read_text(encoding="utf-8"))
+        if not isinstance(reg_cat, dict):
+            reg_cat = {}
+    except (OSError, ValueError):
+        reg_cat = {}
+    efimeros |= set(reg_cat) - sagrados
+
+    def _borrar(p: Path) -> None:
+        """unlink mejor-esfuerzo: en Windows un fichero abierto por otro
+        proceso (p. ej. un ráster que otra sesión tiene mapeado) lanza
+        PermissionError; no puede tumbar el arranque de la app — lo que quede
+        bloqueado se reintenta en el reset de la siguiente sesión."""
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    data_dir = _ROOT / "data"
+    processed = data_dir / "processed"
+    raw = data_dir / "raw"
+
+    # Tercera fuente de efímeros: los propios crudos en disco. Recoge huérfanos
+    # de sesiones que no llegaron a limpiarse (crash, fichero bloqueado en el
+    # reset anterior…): cualquier sufijo de escenario presente en data/raw/
+    # que no sea de la base se limpia también.
+    from ingesta.descargar_capas import SOURCES  # noqa: PLC0415
+    for _, tmpl, *_ in SOURCES:
+        prefijo, sufijo = tmpl.split("{s}")
+        for p in raw.glob(tmpl.replace("{s}", "*")):
+            sid = p.name[len(prefijo):len(p.name) - len(sufijo)]
+            if sid and sid not in sagrados:
+                efimeros.add(sid)
+
+    if efimeros:
+        for sid in efimeros:
+            for carpeta, patron in (
+                (processed / "Capas_Coste", f"*_{sid}.*"),
+                (processed / "Trazados", f"superficie_{sid}.*"),
+                (processed / "Trazados", f"superficie_{sid}_*"),
+                (processed / "Rutas", f"ruta_{sid}_*"),
+                (processed / "Recorte_AOI", f"*_aoi_{sid}.*"),
+                (processed, f"aoi_corredor_{sid}.*"),
+                (processed, f"puntos_{sid}.*"),
+            ):
+                if carpeta.exists():
+                    for p in carpeta.glob(patron):
+                        if p.is_file():
+                            _borrar(p)
+            # Crudos: mismas plantillas que usa la descarga — si se añade una
+            # fuente nueva a SOURCES la limpieza la recoge sola.
+            for _, tmpl, *_ in SOURCES:
+                _borrar(raw / tmpl.replace("{s}", sid))
+
+        # Manifiesto de estado de descargas: fuera las entradas efímeras.
+        mpath = raw / "manifiesto_estado.json"
+        if mpath.exists():
+            try:
+                man = json.loads(mpath.read_text(encoding="utf-8"))
+            except ValueError:
+                man = None
+            if isinstance(man, dict) and isinstance(man.get("escenarios"), dict):
+                # Lista (no generador dentro de any()): hay que sacar TODAS las
+                # entradas efímeras, no cortocircuitar en la primera acertada.
+                sacados = [sid for sid in efimeros
+                           if man["escenarios"].pop(sid, None) is not None]
+                if sacados:
+                    mpath.write_text(json.dumps(man, indent=2, ensure_ascii=False),
+                                     encoding="utf-8")
+
+        # Catastro por municipio: borrar las carpetas <dgc> que aportó cada
+        # efímero, salvo las que también necesite un escenario de la base.
+        protegidos = {d for s in sagrados for d in reg_cat.get(s, [])}
+        cambiado = False
+        for sid in list(reg_cat):
+            if sid not in efimeros:
+                continue
+            for dgc in reg_cat[sid]:
+                if dgc not in protegidos:
+                    shutil.rmtree(_CAT_ESC_DGC_PATH.parent / dgc,
+                                  ignore_errors=True)
+            del reg_cat[sid]
+            cambiado = True
+        if cambiado:
+            _CAT_ESC_DGC_PATH.write_text(
+                json.dumps(reg_cat, indent=2, ensure_ascii=False),
+                encoding="utf-8")
+
+    shutil.copyfile(_CONFIG_BASE_PATH, _CONFIG_PATH)
+
+
+# El flag de session_state limita el reset al primer rerun de cada sesión.
 if "_config_escenarios_restaurada" not in st.session_state:
-    if _CONFIG_BASE_PATH.exists():
-        shutil.copyfile(_CONFIG_BASE_PATH, _CONFIG_PATH)
+    _restaurar_escenarios_fabrica()
     st.session_state["_config_escenarios_restaurada"] = True
 
 # Constantes
@@ -1967,20 +2087,31 @@ def _catastro_atom_por_nombre(prov: str, nombre: str) -> dict | None:
 
 # ── Subida de ZIP catastrales por municipio (paso manual con cl@ve) ────────────
 # El usuario descarga en la Sede Electronica (cl@ve) la cartografia urbana y
-# rustica de cada municipio y la sube aqui. Cada municipio tiene su carpeta
-# data/raw/Catastro/<dgc>/; se considera "listo" (tick) cuando hay un PARCELA.shp
-# legible por el pipeline (subido directamente o convertido desde GML INSPIRE).
+# rustica de cada municipio y la sube aqui (un subidor por tipo). Cada ZIP va a
+# data/raw/Catastro/<dgc>/<tipo>/ y se extrae en una subcarpeta con su nombre;
+# el municipio se considera "listo" (tick) cuando hay ≥1 PARCELA.shp legible por
+# el pipeline (subido directamente o convertido desde GML INSPIRE).
 
-def _cat_upload_dir(dgc: str) -> Path:
-    """Carpeta destino de los ZIP subidos para el municipio <dgc>."""
-    return _CAT_RAW_DIR / dgc
+def _cat_upload_dir(dgc: str, tipo: str | None = None) -> Path:
+    """Carpeta destino de los ZIP subidos para el municipio <dgc>.
+
+    Con `tipo` ("urbana" / "rustica") devuelve la subcarpeta de esa cartografia.
+    Cada tipo vive en su propio arbol: si compartieran carpeta, la idempotencia
+    de normalizar_zip_catastro (que corta al ver CUALQUIER PARCELA.shp bajo el
+    destino) descartaria el segundo ZIP como "ya disponible" sin extraerlo.
+    """
+    d = _CAT_RAW_DIR / dgc
+    return d / tipo if tipo else d
 
 
 def _cat_es_legible(dgc: str) -> bool:
-    """True si el municipio <dgc> tiene un PARCELA.shp que el pipeline puede leer.
+    """True si el municipio <dgc> tiene ALGUN PARCELA.shp que el pipeline pueda leer.
 
     Es el tick "de verdad": un ZIP subido solo cuenta cuando existe (o se ha
     convertido a) PARCELA.shp, el formato que consume alinear_capas.py.
+    Basta con UNO de los dos tipos (urbana o rustica): el corredor puede cruzar
+    solo suelo urbano o solo rustico en un municipio, y exigir ambos bloquearia
+    escenarios validos. El desglose de que falta lo da _cat_tipo_legible().
     """
     d = _cat_upload_dir(dgc)
     if not d.exists():
@@ -1988,25 +2119,70 @@ def _cat_es_legible(dgc: str) -> bool:
     return any(p.stem.lower() == "parcela" for p in d.rglob("*.shp"))
 
 
+def _cat_tipo_legible(dgc: str, tipo: str) -> bool:
+    """True si la cartografia <tipo> ("urbana"/"rustica") de <dgc> ya tiene su
+    PARCELA.shp. Las subidas de versiones anteriores de la app (extraidas en la
+    raiz de <dgc>, sin subcarpeta de tipo) no cuentan aqui, pero si en el tick
+    global de _cat_es_legible()."""
+    d = _cat_upload_dir(dgc, tipo)
+    if not d.exists():
+        return False
+    return any(p.stem.lower() == "parcela" for p in d.rglob("*.shp"))
+
+
 def _cat_normalizar(dgc: str, zip_path: Path) -> dict:
-    """Convierte el ZIP subido al formato del pipeline (PARCELA.shp)."""
+    """Convierte el ZIP subido al formato del pipeline (PARCELA.shp).
+
+    Cada ZIP se extrae en una carpeta con su propio nombre (<zip sin .zip>/),
+    junto al ZIP. Es el mismo convenio de destino que usa alinear_capas.py al
+    descomprimir (`archive.parent / archive.stem`), asi el pipeline ve el ZIP
+    como ya extraido y no lo re-extrae duplicando parcelas. El `dgc` permite
+    sacar solo las parcelas del municipio si el ZIP es el paquete provincial
+    multiparte de la Sede.
+    """
     from ingesta.convertir_catastro import normalizar_zip_catastro
-    return normalizar_zip_catastro(zip_path, _cat_upload_dir(dgc))
+    return normalizar_zip_catastro(zip_path, zip_path.parent / zip_path.stem,
+                                   dgc=dgc)
 
 
-def _cat_guardar_subida(dgc: str, uploaded) -> Path:
-    """Guarda un fichero subido (UploadedFile) en data/raw/Catastro/<dgc>/.
+def _cat_guardar_subida(dgc: str, tipo: str, uploaded) -> Path:
+    """Guarda un fichero subido (UploadedFile) en data/raw/Catastro/<dgc>/<tipo>/.
 
     Conserva el nombre original (p. ej. 50074_URBANA.zip); si ya existe uno con
     ese nombre lo sobrescribe. Devuelve la ruta escrita.
     """
-    d = _cat_upload_dir(dgc)
+    d = _cat_upload_dir(dgc, tipo)
     d.mkdir(parents=True, exist_ok=True)
     # Sanea el nombre para evitar rutas raras; conserva extension.
-    nombre = Path(uploaded.name).name or f"{dgc}.zip"
+    nombre = Path(uploaded.name).name or f"{dgc}_{tipo}.zip"
     dest = d / nombre
     dest.write_bytes(uploaded.getbuffer())
     return dest
+
+
+def _cat_registrar_dgc_escenario(esc: str, municipios: list[dict]) -> None:
+    """Apunta en _escenarios_dgc.json qué municipios (dgc) usa el escenario.
+
+    Es la memoria persistente que necesita _restaurar_escenarios_fabrica()
+    para, al arrancar la sesión siguiente, borrar el catastro subido para un
+    escenario efímero sin tocar el de los municipios que también use un
+    escenario de la base (A/B).
+    """
+    dgcs = sorted({m["dgc"] for m in municipios if m.get("dgc")})
+    if not dgcs:
+        return
+    try:
+        datos = json.loads(_CAT_ESC_DGC_PATH.read_text(encoding="utf-8"))
+        if not isinstance(datos, dict):
+            datos = {}
+    except (OSError, ValueError):
+        datos = {}
+    if datos.get(esc) == dgcs:
+        return
+    datos[esc] = dgcs
+    _CAT_ESC_DGC_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CAT_ESC_DGC_PATH.write_text(json.dumps(datos, indent=2, ensure_ascii=False),
+                                 encoding="utf-8")
 
 
 # Centinela para distinguir "fallo de red" de "sin parcela" en el muestreo paralelo.
@@ -2172,10 +2348,11 @@ def _catastro_municipios_ovc(coords_esc: dict) -> list[dict]:
 def _render_municipios_catastro(municipios: list[dict]) -> None:
     """Lista interactiva de municipios del corredor (paso 4 + 5).
 
-    Por cada municipio: enlace a la Sede Electronica (cl@ve) para descargar la
-    cartografia urbana y rustica, y un subidor de ZIP. Con ≥1 fichero subido el
-    municipio queda marcado con un tick. El estado se persiste en disco
-    (data/raw/Catastro/<dgc>/), asi que sobrevive a los reruns de Streamlit.
+    Por cada municipio: UN enlace a la Sede Electronica (cl@ve) — la urbana y la
+    rustica se descargan desde la misma pagina — y DOS subidores de ZIP, uno por
+    tipo de cartografia, cada uno con su propio tick. El municipio queda marcado
+    como listo con ≥1 tipo legible. El estado se persiste en disco
+    (data/raw/Catastro/<dgc>/<tipo>/), asi que sobrevive a los reruns de Streamlit.
     """
     listos = sum(1 for m in municipios if _cat_es_legible(m["dgc"]))
     total = len(municipios)
@@ -2192,54 +2369,69 @@ def _render_municipios_catastro(municipios: list[dict]) -> None:
         subido = _cat_es_legible(dgc)
         tick = "✅" if subido else "⚪"
         # Expander por municipio: chevron + estado en la cabecera; el cuerpo
-        # (enlaces cl@ve + subidor) queda desplegado mientras falte el catastro.
+        # (enlace cl@ve + subidores) queda desplegado mientras falte el catastro.
         with st.expander(f"{tick} **{nombre}** ({dgc})", expanded=not subido):
-            c_urb, c_rus = st.columns(2)
-            with c_urb:
-                st.link_button("Urbana · Sede (cl@ve)", _CAT_SEDE_DESCARGA,
-                               use_container_width=True,
-                               help="Abre la Sede Electronica. Identificate con cl@ve y "
-                                    f"descarga la cartografia URBANA del municipio {dgc}.")
-            with c_rus:
-                st.link_button("Rústica · Sede (cl@ve)", _CAT_SEDE_DESCARGA,
-                               use_container_width=True,
-                               help="Abre la Sede Electronica. Identificate con cl@ve y "
-                                    f"descarga la cartografia RÚSTICA del municipio {dgc}.")
-            ups = st.file_uploader(
-                f"Subir ZIP(s) de {nombre}", type=["zip"],
-                accept_multiple_files=True, key=f"cat_up_{dgc}",
-                label_visibility="collapsed",
-            )
-            # Guarda y NORMALIZA solo ficheros nuevos (evita re-procesar y bucles
-            # de rerun). Normalizar = dejar un PARCELA.shp legible por el pipeline:
-            # si el ZIP es shapefile Catastro se extrae; si es GML INSPIRE se convierte.
-            proc_key = f"_cat_proc_{dgc}"
-            res_key = f"_cat_res_{dgc}"
-            procesados = st.session_state.setdefault(proc_key, set())
+            # Un unico acceso a la Sede: urbana y rustica se descargan desde la
+            # MISMA pagina (el tipo se elige dentro), dos botones eran redundantes.
+            st.link_button("Sede (cl@ve)", _CAT_SEDE_DESCARGA,
+                           use_container_width=True,
+                           help="Abre la Sede Electronica. Identificate con cl@ve y "
+                                f"descarga la cartografia del municipio {dgc}: dentro "
+                                "de la propia pagina se elige URBANA o RÚSTICA "
+                                "(descarga las dos, un ZIP cada una).")
+            # Un subidor por tipo de cartografia, cada uno con su tick, su registro
+            # de "ya procesado" y su feedback, para que subir uno no pise al otro.
             hubo_nuevo = False
-            for up in ups or []:
-                sig = (up.name, up.size)
-                if sig in procesados:
-                    continue
-                dest = _cat_guardar_subida(dgc, up)
-                with st.spinner(f"Procesando catastro de {nombre}…"):
-                    try:
-                        st.session_state[res_key] = _cat_normalizar(dgc, dest)
-                    except Exception as exc:
-                        st.session_state[res_key] = {
-                            "estado": "error", "mensaje": str(exc)}
-                procesados.add(sig)
-                hubo_nuevo = True
-            # Feedback del último procesado.
-            res = st.session_state.get(res_key)
-            if _cat_es_legible(dgc):
-                extra = ""
-                if res and res.get("estado") == "convertido":
-                    extra = f" · {res.get('mensaje', '')}"
-                # Mostramos "shapefile de parcelas" (no el nombre técnico PARCELA.shp)
-                st.caption(f"✓ Listo para el pipeline: shapefile de parcelas{extra}")
-            elif res and res.get("estado") in ("no_geom", "error"):
-                _alerta("error", res.get("mensaje", "No se pudo preparar el catastro."))
+            col_urb, col_rus = st.columns(2)
+            for tipo, etiqueta, col in (("urbana", "Urbana", col_urb),
+                                        ("rustica", "Rústica", col_rus)):
+                with col:
+                    st.markdown(f"{'✅' if _cat_tipo_legible(dgc, tipo) else '⚪'} "
+                                f"**{etiqueta}**")
+                    ups = st.file_uploader(
+                        f"Subir ZIP de cartografia {etiqueta.lower()} de {nombre}",
+                        type=["zip"], accept_multiple_files=True,
+                        key=f"cat_up_{tipo}_{dgc}", label_visibility="collapsed",
+                    )
+                    # Guarda y NORMALIZA solo ficheros nuevos (evita re-procesar y
+                    # bucles de rerun). Normalizar = dejar un PARCELA.shp legible:
+                    # si el ZIP es shapefile Catastro se extrae; si es GML INSPIRE
+                    # se convierte.
+                    proc_key = f"_cat_proc_{tipo}_{dgc}"
+                    res_key = f"_cat_res_{tipo}_{dgc}"
+                    procesados = st.session_state.setdefault(proc_key, set())
+                    for up in ups or []:
+                        sig = (up.name, up.size)
+                        if sig in procesados:
+                            continue
+                        dest = _cat_guardar_subida(dgc, tipo, up)
+                        with st.spinner(f"Procesando catastro {etiqueta.lower()} "
+                                        f"de {nombre}…"):
+                            try:
+                                st.session_state[res_key] = _cat_normalizar(dgc, dest)
+                            except Exception as exc:
+                                st.session_state[res_key] = {
+                                    "estado": "error", "mensaje": str(exc)}
+                        procesados.add(sig)
+                        hubo_nuevo = True
+                    # Feedback del último procesado de ESTE tipo.
+                    res = st.session_state.get(res_key)
+                    if _cat_tipo_legible(dgc, tipo):
+                        extra = ""
+                        if res and res.get("estado") == "convertido":
+                            extra = f" · {res.get('mensaje', '')}"
+                        # "shapefile de parcelas" (no el nombre técnico PARCELA.shp)
+                        st.caption(f"✓ Shapefile de parcelas listo{extra}")
+                    elif res and res.get("estado") in ("no_geom", "error"):
+                        _alerta("error", res.get(
+                            "mensaje", "No se pudo preparar el catastro."))
+            # Subidas de versiones anteriores de la app (extraidas en la raiz de
+            # <dgc>, sin separar por tipo) siguen valiendo para el pipeline aunque
+            # los ticks por tipo salgan en blanco.
+            if subido and not any(_cat_tipo_legible(dgc, t)
+                                  for t in ("urbana", "rustica")):
+                st.caption("✓ Listo para el pipeline: shapefile de parcelas "
+                           "(subida anterior, sin separar urbana/rústica)")
             if hubo_nuevo:
                 st.rerun()
 
@@ -2491,6 +2683,7 @@ def _render_estado_datos(coords_esc: dict, esc: str) -> None:
                             municipios = st.session_state.get("_cat_municipios_lista") or []
                             st.session_state["_cat_municipios_offline"] = False
                         if municipios:
+                            _cat_registrar_dgc_escenario(esc, municipios)
                             with st.container(border=False, key="cat_muni_box"):
                                 _render_municipios_catastro(municipios)
                         else:
@@ -2559,6 +2752,7 @@ def _render_paso1():
                 '<span style="font-size:0.68rem;letter-spacing:0.05em;text-transform:uppercase;">'
                 'Restricciones del modelo</span></div>'
                 'Corredor de referencia: <b>2 km de ancho</b> (&plusmn;1 km a cada lado).'
+                '<br>Coordenadas en <b>EPSG:25830</b> (ETRS89 / UTM 30N).'
                 '</div>',
                 unsafe_allow_html=True,
             )

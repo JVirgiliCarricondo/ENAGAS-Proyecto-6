@@ -187,7 +187,14 @@ def _run_modulo(modulo: str, scenario: str) -> subprocess.CompletedProcess:
     # (Overpass y los WFS son servicios externos que pueden estar caídos). Si las
     # coordenadas del escenario cambiaron, los crudos son de OTRA zona: hay que
     # forzar la re-descarga (-y) o el recorte al AOI nuevo saldría vacío.
-    from src.ingesta.descargar_capas import SOURCES, DATA_RAW  # noqa: PLC0415
+    # Doble prefijo (src.ingesta / ingesta) para funcionar tanto lanzado por
+    # `python -m src.ingesta...` (cwd=proyecto/, "src" en sys.path) como
+    # importado desde la app (que mete solo "src/" en sys.path, así que el
+    # paquete se ve como "ingesta", sin el prefijo "src.").
+    try:
+        from src.ingesta.descargar_capas import SOURCES, DATA_RAW  # noqa: PLC0415
+    except ImportError:
+        from ingesta.descargar_capas import SOURCES, DATA_RAW  # type: ignore  # noqa: PLC0415
     raw_files_exist = all(
         (DATA_RAW / tmpl.replace("{s}", scenario.upper())).exists()
         for _, tmpl, *_ in SOURCES

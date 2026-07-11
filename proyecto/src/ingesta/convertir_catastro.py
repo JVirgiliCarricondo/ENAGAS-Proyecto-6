@@ -2,7 +2,7 @@
 
 El motor de alineación (`alinear_capas.py`) descubre las parcelas por
 `PARCELA.shp` (formato shapefile del Catastro Inmobiliario) y auto-extrae los
-ZIP colocados bajo `data/raw/Catastro/`. Hay dos formatos que el usuario puede
+ZIP colocados bajo `data/raw/Catastro/`. Hay tres formatos que el usuario puede
 descargar de la Sede Electrónica / portal INSPIRE del Catastro:
 
   * **Shapefile del Catastro Inmobiliario** (Sede, cl@ve): el ZIP ya contiene
@@ -10,17 +10,27 @@ descargar de la Sede Electrónica / portal INSPIRE del Catastro:
   * **INSPIRE Cadastral Parcels** (descarga abierta): el ZIP trae
     `A.ES.SDGC.CP.<dgc>.cadastralparcel.gml` (GML), que el pipeline **no**
     reconoce. Este módulo lo convierte a `PARCELA.shp`.
+  * **Paquete provincial de la Sede** (`*_PETICION_DESCARGA_SHA.zip`): la Sede
+    entrega la cartografía de TODA la provincia como un ZIP multiparte dentro
+    del envoltorio (`XX_UA_fecha_SHP.z01` + `.z02` + … + `.zip`). Las partes se
+    unen reparando los offsets del directorio central (que son relativos a cada
+    parte) y se extraen solo las capas `*_PARCELA` del municipio pedido.
 
 Uso programático:
     from ingesta.convertir_catastro import normalizar_zip_catastro
-    res = normalizar_zip_catastro(Path("....zip"), Path("data/raw/Catastro/50074"))
+    res = normalizar_zip_catastro(Path("....zip"), Path("data/raw/Catastro/50074"),
+                                  dgc="50074")
 
 Uso por línea de comandos:
-    python -m ingesta.convertir_catastro <zip> <dir_destino>
+    python -m ingesta.convertir_catastro <zip> <dir_destino> [dgc]
 """
 
 from __future__ import annotations
 
+import io
+import re
+import shutil
+import struct
 import zipfile
 from pathlib import Path
 
@@ -94,14 +104,156 @@ def _convertir_gml(zip_path: Path, gml_interno: str, dest_dir: Path) -> tuple[Pa
     return out_shp, len(gdf)
 
 
-def normalizar_zip_catastro(zip_path: Path, dest_dir: Path) -> dict:
+# ── Paquete provincial de la Sede (ZIP multiparte) ──────────────────────────
+
+# Partes de un ZIP partido: X.z01, X.z02, … (la última parte es X.zip).
+_RE_PARTE_ZIP = re.compile(r"\.z\d+$", re.IGNORECASE)
+
+
+def _grupos_multiparte(nombres: list[str]) -> dict[str, list[str]]:
+    """Agrupa las entradas de un envoltorio de la Sede por ZIP multiparte.
+
+    Devuelve {stem: [partes en orden .z01, .z02, …, .zip]}. Un ZIP interior sin
+    partes .zNN forma un grupo de un solo elemento.
+    """
+    grupos: dict[str, dict[str, str]] = {}
+    for n in nombres:
+        p = Path(n)
+        suf = p.suffix.lower()
+        if suf == ".zip" or _RE_PARTE_ZIP.match(suf):
+            grupos.setdefault(str(p.parent / p.stem), {})[suf] = n
+    orden = {}
+    for stem, partes in grupos.items():
+        claves = sorted(k for k in partes if k != ".zip") + [".zip"]
+        if ".zip" in partes:
+            orden[stem] = [partes[k] for k in claves if k in partes]
+    return orden
+
+
+def _fusionar_zip_partido(wrapper: zipfile.ZipFile, partes: list[str],
+                          salida: Path) -> None:
+    """Une las partes de un ZIP multiparte (streaming desde el envoltorio) y
+    repara el resultado para que sea un ZIP válido de un solo fichero.
+
+    En un ZIP partido, los offsets del directorio central son relativos a la
+    parte (disco) donde vive cada entrada, así que tras concatenar hay que
+    reescribirlos como offsets absolutos (y poner los números de disco a 0).
+    Solo se toca el directorio central y el EOCD (~KB), no los datos.
+    """
+    tamanos = []
+    with open(salida, "wb") as out:
+        for parte in partes:
+            with wrapper.open(parte) as f:
+                shutil.copyfileobj(f, out)
+            tamanos.append(wrapper.getinfo(parte).file_size)
+    cum = [0]
+    for t in tamanos[:-1]:
+        cum.append(cum[-1] + t)
+
+    with open(salida, "r+b") as f:
+        # EOCD: firma PK\x05\x06 en los últimos 64 KB + 22 bytes.
+        f.seek(0, 2)
+        total = f.tell()
+        cola = min(total, 65558)
+        f.seek(total - cola)
+        buf = f.read(cola)
+        i = buf.rfind(b"PK\x05\x06")
+        if i < 0:
+            raise zipfile.BadZipFile("EOCD no encontrado en el ZIP multiparte")
+        eocd_pos = total - cola + i
+        (_, _, _, n_disco, n_total, cd_size, cd_off, _) = struct.unpack(
+            "<4s4H2LH", buf[i:i + 22])
+        if 0xFFFF in (n_disco, n_total) or 0xFFFFFFFF in (cd_size, cd_off):
+            raise zipfile.BadZipFile(
+                "ZIP multiparte en formato Zip64 (>4 GB); descomprímelo en tu "
+                "equipo con 7-Zip y sube el ZIP *_PARCELA del municipio")
+        cd_real = eocd_pos - cd_size
+
+        # Reescribe cada registro del directorio central: disco→0, offset→absoluto.
+        f.seek(cd_real)
+        cd = bytearray(f.read(cd_size))
+        pos = 0
+        for _ in range(n_total):
+            if cd[pos:pos + 4] != b"PK\x01\x02":
+                raise zipfile.BadZipFile("Directorio central corrupto")
+            nlen, elen, clen, disco = struct.unpack("<4H", cd[pos + 28:pos + 36])
+            (off,) = struct.unpack("<L", cd[pos + 42:pos + 46])
+            if off == 0xFFFFFFFF or disco >= len(cum):
+                raise zipfile.BadZipFile(
+                    "ZIP multiparte con offsets Zip64; descomprímelo con 7-Zip "
+                    "y sube el ZIP *_PARCELA del municipio")
+            cd[pos + 34:pos + 36] = struct.pack("<H", 0)
+            cd[pos + 42:pos + 46] = struct.pack("<L", cum[disco] + off)
+            pos += 46 + nlen + elen + clen
+        f.seek(cd_real)
+        f.write(cd)
+        # EOCD: discos a 0, nº de entradas en este disco = total, offset real del CD.
+        f.seek(eocd_pos + 4)
+        f.write(struct.pack("<4H2L", 0, 0, n_total, n_total, cd_size, cd_real))
+
+
+def _extraer_parcelas_sede(zip_path: Path, dest_dir: Path,
+                           dgc: str | None) -> tuple[int, str | None]:
+    """Extrae las capas *_PARCELA del municipio `dgc` desde un paquete
+    provincial de la Sede. Devuelve (nº de capas extraídas, error | None).
+
+    El envoltorio y el ZIP provincial fusionado son temporales y se borran al
+    terminar: si quedaran partes .zNN sueltas bajo data/raw/Catastro/, el
+    auto-extractor del pipeline (alinear_capas) fallaría al intentar abrirlas.
+    """
+    tmp = dest_dir / "_paquete_sede_tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    extraidas = 0
+    try:
+        with zipfile.ZipFile(zip_path) as wrapper:
+            grupos = _grupos_multiparte(wrapper.namelist())
+            if not grupos:
+                return 0, None
+            for stem, partes in grupos.items():
+                merged = tmp / f"{Path(stem).name}_completo.zip"
+                if len(partes) == 1:
+                    with wrapper.open(partes[0]) as f, open(merged, "wb") as out:
+                        shutil.copyfileobj(f, out)
+                else:
+                    _fusionar_zip_partido(wrapper, partes, merged)
+                with zipfile.ZipFile(merged) as zprov:
+                    for info in zprov.infolist():
+                        nombre = Path(info.filename).name
+                        if info.is_dir() or "_PARCELA" not in nombre.upper():
+                            continue
+                        if dgc and not any(c.startswith(dgc) for c in
+                                           Path(info.filename).parts):
+                            continue
+                        datos = zprov.read(info)
+                        if nombre.lower().endswith(".zip"):
+                            with zipfile.ZipFile(io.BytesIO(datos)) as zcapa:
+                                zcapa.extractall(dest_dir / Path(nombre).stem)
+                        else:
+                            destino = dest_dir / Path(nombre).parent.name / nombre
+                            destino.parent.mkdir(parents=True, exist_ok=True)
+                            destino.write_bytes(datos)
+                        extraidas += 1
+                merged.unlink()
+        return extraidas, None
+    except (zipfile.BadZipFile, OSError, struct.error) as exc:
+        return extraidas, str(exc)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def normalizar_zip_catastro(zip_path: Path, dest_dir: Path,
+                            dgc: str | None = None) -> dict:
     """Deja en dest_dir un PARCELA.shp legible por el pipeline de alineación.
+
+    `dgc` (código de municipio del Catastro) hace falta solo para los paquetes
+    provinciales de la Sede: dice de qué municipio extraer las parcelas.
 
     Estados devueltos en la clave "estado":
       * "shp"        → el ZIP ya traía PARCELA.shp (shapefile Catastro); extraído.
-      * "convertido" → era GML INSPIRE y se ha convertido a PARCELA.shp.
-      * "no_geom"    → el ZIP no contiene ni PARCELA.shp ni GML de parcelas
-                       (p. ej. formato CAT alfanumérico, que no lleva geometría).
+      * "convertido" → era GML INSPIRE (convertido a PARCELA.shp) o un paquete
+                       provincial de la Sede (extraídas las capas del municipio).
+      * "no_geom"    → el ZIP no contiene parcelas con geometría (p. ej. formato
+                       CAT alfanumérico, o un paquete provincial sin el municipio).
       * "error"      → el ZIP está corrupto o la lectura/escritura falló.
 
     Devuelve {estado, formato, salida (Path|None), n_parcelas (int), mensaje}.
@@ -148,6 +300,26 @@ def normalizar_zip_catastro(zip_path: Path, dest_dir: Path) -> dict:
                 "salida": out_shp, "n_parcelas": n,
                 "mensaje": f"Convertido a shapefile de parcelas ({n} parcelas)."}
 
+    if _grupos_multiparte(nombres):
+        # Paquete provincial de la Sede: ZIP multiparte con toda la provincia.
+        extraidas, err = _extraer_parcelas_sede(zip_path, dest_dir, dgc)
+        if err:
+            return {"estado": "error", "formato": "paquete Sede (provincial)",
+                    "salida": None, "n_parcelas": 0,
+                    "mensaje": f"No se pudo abrir el paquete provincial: {err}"}
+        if extraidas:
+            shp = _existe_parcela_legible(dest_dir)
+            quien = f"del municipio {dgc} " if dgc else ""
+            return {"estado": "convertido", "formato": "paquete Sede (provincial)",
+                    "salida": shp, "n_parcelas": -1,
+                    "mensaje": (f"Extraídas las parcelas {quien}del paquete "
+                                f"provincial de la Sede ({extraidas} capa(s)).")}
+        return {"estado": "no_geom", "formato": "paquete Sede (provincial)",
+                "salida": None, "n_parcelas": 0,
+                "mensaje": (f"El paquete provincial no incluye capa de parcelas "
+                            f"del municipio {dgc} (¿es de otra provincia o de "
+                            "otro tipo de cartografía?).")}
+
     return {"estado": "no_geom", "formato": "desconocido / CAT", "salida": None,
             "n_parcelas": 0,
             "mensaje": ("El ZIP no contiene parcelas con geometría (ni shapefile de "
@@ -158,9 +330,11 @@ def normalizar_zip_catastro(zip_path: Path, dest_dir: Path) -> dict:
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) != 3:
-        print("Uso: python -m ingesta.convertir_catastro <zip> <dir_destino>")
+    if len(sys.argv) not in (3, 4):
+        print("Uso: python -m ingesta.convertir_catastro <zip> <dir_destino> [dgc]")
         raise SystemExit(2)
-    resultado = normalizar_zip_catastro(Path(sys.argv[1]), Path(sys.argv[2]))
+    resultado = normalizar_zip_catastro(
+        Path(sys.argv[1]), Path(sys.argv[2]),
+        sys.argv[3] if len(sys.argv) == 4 else None)
     for k, v in resultado.items():
         print(f"{k:12}: {v}")
