@@ -3,9 +3,9 @@
 "Informe de trazados alternativos": explica brevemente cómo se combinan las
 capas de coste (con los pesos de cada perfil) en un único ráster de coste
 global y cómo el motor LCP traza la ruta sobre ese ráster; después desglosa
-el resultado en cuatro secciones, una por perfil de prioridad, cada una con
-la imagen del ráster de coste + ruta (rotada a horizontal) y la tabla de
-métricas de esa ruta en cada escenario.
+el resultado en una sección por escenario, cada una con la imagen del ráster
+de coste + ruta (rotada a horizontal) de cada perfil de prioridad y la tabla
+de métricas de esas rutas en ese escenario.
 
 Las dependencias pesadas (matplotlib, reportlab, rasterio) se importan aquí
 y no en el arranque de la app; este módulo se carga de forma perezosa desde
@@ -317,9 +317,9 @@ def construir_informe_pdf(
     Incluye: portada, explicación breve de cómo se genera el ráster de coste
     global (capas de coste + pesos del perfil) y las rutas sobre él, los
     escenarios seleccionados (origen/destino), los pesos de cada perfil de
-    prioridad y, por cada uno de los cuatro perfiles, la imagen del ráster de
-    coste con la ruta encima (horizontal) y la tabla de métricas de esa ruta
-    en cada escenario.
+    prioridad, la comparativa de perfiles superpuestos y, por cada escenario,
+    la imagen del ráster de coste con la ruta encima (horizontal) de cada
+    perfil de prioridad y la tabla de métricas de esas rutas en ese escenario.
     """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -412,8 +412,9 @@ def construir_informe_pdf(
         "origen y el destino que acumula el menor coste total. Como cada "
         "perfil pondera de forma distinta las mismas capas, cada uno da lugar "
         "a un ráster de coste — y por tanto a una ruta — diferenciados. Las "
-        "páginas siguientes muestran, para cada uno de los cuatro perfiles, "
-        "ese ráster con la ruta resultante encima y sus métricas.", body))
+        "páginas siguientes muestran, para cada escenario, ese ráster con la "
+        "ruta resultante encima y sus métricas, para cada uno de los perfiles "
+        "de prioridad.", body))
 
     # ── Escenarios seleccionados ──────────────────────────────────────────────
     story.append(Paragraph("Escenarios seleccionados", h_sec))
@@ -422,10 +423,11 @@ def construir_informe_pdf(
         pts = coords.get(s, {})
         o = pts.get("origen", {})
         d = pts.get("destino", {})
-        o_txt = (f"{o['x']:,.0f}, {o['y']:,.0f}".replace(",", " ")
-                 if o else "—")
-        d_txt = (f"{d['x']:,.0f}, {d['y']:,.0f}".replace(",", " ")
-                 if d else "—")
+        # Sin separador de miles dentro de cada cifra (735453 y no 735 453):
+        # la coma que separaba X de Y se perdía al usar ',' como separador de
+        # miles y luego sustituir TODAS las comas por espacios.
+        o_txt = f"{o['x']:.0f}, {o['y']:.0f}" if o else "—"
+        d_txt = f"{d['x']:.0f}, {d['y']:.0f}" if d else "—"
         datos_esc.append([f"Escenario {s}", o_txt, d_txt])
     story.append(_tabla(datos_esc, anchos=[28 * mm, 66 * mm, 66 * mm]))
 
@@ -490,7 +492,8 @@ def construir_informe_pdf(
             tabla_cmp,
         ]))
 
-    # ── Una sección por perfil: ráster+ruta (horizontal) + métricas ──────────
+    # ── Una sección por escenario: ráster+ruta (horizontal) de cada perfil +
+    # métricas de sus rutas ───────────────────────────────────────────────────
     ids_disponibles = [p.get("id") for p in perfiles] if perfiles else list(perfiles_orden)
     perfiles_a_incluir = [pid for pid in perfiles_orden if pid in ids_disponibles]
 
@@ -499,79 +502,107 @@ def construir_informe_pdf(
         p.get("id"): _primera_frase(p.get("descripcion", "")) for p in (perfiles or [])
     }
     comentario_metricas = (
-        "La tabla siguiente recoge, para cada escenario, la longitud y el coste "
-        "relativo del trazado, sus pendientes máxima y media, el número de "
-        "cruces con ríos, carreteras y ferrocarril, y los kilómetros del "
-        "recorrido en zona protegida, inundable o urbana."
+        "La tabla siguiente recoge, para cada perfil de prioridad, la longitud "
+        "y el coste relativo del trazado, sus pendientes máxima y media, el "
+        "número de cruces con ríos, carreteras y ferrocarril, y los kilómetros "
+        "del recorrido en zona protegida, inundable o urbana."
     )
 
-    # Cada perfil ocupa una página propia con SUS DOS escenarios juntos
-    # (imagen + métricas de cada uno) en la misma cara.
-    n_esc = max(len(escenarios), 1)
-    # Alto de imagen que garantiza que ambos escenarios + banda + descripción
-    # + comentario + tabla quepan en una sola página A4 (alto útil ≈ 265 mm).
-    alto_img_mm = 78 if n_esc > 1 else 92
+    # Hasta 2 imágenes de perfil por página (mismo criterio de tamaño que antes
+    # con hasta 2 escenarios por página): alto que garantiza que ambas quepan
+    # en una sola cara A4 junto con banda/descripción (alto útil ≈ 265 mm).
+    PERFILES_POR_PAGINA = 2
+    n_perfiles = max(len(perfiles_a_incluir), 1)
+    alto_img_mm = 78 if n_perfiles > 1 else 92
 
-    for pid in perfiles_a_incluir:
-        descripcion = desc_por_perfil.get(pid, "")
+    for s in escenarios:
+        pts = coords.get(s, {})
+        origen_s, destino_s = pts.get("origen"), pts.get("destino")
 
-        banda = _tabla([[Paragraph(nombre_perfil.get(pid, pid), h_perfil)]],
-                        anchos=[170 * mm])
-        banda.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(colores.get(pid, "#004e7e"))),
+        banda_esc = _tabla([[Paragraph(f"Escenario {s}", h_perfil)]], anchos=[170 * mm])
+        banda_esc.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), _PRIMARY),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ]))
 
-        pagina: list = [banda]
-        if descripcion:
-            pagina.append(Paragraph(descripcion, desc_perfil_style))
-        pagina.append(Spacer(1, 6))
-
         filas_perfil = []
-        for s in escenarios:
-            if len(escenarios) > 1:
-                pagina.append(Paragraph(f"Escenario {s}", h_esc))
+        pendientes = list(perfiles_a_incluir) or [None]
+        primera_pagina_esc = True
+        while pendientes:
+            chunk = pendientes[:PERFILES_POR_PAGINA]
+            pendientes = pendientes[PERFILES_POR_PAGINA:]
 
-            pts = coords.get(s, {})
-            img = _figura_raster_ruta(
-                s, pid, trazados_dir, rutas_dir, colores.get(pid, "#004e7e"),
-                pts.get("origen"), pts.get("destino"),
-            )
-            if img is not None:
-                pagina.append(RLImage(io.BytesIO(img), width=165 * mm,
-                                       height=alto_img_mm * mm, kind="proportional"))
-                pagina.append(Spacer(1, 4))
+            pagina: list = []
+            if primera_pagina_esc:
+                pagina.append(banda_esc)
+                pagina.append(Spacer(1, 6))
+                primera_pagina_esc = False
             else:
-                pagina.append(Paragraph(
-                    "Sin ráster de coste / trazado disponible para este escenario.", body))
+                pagina.append(Paragraph(f"Escenario {s} (continuación)", h_esc))
 
-            ruta = next(
-                (r for r in resultados.get(s, {}).get("rutas", []) if r.perfil == pid),
-                None,
-            )
-            if ruta is not None:
-                filas_perfil.append({"escenario": s, **ruta.to_dict()})
+            for pid in chunk:
+                if pid is None:
+                    pagina.append(Paragraph(
+                        "Sin perfiles de prioridad configurados.", body))
+                    break
+
+                banda_perfil = _tabla(
+                    [[Paragraph(nombre_perfil.get(pid, pid), h_perfil)]],
+                    anchos=[170 * mm])
+                banda_perfil.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1),
+                     colors.HexColor(colores.get(pid, "#004e7e"))),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ]))
+                pagina.append(banda_perfil)
+                descripcion = desc_por_perfil.get(pid, "")
+                if descripcion:
+                    pagina.append(Paragraph(descripcion, desc_perfil_style))
+
+                img = _figura_raster_ruta(
+                    s, pid, trazados_dir, rutas_dir, colores.get(pid, "#004e7e"),
+                    origen_s, destino_s,
+                )
+                if img is not None:
+                    pagina.append(RLImage(io.BytesIO(img), width=165 * mm,
+                                           height=alto_img_mm * mm, kind="proportional"))
+                else:
+                    pagina.append(Paragraph(
+                        "Sin ráster de coste / trazado disponible para este perfil.", body))
+                pagina.append(Spacer(1, 6))
+
+                ruta = next(
+                    (r for r in resultados.get(s, {}).get("rutas", []) if r.perfil == pid),
+                    None,
+                )
+                if ruta is not None:
+                    filas_perfil.append({"perfil": pid, **ruta.to_dict()})
+
+            # Página nueva por cada tanda de perfiles; KeepTogether es red de
+            # seguridad para que, si el contenido no cupiera exactamente, no se
+            # corte a mitad de un perfil dejando el resto en la página siguiente.
+            story.append(PageBreak())
+            story.append(KeepTogether(pagina))
 
         if filas_perfil:
             cols_usadas = [c for c in cols_metricas if any(c in f for f in filas_perfil)]
-            datos_met = [["Escenario"] + [col_rename[c] for c in cols_usadas]]
+            datos_met = [["Perfil"] + [col_rename[c] for c in cols_usadas]]
             for f in filas_perfil:
+                nombre_fila = nombre_perfil.get(f["perfil"], f["perfil"])
                 datos_met.append(
-                    [f["escenario"]] + [_fmt_valor(col_rename[c], f.get(c)) for c in cols_usadas]
+                    [nombre_fila] + [_fmt_valor(col_rename[c], f.get(c)) for c in cols_usadas]
                 )
-            pagina.append(Paragraph(comentario_metricas, body))
-            pagina.append(Spacer(1, 4))
-            pagina.append(_tabla(datos_met))
+            story.append(PageBreak())
+            story.append(Paragraph(f"Comparativa de perfiles — Escenario {s}", h_sec))
+            story.append(Paragraph(comentario_metricas, body))
+            story.append(Spacer(1, 4))
+            story.append(_tabla(datos_met))
         else:
-            pagina.append(Paragraph("Sin métricas calculadas para este perfil.", body))
-
-        # Página nueva para cada perfil; KeepTogether es red de seguridad
-        # para que, si el contenido no cupiera exactamente, no se corte a
-        # mitad de un escenario dejando el otro en la página siguiente.
-        story.append(PageBreak())
-        story.append(KeepTogether(pagina))
+            story.append(Paragraph("Sin métricas calculadas para este escenario.", body))
 
     doc.build(story)
     return buf.getvalue()
