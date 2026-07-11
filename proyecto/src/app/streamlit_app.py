@@ -1332,6 +1332,28 @@ def _renombrar_escenario(cfg: dict, coords: dict, old: str, nuevo_id: str) -> st
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
+def _limpiar_salidas_huerfanas(escenarios: list[str]) -> None:
+    """Borra de Rutas/ y Trazados/ las salidas de escenarios que ya no existen
+    en la sesión actual (p. ej. un escenario C creado en una sesión anterior:
+    la config se restaura a los escenarios de fábrica al abrir la app, pero sus
+    ficheros quedaban huérfanos en disco). Tras cada ejecución, en disco solo
+    quedan las salidas de los escenarios vigentes."""
+    vigentes: set[str] = set()
+    for s in escenarios:
+        vigentes |= {f"superficie_{s}.tif", f"superficie_{s}.qml"}
+        for p in PERFILES:
+            vigentes |= {
+                f"ruta_{s}_{p}.gpkg", f"ruta_{s}_{p}.qml",
+                f"superficie_{s}_{p}.tif", f"superficie_{s}_{p}.qml",
+            }
+    for carpeta, patron in ((_RUTAS_DIR, "ruta_*"), (_TRAZADOS_DIR, "superficie_*")):
+        if not carpeta.exists():
+            continue
+        for f in carpeta.glob(patron):
+            if f.is_file() and f.name not in vigentes:
+                f.unlink(missing_ok=True)
+
+
 def _ejecutar_pipeline(
     progress_cb,
     escenarios: list[str],
@@ -1353,6 +1375,11 @@ def _ejecutar_pipeline(
 
     if not escenarios:
         raise ValueError("No hay escenarios configurados.")
+
+    # Limpieza de salidas huérfanas: borra de Rutas/ y Trazados/ los ficheros de
+    # escenarios que ya no existen en esta sesión (p. ej. un "C" de una sesión
+    # anterior), de modo que en disco solo queden los escenarios vigentes.
+    _limpiar_salidas_huerfanas(escenarios)
 
     # Barrera dura de pendiente: si el usuario la cambió respecto al valor por
     # defecto, se sobreescribe el global de la capa TPI y se regenera esa capa
