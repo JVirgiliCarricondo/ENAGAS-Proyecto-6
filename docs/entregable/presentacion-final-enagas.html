@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generador de Trazados de Ramales (Enagás · CI2 Lab 2026)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f8fc;
+    --bg-2:#eef2f9;
+    --panel:#ffffff;
+    --panel-2:#eef3fb;
+    --border:#dde4f1;
+    --border-2:#c6d2e6;
+    --txt:#102a57;
+    --txt-dim:#41527a;
+    --txt-faint:#7886a4;
+    --accent:#1f5fd6;
+    --accent-2:#5a3fd0;
+    --green:#0f9c63;
+    --amber:#b3820a;
+    --red:#d23d57;
+    --cyan:#0b91bd;
+    --comillas:#c79200;
+    --grad:linear-gradient(120deg,#1f5fd6 0%,#5a3fd0 55%,#0b91bd 100%);
+    --radius:18px;
+    --font:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --font-title:'Lora','Poppins',Georgia,'Times New Roman',serif;
+    --mono:'SF Mono','JetBrains Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--txt);
+    font-family:var(--font);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  .bg-orbs{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+  .orb{position:absolute;border-radius:50%;filter:blur(130px);opacity:.30}
+  .orb.a{width:560px;height:560px;background:#a7c4ff;top:-180px;left:-140px}
+  .orb.b{width:500px;height:500px;background:#c3b3ff;bottom:-200px;right:-140px}
+  .orb.c{width:380px;height:380px;background:#a6e6f4;top:40%;right:16%;opacity:.24}
+  .grid-overlay{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:linear-gradient(var(--border-2) 1px,transparent 1px),linear-gradient(90deg,var(--border-2) 1px,transparent 1px);
+    background-size:46px 46px;opacity:.5;
+    mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 30%,transparent 75%);
+    -webkit-mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 30%,transparent 75%);
+  }
+
+  .deck{position:relative;z-index:1;height:100vh;width:100vw}
+  .slide{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;justify-content:safe center;
+    padding:4.2vh 6.4vw 3.2vh;
+    opacity:0;visibility:hidden;
+    transform:translateY(22px) scale(.992);
+    transition:opacity .55s cubic-bezier(.22,.61,.36,1),transform .55s cubic-bezier(.22,.61,.36,1),visibility .55s;
+    overflow-y:auto;overflow-x:hidden;scrollbar-width:none;
+  }
+  .slide::-webkit-scrollbar{display:none}
+  .slide.active{opacity:1;visibility:visible;transform:none}
+  .slide.prev{transform:translateY(-22px) scale(.992)}
+
+  .kicker{
+    display:inline-flex;align-items:center;gap:.55em;
+    font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--txt-dim);margin-bottom:.65rem;
+  }
+  .kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--grad)}
+  .kicker .num{font-family:var(--mono);color:var(--accent)}
+  h1{font-family:var(--font-title);font-size:clamp(2.2rem,5.4vw,4.3rem);font-weight:700;line-height:1.07;letter-spacing:-.015em}
+  h2{font-family:var(--font-title);font-size:clamp(1.4rem,2.6vw,2.1rem);font-weight:600;line-height:1.13;letter-spacing:-.01em;margin-bottom:.35rem}
+  .card h3,.rcard h4,.mchip .mt,.drow .what{font-family:var(--font-title);font-weight:600}
+  .lead{font-size:clamp(.85rem,1.2vw,1rem);color:var(--txt-dim);line-height:1.45;max-width:74ch;font-weight:350}
+  .grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .slide-head{margin-bottom:.85rem;max-width:78ch}
+  .slide-head .lead{margin-top:.4rem}
+
+  .card{
+    background:linear-gradient(160deg,var(--panel) 0%,var(--bg-2) 130%);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:1.05rem 1.25rem;
+    position:relative;overflow:hidden;
+  }
+  .card.glow::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+    background:var(--grad);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask-composite:exclude;opacity:.5}
+  .card h3{font-size:1.02rem;font-weight:680;margin-bottom:.5rem;letter-spacing:-.01em}
+  .card p{font-size:.88rem;color:var(--txt-dim);line-height:1.5}
+
+  .grid{display:grid;gap:.85rem}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;align-items:start}
+
+  .pill{display:inline-flex;align-items:center;gap:.45em;font-size:.72rem;font-weight:600;
+    padding:.3em .78em;border-radius:999px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--txt-dim)}
+  .pill .d{width:7px;height:7px;border-radius:50%}
+  .d.green{background:var(--green)}.d.amber{background:var(--amber)}.d.red{background:var(--red)}.d.blue{background:var(--accent)}.d.grey{background:var(--txt-faint)}
+  .tag-green{color:var(--green);border-color:rgba(15,156,99,.32);background:rgba(15,156,99,.10)}
+  .tag-amber{color:var(--amber);border-color:rgba(179,130,10,.32);background:rgba(179,130,10,.10)}
+  .tag-blue{color:var(--accent);border-color:rgba(31,95,214,.32);background:rgba(31,95,214,.09)}
+  .tag-purple{color:var(--accent-2);border-color:rgba(90,63,208,.32);background:rgba(90,63,208,.10)}
+  .tag-grey{color:var(--txt-faint);border-color:var(--border-2);background:var(--panel-2)}
+
+  .logo-bar{position:absolute;top:4.2vh;left:6.4vw;right:6.4vw;display:flex;align-items:center;gap:.9rem;z-index:5}
+  .logo-bar.right{justify-content:flex-end}
+  .logo-chip{background:#fff;border:1px solid var(--border);border-radius:11px;padding:.5rem .85rem;display:grid;place-items:center;
+    box-shadow:0 6px 18px rgba(16,42,87,.08);height:50px}
+  .logo-chip svg{display:block;height:34px;width:auto}
+  .logo-chip .enagas-logo{display:block;height:32px;width:auto}
+  .logo-x{color:var(--txt-faint);font-size:1.1rem;font-weight:300}
+
+  #cover{justify-content:center;align-items:center;text-align:center}
+  .cover-hero{display:flex;flex-direction:column;align-items:center;max-width:66ch}
+  #cover h1{max-width:none;text-align:center;text-wrap:balance}
+  .cover-sub{margin:1.4rem auto 0;font-size:clamp(1rem,1.7vw,1.3rem);color:var(--txt-dim);font-weight:400;max-width:56ch;line-height:1.5}
+  .cover-meta{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:2.2rem;justify-content:center}
+  .cover-foot{position:absolute;left:6.4vw;right:6.4vw;bottom:6.5vh;display:flex;justify-content:space-between;
+    align-items:flex-end;color:var(--txt-faint);font-size:.8rem;text-align:left}
+  .cover-foot .r{text-align:right}
+  .cover-tag{display:inline-flex;align-items:center;gap:.5rem;background:var(--grad);color:#fff;font-weight:700;
+    font-size:.88rem;letter-spacing:.01em;padding:.5rem 1.05rem;border-radius:13px;
+    box-shadow:0 10px 30px rgba(31,95,214,.30);margin-bottom:1.6rem}
+  .cover-tag .h2sub{font-size:.76rem;opacity:.85;font-weight:500}
+  .mvp{color:var(--comillas);font-weight:700}
+
+  /* pipeline flow diagram */
+  .pflow{display:flex;flex-direction:column;gap:0}
+  .pflow .node{padding:.55rem 1rem;border-radius:11px;font-size:.82rem;font-weight:600;text-align:center;
+    border:1px solid var(--border-2);background:var(--panel)}
+  .pflow .node small{display:block;font-weight:400;color:var(--txt-faint);font-size:.68rem;margin-top:.15rem;font-family:var(--mono)}
+  .pflow .node.term{background:var(--grad);color:#fff;border:none;box-shadow:0 6px 18px rgba(31,95,214,.25)}
+  .pflow .node.term small{color:rgba(255,255,255,.82)}
+  .pflow .node.dec{background:rgba(90,63,208,.07);border:1.5px dashed var(--accent-2)}
+  .pflow .conn{width:2px;height:14px;background:var(--border-2);align-self:center;position:relative}
+  .pflow .conn::after{content:"";position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);
+    border:4px solid transparent;border-top-color:var(--border-2)}
+
+  /* decision / Q&A list */
+  .dlist{display:flex;flex-direction:column;gap:.6rem}
+  .drow{display:grid;grid-template-columns:1fr 1.35fr;gap:1.1rem;align-items:start;
+    padding:.7rem 1rem;background:var(--panel);border:1px solid var(--border);border-radius:14px}
+  .drow .what{font-weight:650;font-size:.92rem}
+  .drow .what .sub{display:block;color:var(--txt-faint);font-size:.72rem;font-weight:400;margin-top:.2rem;font-family:var(--mono)}
+  .drow .why{font-size:.82rem;color:var(--txt-dim);line-height:1.45}
+
+  /* stage cards */
+  .rcard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:.9rem 1rem;position:relative;overflow:hidden}
+  .rcard::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--border-2)}
+  .rcard.r1::before{background:var(--accent)}.rcard.r2::before{background:var(--accent-2)}
+  .rcard.r3::before{background:var(--cyan)}.rcard.r4::before{background:var(--green)}
+  .rcard .sp{font-family:var(--mono);font-size:.7rem;color:var(--txt-faint);font-weight:700}
+  .rcard h4{font-size:.96rem;font-weight:700;margin:.3rem 0 .3rem}
+  .rcard p{font-size:.78rem;color:var(--txt-dim);line-height:1.4}
+  .rcard i.gloss{display:block;font-size:.72rem;color:var(--txt-faint);margin-top:.35rem;line-height:1.35}
+
+  /* exec lines */
+  .exec-col{display:flex;flex-direction:column;gap:.55rem}
+  .exec-line{display:flex;align-items:flex-start;gap:.75rem;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:.6rem .9rem}
+  .exec-line .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;font-size:1rem;background:var(--panel-2)}
+  .exec-line .tx{font-size:.85rem;line-height:1.4}
+  .exec-line .tx b{font-weight:650;display:block;font-size:.88rem;margin-bottom:.1rem}
+  .exec-line .tx span{color:var(--txt-dim)}
+
+  /* formula box */
+  .formula{background:#0e1830;border:1px solid var(--border-2);border-radius:11px;padding:.7rem .9rem;
+    font-family:var(--mono);font-size:.7rem;line-height:1.6;color:#dbe6ff;overflow-x:auto;margin-bottom:.6rem}
+  .formula:last-child{margin-bottom:0}
+  .formula .lbl{display:block;color:#7d8ba8;font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem}
+  .formula .obj{color:var(--cyan)}
+  .formula .w{color:var(--comillas);font-weight:700}
+
+  /* mini tables */
+  .minigrid{display:grid;grid-template-columns:1fr 1fr;gap:.65rem}
+  .mini{background:var(--panel-2);border:1px solid var(--border);border-radius:11px;padding:.55rem .7rem}
+  .mini h5{font-family:var(--font-title);font-size:.8rem;font-weight:600;color:var(--txt);margin-bottom:.3rem}
+  .mini h5 small{font-family:var(--font);font-weight:400;color:var(--txt-faint);font-size:.68rem}
+  .mini table{width:100%;border-collapse:collapse;font-size:.72rem}
+  .mini td{padding:.16rem 0;color:var(--txt-dim);border-top:1px solid var(--border)}
+  .mini tr:first-child td{border-top:none}
+  .mini td.c{text-align:right;font-family:var(--mono);color:var(--txt);white-space:nowrap;padding-left:.4rem}
+
+  .bullets{list-style:none;display:flex;flex-direction:column;gap:.55rem}
+  .bullets li{display:flex;gap:.7rem;font-size:.82rem;line-height:1.4;color:var(--txt-dim)}
+  .bullets li b{color:var(--txt);font-weight:600}
+  .bullets li i.gloss{display:block;color:var(--txt-faint);font-size:.76rem;margin-top:.15rem;line-height:1.35}
+  .bullets .bi{flex:0 0 auto;width:22px;height:22px;border-radius:7px;background:var(--panel-2);display:grid;place-items:center;font-size:.74rem;margin-top:.1rem}
+
+  .note{font-size:.78rem;color:var(--txt-faint);margin-top:.7rem;display:flex;align-items:flex-start;gap:.5rem}
+
+  /* metric chips */
+  .mchips{display:grid;grid-template-columns:repeat(3,1fr);gap:.7rem}
+  .mchip{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:.8rem .95rem}
+  .mchip .mt{font-weight:650;font-size:.94rem;display:flex;align-items:center;gap:.5rem}
+  .mchip .ms{font-size:.78rem;color:var(--txt-faint);margin-top:.3rem;line-height:1.4}
+  .mchip .ico-sq{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:.85rem;background:var(--panel-2)}
+
+  /* agenda */
+  .agenda{display:grid;grid-template-columns:repeat(3,1fr);gap:.7rem}
+  .aitem{display:flex;gap:.75rem;align-items:flex-start;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:.7rem .9rem}
+  .aitem .n{font-family:var(--mono);font-size:.78rem;font-weight:700;color:var(--accent);padding-top:.12rem}
+  .aitem .b{flex:1}
+  .aitem .b b{display:block;font-family:var(--font-title);font-weight:600;font-size:.92rem}
+  .aitem .b span{display:block;font-size:.74rem;color:var(--txt-faint);margin-top:.12rem;line-height:1.35}
+  .aitem .t{font-family:var(--mono);font-size:.72rem;color:var(--txt-faint);white-space:nowrap;padding-top:.16rem}
+  .aitem.hl{border-color:rgba(31,95,214,.45);background:linear-gradient(155deg,rgba(91,140,255,.10),rgba(124,92,255,.04))}
+  .aitem.hl .t{color:var(--accent);font-weight:700}
+
+  /* yaml snippet */
+  .yaml{background:#0e1830;border:1px solid var(--border-2);border-radius:11px;padding:.7rem .9rem;
+    font-family:var(--mono);font-size:.68rem;line-height:1.55;color:#dbe6ff;overflow-x:auto}
+  .yaml .k{color:#8ab8ff}
+  .yaml .v{color:#ffd479}
+  .yaml .cm{color:#7d8ba8;font-style:italic}
+
+  /* demo checklist */
+  .demo-steps{display:flex;flex-direction:column;gap:.5rem}
+  .dstep{display:flex;gap:.85rem;align-items:flex-start;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:.65rem .95rem}
+  .dstep .dn{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--grad);color:#fff;
+    display:grid;place-items:center;font-family:var(--mono);font-size:.78rem;font-weight:700}
+  .dstep .dt2 b{font-weight:650;font-size:.88rem;display:block}
+  .dstep .dt2 span{font-size:.76rem;color:var(--txt-dim);line-height:1.35}
+
+  .topbar{position:fixed;top:0;left:0;right:0;height:3px;background:transparent;z-index:30}
+  .topbar i{display:block;height:100%;width:0;background:var(--grad);transition:width .5s cubic-bezier(.22,.61,.36,1);box-shadow:0 0 12px rgba(91,140,255,.6)}
+  .hud{position:fixed;bottom:1.5vh;right:2vw;z-index:30;display:flex;align-items:center;gap:1rem;
+    font-family:var(--mono);font-size:.78rem;color:var(--txt-faint)}
+  .dots{display:flex;gap:7px}
+  .dots b{width:8px;height:8px;border-radius:50%;background:var(--border-2);cursor:pointer;transition:.3s;border:none;padding:0}
+  .dots b.on{background:var(--grad);transform:scale(1.3)}
+  .hud .ctrls{display:flex;gap:.4rem}
+  .hud button.nav{background:var(--panel);border:1px solid var(--border-2);color:var(--txt-dim);width:30px;height:30px;
+    border-radius:9px;cursor:pointer;font-size:.9rem;display:grid;place-items:center;transition:.2s}
+  .hud button.nav:hover{background:var(--panel-2);color:var(--txt);border-color:var(--accent)}
+  .hud .count{min-width:46px;text-align:center}
+  .hint{position:fixed;bottom:1.7vh;left:2vw;z-index:30;font-size:.74rem;color:var(--txt-faint);font-family:var(--mono);
+    opacity:.7;transition:opacity .4s}
+  .hint.hide{opacity:0}
+  kbd{font-family:var(--mono);background:var(--panel-2);border:1px solid var(--border-2);border-bottom-width:2px;
+    border-radius:5px;padding:.05em .4em;font-size:.72rem;color:var(--txt-dim)}
+
+  @media (max-width:880px){
+    .slide{padding:6vh 7vw}
+    .g3,.g4,.minigrid,.mchips,.agenda{grid-template-columns:1fr 1fr}
+    .two-col,.drow{grid-template-columns:1fr}
+    .hint{display:none}
+    #cover h1{text-align:center;text-align-last:center;width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="bg-orbs"><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div></div>
+<div class="grid-overlay"></div>
+<div class="topbar"><i id="topbar-fill"></i></div>
+
+<div class="deck" id="deck">
+
+  <!-- 0 · PORTADA -->
+  <section class="slide" id="cover">
+    <div class="logo-bar">
+      <div class="logo-chip">
+        <svg viewBox="0 0 184 70" aria-label="CI2LAB Investigación — Comillas ICAI">
+          <path d="M16 13 H7 V49 H16" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <path d="M168 13 H177 V49 H168" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <text x="92" y="37" text-anchor="middle" font-family="Poppins,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5" fill="#16357c">CI2<tspan fill="#2e74c4">LAB</tspan></text>
+          <text x="92" y="51" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9" font-weight="700" letter-spacing="3" fill="#16357c">INVESTIGACIÓN</text>
+          <text x="92" y="64" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9.5" font-weight="500" letter-spacing="2" fill="#2e74c4">COMILLAS ICAI</text>
+        </svg>
+      </div>
+      <span class="logo-x">×</span>
+      <div class="logo-chip">
+        <img class="enagas-logo" src="data:image/png;base64,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" alt="Enagás">
+      </div>
+    </div>
+    <div class="cover-hero">
+      <div class="cover-tag">Enagás · CI2 Lab 2026</div>
+      <h1>Generador de <span class="grad-text">trazados de ramales</span></h1>
+      <p class="cover-sub">Prototipo <b style="color:var(--txt)">end-to-end</b> que genera trazados alternativos diferenciados entre un punto de origen y la conexión a la red troncal, sobre GIS público y comparados por criterios objetivos — con <b style="color:var(--txt)">demo en vivo</b> de la aplicación.</p>
+      <div class="cover-meta">
+        <span class="pill tag-green"><span class="d green"></span>Presentación de resultados</span>
+        <span class="pill tag-blue"><span class="d blue"></span>Demo en vivo de la aplicación</span>
+      </div>
+    </div>
+    <div class="cover-foot">
+      <div>
+        <div style="color:var(--txt-dim);font-weight:600">Cátedra de Industria Inteligente</div>
+        <div>ETSI ICAI · Comillas</div>
+      </div>
+      <div class="r">
+        <div style="color:var(--txt-dim);font-weight:600">16 de julio de 2026</div>
+        <div>CI2 Lab</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 · GUION -->
+  <section class="slide" id="s1">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">01</span><span class="dot"></span>Índice</div>
+      <h2>De la configuración <span class="grad-text">a la comparativa</span></h2>
+      <p class="lead">Recorremos el prototipo en el mismo orden en que fluye el dato. A mitad de camino, <b style="color:var(--txt)">la aplicación en directo</b>.</p>
+    </div>
+    <div class="agenda">
+      <div class="aitem"><span class="n">1</span><div class="b"><b>Visión general</b><span>El problema y las ideas clave del pipeline</span></div></div>
+      <div class="aitem"><span class="n">2</span><div class="b"><b>Configuración y escenarios</b><span>escenario.yaml · perfiles.yaml · AOI</span></div></div>
+      <div class="aitem"><span class="n">3</span><div class="b"><b>Ingesta</b><span>Descarga automática + alineación a la rejilla común</span></div></div>
+      <div class="aitem"><span class="n">4</span><div class="b"><b>Superficies de coste</b><span>Todo condicionante, un coste entre 0 y 1</span></div></div>
+      <div class="aitem"><span class="n">5</span><div class="b"><b>Motor de trazado (LCP)</b><span>Dijkstra 8-conexo propio, celda a celda</span></div></div>
+      <div class="aitem"><span class="n">6</span><div class="b"><b>Diferenciación de rutas</b><span>Por qué salen 4 rutas distintas y cómo se valida</span></div></div>
+      <div class="aitem"><span class="n">7</span><div class="b"><b>Métricas</b><span>La comparativa multicriterio</span></div></div>
+      <div class="aitem hl"><span class="n">8</span><div class="b"><b>Demo en vivo · app Streamlit</b><span>Asistente de 3 pasos → mapa, KPIs e informe</span></div></div>
+      <div class="aitem"><span class="n">9</span><div class="b"><b>Reproducibilidad y cierre</b><span>Entorno, qué se versiona, líneas abiertas</span></div></div>
+    </div>
+  </section>
+
+  <!-- 2 · VISIÓN GENERAL -->
+  <section class="slide" id="s2">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">02</span><span class="dot"></span>Visión general</div>
+      <h2>Un problema de <span class="grad-text">selección de trazados</span>, no de costes en €</h2>
+      <p class="lead">Dado un <b style="color:var(--txt)">origen</b> (planta de generación o punto de entrega) y un <b style="color:var(--txt)">destino</b> (conexión a red troncal), la herramienta propone <b style="color:var(--txt)">4 trazados alternativos diferenciados</b> sobre GIS público y los presenta en comparativa multicriterio.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:1.1fr 1fr">
+      <div class="exec-col">
+        <div class="exec-line">
+          <span class="ic">🎯</span>
+          <div class="tx"><b>Qué resuelve</b><span>En fase temprana de un ramal, lo caro es <b style="color:var(--txt)">explorar alternativas a mano</b>. Aquí el abanico de corredores sale en minutos, con los mismos criterios para todos.</span></div>
+        </div>
+        <div class="exec-line">
+          <span class="ic">🧭</span>
+          <div class="tx"><b>Idea clave nº 1 — alinear antes de combinar</b><span>Ninguna capa entra al pipeline sin reproyectarse a EPSG:25830 y remuestrearse a la rejilla común de 30 m. Si las capas no están alineadas, los costes mienten.</span></div>
+        </div>
+        <div class="exec-line">
+          <span class="ic">🔀</span>
+          <div class="tx"><b>Idea clave nº 2 — diferenciar antes de comparar</b><span>Las 4 rutas nacen de 4 perfiles de prioridad distintos y se comprueba que son corredores realmente diferentes, no el mismo trazado con ruido.</span></div>
+        </div>
+        <div class="exec-line">
+          <span class="ic">📏</span>
+          <div class="tx"><b>Regla no negociable</b><span>Todo coste es un <b style="color:var(--txt)">índice relativo normalizado</b>, calibrado con la metodología oficial de Enagás. El sistema nunca estima euros.</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="pflow">
+          <div class="node term">ENTRADA<small>origen · destino (UTM) · pesos por perfil</small></div>
+          <div class="conn"></div>
+          <div class="node">1 · Ingesta y alineación<small>descarga por AOI · EPSG:25830 · rejilla 30 m</small></div>
+          <div class="conn"></div>
+          <div class="node">2 · Superficies de coste<small>6 capas estandarizadas en [0,1]</small></div>
+          <div class="conn"></div>
+          <div class="node">3 · Motor LCP<small>Dijkstra 8-conexo · una ruta por perfil</small></div>
+          <div class="conn"></div>
+          <div class="node dec">4 · Diferenciación<small>solape entre corredores · buffer 60 m / 50 %</small></div>
+          <div class="conn"></div>
+          <div class="node">5 · Métricas multicriterio<small>longitud · coste · cruces · zonas · pendiente</small></div>
+          <div class="conn"></div>
+          <div class="node term">SALIDA<small>mapa de 4 rutas · tabla comparativa · PDF</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · CONFIGURACIÓN Y ESCENARIOS -->
+  <section class="slide" id="s3">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">03</span><span class="dot"></span>Configuración y escenarios</div>
+      <h2>Todo el caso de estudio <span class="grad-text">vive en dos YAML</span></h2>
+      <p class="lead">Sin números mágicos en el código: <code>escenario.yaml</code> define <b style="color:var(--txt)">dónde</b> (origen, destino, AOI) y <code>perfiles.yaml</code> define <b style="color:var(--txt)">con qué prioridades</b>. Editar el YAML y relanzar es suficiente para recalibrar cualquier peso.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:1fr 1.15fr">
+      <div class="card">
+        <h3>escenario.yaml — dónde</h3>
+        <div class="yaml">
+<span class="k">crs_trabajo:</span> <span class="v">EPSG:25830</span>   <span class="k">resolucion_m:</span> <span class="v">30</span><br>
+<span class="k">escenario_A:</span><br>
+&nbsp;&nbsp;<span class="k">origen:</span>&nbsp;&nbsp;<span class="cm"># punto de origen del ramal</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">x:</span> <span class="v">741453</span>&nbsp;&nbsp;<span class="k">y:</span> <span class="v">4561984</span><br>
+&nbsp;&nbsp;<span class="k">destino:</span> <span class="cm"># conexión a red troncal</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">x:</span> <span class="v">739098</span>&nbsp;&nbsp;<span class="k">y:</span> <span class="v">4550264</span>
+        </div>
+        <ul class="bullets" style="margin-top:.8rem">
+          <li><span class="bi">🗺️</span><div><b>AOI automático:</b> rectángulo que envuelve la línea origen→destino con <b>1 km de margen</b> (o un bbox explícito si se fija en el YAML).</div></li>
+          <li><span class="bi">🔁</span><div><b>Canónico vs. efímero:</b> <code>escenario_base.yaml</code> es la configuración «de fábrica»; la app la restaura al arrancar cada sesión.</div></li>
+          <li><span class="bi">📏</span><div><b>Límite del prototipo:</b> distancia origen–destino ≤ 15 km, validada en la propia interfaz.</div></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>perfiles.yaml — con qué prioridades</h3>
+        <p style="margin-bottom:.6rem">Cada perfil es un <b style="color:var(--txt)">vector de pesos</b> sobre las 7 capas de coste. Pesos distintos → superficies distintas → rutas diferenciadas.</p>
+        <div class="minigrid">
+          <div class="mini"><h5>corto <small>«más corto»</small></h5><table>
+            <tr><td>longitud</td><td class="c">1.00</td></tr>
+            <tr><td>cruces</td><td class="c">0.20</td></tr>
+            <tr><td>resto</td><td class="c">≤ 0.13</td></tr></table></div>
+          <div class="mini"><h5>ambiental <small>«menor impacto»</small></h5><table>
+            <tr><td>protegida</td><td class="c">1.00</td></tr>
+            <tr><td>geotecnia</td><td class="c">0.80</td></tr>
+            <tr><td>cruces · inundable</td><td class="c">0.50</td></tr></table></div>
+          <div class="mini"><h5>pendiente <small>«por divisorias»</small></h5><table>
+            <tr><td>tpi (relieve)</td><td class="c">1.00</td></tr>
+            <tr><td>geotecnia · longitud</td><td class="c">0.10</td></tr>
+            <tr><td>resto</td><td class="c">0.05</td></tr></table></div>
+          <div class="mini"><h5>equilibrio <small>recomendado</small></h5><table>
+            <tr><td>protegida + inundable</td><td class="c">0.37</td></tr>
+            <tr><td>expropiación</td><td class="c">0.21</td></tr>
+            <tr><td>geotecnia+tpi · cruces</td><td class="c">0.21 · 0.16</td></tr></table></div>
+        </div>
+        <p class="note">⚖️ <span>El perfil <b style="color:var(--txt-dim)">equilibrio</b> está alineado con las bandas de ponderación del anexo II (EV-500) de Enagás. El mismo fichero contiene también todos los costes intra-capa calibrables.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · INGESTA -->
+  <section class="slide" id="s4">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">04</span><span class="dot"></span>Ingesta</div>
+      <h2>Descarga pública por AOI <span class="grad-text">y alineación a la rejilla común</span></h2>
+      <p class="lead">La herramienta <b style="color:var(--txt)">no almacena cartografía</b>: consulta servicios GIS públicos por bbox en tiempo de ejecución, y cada capa se reproyecta a EPSG:25830 y se remuestrea a la rejilla de 30 m que fija el DEM.</p>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <h3 style="margin-bottom:.7rem">Siete capas, seis servicios públicos <span class="pill" style="margin-left:.3rem;font-size:.66rem">por bbox, en ejecución</span></h3>
+        <div class="mini" style="background:var(--panel)">
+          <table>
+            <tr><td><b style="color:var(--txt)">Relieve (DEM)</b></td><td class="c">Copernicus GLO-30 · AWS S3</td></tr>
+            <tr><td><b style="color:var(--txt)">Viario + ferrocarril</b></td><td class="c">OpenStreetMap · Overpass API</td></tr>
+            <tr><td><b style="color:var(--txt)">Hidrografía</b></td><td class="c">IGN INSPIRE · WFS</td></tr>
+            <tr><td><b style="color:var(--txt)">Geología (litología)</b></td><td class="c">IGME MAGNA50 · ArcGIS REST / WFS</td></tr>
+            <tr><td><b style="color:var(--txt)">Red Natura 2000</b></td><td class="c">IGN INSPIRE · WFS</td></tr>
+            <tr><td><b style="color:var(--txt)">Zonas inundables</b></td><td class="c">SNCZI · MITECO · OGC API Features</td></tr>
+            <tr><td><b style="color:var(--txt)">Catastro (parcelas)</b></td><td class="c" style="color:var(--amber)">aporte manual · data/raw/</td></tr>
+          </table>
+        </div>
+        <p class="note">🧭 <span><b style="color:var(--txt-dim)">Alinear = misma cuadrícula:</b> que un mismo punto del territorio caiga en la misma celda en todas las capas. Es la condición para poder sumar costes.</span></p>
+      </div>
+      <div>
+        <h3 style="margin-bottom:.55rem;font-family:var(--font-title);font-weight:600;font-size:1.02rem">Manifiesto de estado — la red de seguridad</h3>
+        <div class="dlist">
+          <div class="drow" style="grid-template-columns:.55fr 1.45fr">
+            <div class="what"><span class="pill tag-green" style="font-size:.68rem"><span class="d green"></span>ok</span></div>
+            <div class="why">El servicio respondió <b style="color:var(--txt)">con datos</b>: se escribe la capa y avanza al pipeline.</div>
+          </div>
+          <div class="drow" style="grid-template-columns:.55fr 1.45fr">
+            <div class="what"><span class="pill tag-blue" style="font-size:.68rem"><span class="d blue"></span>empty</span></div>
+            <div class="why">Respondió, pero <b style="color:var(--txt)">el AOI no tiene cobertura</b>: vacío legítimo (p. ej. 0 % inundable).</div>
+          </div>
+          <div class="drow" style="grid-template-columns:.55fr 1.45fr">
+            <div class="what"><span class="pill" style="font-size:.68rem;color:var(--red);border-color:rgba(210,61,87,.32);background:rgba(210,61,87,.10)"><span class="d red"></span>failed</span></div>
+            <div class="why"><b style="color:var(--red)">Servicio caído / timeout:</b> bloquea la alineación. Nunca se confunde «caído» con «sin datos».</div>
+          </div>
+          <div class="drow" style="grid-template-columns:.55fr 1.45fr">
+            <div class="what"><span class="pill tag-grey" style="font-size:.68rem"><span class="d grey"></span>skipped</span></div>
+            <div class="why">La capa ya existía para este AOI: se reutiliza sin volver a descargar.</div>
+          </div>
+        </div>
+        <p class="note">🛡️ <span>Un vacío silencioso también hace que los costes mientan: el manifiesto convierte cada descarga en un dato <b style="color:var(--txt-dim)">verificable</b>.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · SUPERFICIES DE COSTE -->
+  <section class="slide" id="s5">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">05</span><span class="dot"></span>Superficies de coste</div>
+      <h2>Todo condicionante, <span class="grad-text">un coste entre 0 y 1</span></h2>
+      <p class="lead">Los costes derivan de los <b style="color:var(--txt)">factores de ponderación oficiales de Enagás</b> con un divisor común: <code>coste_celda = A_oficial / 38</code> (38 = «terrenos inestables», el mayor factor). Así toda capa comparte escala y se conserva la jerarquía oficial entre condicionantes.</p>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <h3 style="margin-bottom:.7rem">Ejemplos de coste estandarizado</h3>
+        <div class="minigrid">
+          <div class="mini">
+            <h5>Geotecnia <small>IGME (litología)</small></h5>
+            <table>
+              <tr><td>Aluvial / terrazas</td><td class="c">0.05</td></tr>
+              <tr><td>Arenisca compacta</td><td class="c">0.22</td></tr>
+              <tr><td>Caliza / roca dura</td><td class="c">0.34</td></tr>
+              <tr><td>Yeso / expansivo</td><td class="c" style="color:var(--red)">1.00</td></tr>
+            </table>
+          </div>
+          <div class="mini">
+            <h5>Expropiación <small>Catastro (TIPO)</small></h5>
+            <table>
+              <tr><td>D — dominio público</td><td class="c">0.03</td></tr>
+              <tr><td>R — rústico</td><td class="c">0.10</td></tr>
+              <tr><td>Periurbano (&lt;500 m²)</td><td class="c">0.47</td></tr>
+              <tr><td>U — urbano</td><td class="c">0.66</td></tr>
+            </table>
+          </div>
+          <div class="mini">
+            <h5>Capas binarias <small>dentro / fuera</small></h5>
+            <table>
+              <tr><td>Red Natura 2000</td><td class="c">0.75</td></tr>
+              <tr><td>Inundable SNCZI</td><td class="c">0.375</td></tr>
+            </table>
+          </div>
+          <div class="mini">
+            <h5>Cruces puntuales <small>se pagan una vez</small></h5>
+            <table>
+              <tr><td>Río permanente</td><td class="c">0.34</td></tr>
+              <tr><td>Rambla</td><td class="c">0.26</td></tr>
+              <tr><td>Viario</td><td class="c">0.2–0.8</td></tr>
+              <tr><td>Ferrocarril</td><td class="c">0.9</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:.7rem">Relieve y combinación por perfil</h3>
+        <div class="formula">
+          <span class="lbl">Relieve · TPI (Weiss, 2001) — fuera del esquema A/38</span>
+          TPI(c) = z(c) − media(z en anillo de 300 m)<br>
+          cresta (+2σ) → 0.0 &nbsp;·&nbsp; llano → 0.5 &nbsp;·&nbsp; valle (−2σ) → 1.0<br>
+          barrera dura: pendiente Horn &gt; 70 % (≈ 35°) → <span class="obj">intransitable</span>
+        </div>
+        <div class="formula">
+          <span class="lbl">Superficie combinada por perfil</span>
+          superficie<sub>perfil</sub> = <span class="w">Σ pesoᵢ · capaᵢ</span> + BASE_LONG<br>
+          <span class="obj">una única fuente de verdad: combinar_pesos()</span>
+        </div>
+        <ul class="bullets" style="margin-top:.8rem">
+          <li><span class="bi">🏔️</span><div><b>Ir por la cresta:</b> el TPI abarata divisorias y encarece valles — la ruta de relieve evita fondos de cauce y reduce cruces.</div></li>
+          <li><span class="bi">🎚️</span><div><b>Recalibrable sin tocar código:</b> todos los valores viven en <code>perfiles.yaml</code>; es el punto abierto de calibración con Enagás.</div></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · MOTOR LCP -->
+  <section class="slide" id="s6">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">06</span><span class="dot"></span>Motor de trazado (LCP)</div>
+      <h2>Un Dijkstra 8-conexo propio, <span class="grad-text">celda a celda</span></h2>
+      <p class="lead">El camino de mínimo coste se calcula con una implementación propia de <b style="color:var(--txt)">Dijkstra sobre la rejilla</b> (<code>src/trazados/ruta_pendiente.py</code>): cada celda es un nodo conectado a sus 8 vecinas. Determinista: misma entrada, misma ruta.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:1.05fr 1fr">
+      <div class="card">
+        <div class="formula">
+          <span class="lbl">Coste de moverse entre celdas vecinas</span>
+          coste(p→q) = d · media(C_p, C_q)<br>
+          d = 1 (vecino ortogonal) &nbsp;|&nbsp; √2 (vecino diagonal)<br>
+          <span class="obj">Dijkstra 8-conexo isótropo · cola de prioridad (heapq)</span>
+        </div>
+        <ul class="bullets" style="margin-top:.8rem">
+          <li><span class="bi">🛰️</span><div><b>Como un GPS, pero sobre el territorio:</b> en lugar de carreteras, el grafo son las celdas de 30 m del AOI; el «peaje» de cada paso es el coste medio de las dos celdas.</div></li>
+          <li><span class="bi">🚧</span><div><b>Barreras duras:</b> las celdas intransitables (pendiente &gt; 70 %) quedan fuera del grafo — el algoritmo no puede atravesarlas, por caro que sea rodear.</div></li>
+          <li><span class="bi">📐</span><div><b>√2 en diagonal:</b> sin esa corrección el trazado preferiría artificialmente las diagonales; con ella, la geometría es honesta.</div></li>
+        </ul>
+      </div>
+      <div class="exec-col">
+        <div class="exec-line">
+          <span class="ic">🔍</span>
+          <div class="tx"><b>Por qué implementación propia</b><span>Control total del comportamiento celda a celda (barreras, coste medio en frontera, trazabilidad) y ninguna caja negra que explicar al cliente.</span></div>
+        </div>
+        <div class="exec-line">
+          <span class="ic">✅</span>
+          <div class="tx"><b>Óptimo garantizado</b><span>Dijkstra garantiza el mínimo coste exacto sobre el grafo — no una heurística: la ruta de cada perfil es <i>la mejor posible</i> para su superficie.</span></div>
+        </div>
+        <div class="exec-line">
+          <span class="ic">🔁</span>
+          <div class="tx"><b>Una ruta por perfil</b><span><code>run_perfiles()</code> repite el cálculo sobre las 4 superficies combinadas → 4 trazados candidatos que pasan a la fase de diferenciación.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 · DIFERENCIACIÓN -->
+  <section class="slide" id="s7">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">07</span><span class="dot"></span>Diferenciación de rutas</div>
+      <h2>Cuatro corredores de verdad, <span class="grad-text">no el mismo con ruido</span></h2>
+      <p class="lead">La diversidad nace <b style="color:var(--txt)">en el origen</b> (4 perfiles de prioridad → 4 superficies de coste) y se <b style="color:var(--txt)">verifica a la salida</b> midiendo el solapamiento entre corredores.</p>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <div class="formula">
+          <span class="lbl">Validación de solapamiento entre corredores</span>
+          solap(A→B) = long(A ∩ buffer(B, 60 m)) / long(A) · 100<br>
+          <span class="obj">DIFERENCIADAS ⟺ ningún par supera el 50 % de solape</span>
+        </div>
+        <ul class="bullets" style="margin-top:.8rem">
+          <li><span class="bi">📊</span><div><b>Matriz visible en la app:</b> la pestaña Diversidad muestra el solape de cada par de rutas — la validación no es una promesa, se enseña.</div></li>
+          <li><span class="bi">🚨</span><div><b>Si un par sale redundante</b> se reporta como tal: la pareja de rutas no se maquilla; toca revisar los pesos del perfil.</div></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Decisión de diseño: sin penalización algorítmica</h3>
+        <p>Descartamos el <i>corridor masking</i> (penalizar celdas de rutas ya trazadas para forzar alternativas): las rutas por perfil ya salen suficientemente distintas y cada una conserva un <b style="color:var(--txt)">significado explicable</b> — «la más corta», «la de menor impacto», «la de las divisorias», «la equilibrada».</p>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.9rem">
+          <span class="pill tag-blue"><span class="d blue"></span>corto</span>
+          <span class="pill tag-green"><span class="d green"></span>ambiental</span>
+          <span class="pill tag-purple"><span class="d" style="background:var(--accent-2)"></span>pendiente (TPI)</span>
+          <span class="pill tag-amber"><span class="d amber"></span>equilibrio</span>
+        </div>
+        <p class="note">💬 <span>Una alternativa forzada por penalización es difícil de justificar ante el cliente; una alternativa nacida de prioridades distintas se explica sola.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 · MÉTRICAS -->
+  <section class="slide" id="s8">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">08</span><span class="dot"></span>Métricas</div>
+      <h2>La misma regla <span class="grad-text">para medir las cuatro rutas</span></h2>
+      <p class="lead"><code>calcular_todas()</code> evalúa cada trazado con los criterios que pidió el reto. Como todas las capas están alineadas, las métricas son directamente comparables entre rutas.</p>
+    </div>
+    <div class="mchips">
+      <div class="mchip"><div class="mt"><span class="ico-sq">📏</span>Longitud</div><div class="ms">km totales del trazado — el criterio más intuitivo, pero no el único.</div></div>
+      <div class="mchip"><div class="mt"><span class="ico-sq">💠</span>Coste relativo</div><div class="ms">Índice adimensional acumulado sobre la superficie del perfil. Nunca €.</div></div>
+      <div class="mchip"><div class="mt"><span class="ico-sq">✂️</span>Cruces especiales</div><div class="ms">Nº y tipo: ríos (permanente/rambla), viario por categoría, ferrocarril.</div></div>
+      <div class="mchip"><div class="mt"><span class="ico-sq">🌿</span>Zona protegida e inundable</div><div class="ms">km del trazado dentro de Red Natura 2000 y de lámina SNCZI.</div></div>
+      <div class="mchip"><div class="mt"><span class="ico-sq">🏘️</span>Zona urbana / periurbana</div><div class="ms">km sobre parcelas urbanas y periurbanas (Catastro) — proxy de expropiación.</div></div>
+      <div class="mchip"><div class="mt"><span class="ico-sq">⛰️</span>Pendiente máx. y media</div><div class="ms">Del perfil longitudinal sobre el DEM (método de Horn).</div></div>
+    </div>
+    <p class="note">🧮 <span>Resultado: una <b style="color:var(--txt-dim)">tabla comparativa</b> + tarjetas KPI por ruta. La decisión final sigue siendo humana: la herramienta ordena la evidencia, no la sustituye.</span></p>
+  </section>
+
+  <!-- 9 · DEMO -->
+  <section class="slide" id="s9">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">09</span><span class="dot"></span>Demo en vivo</div>
+      <h2>La app Streamlit, <span class="grad-text">de un clic en el mapa al informe</span></h2>
+      <p class="lead">Asistente de 3 pasos sobre una única página (<code>streamlit_app.py</code>). Guion de la demo — <b style="color:var(--txt)">pasamos ahora a la aplicación</b>.</p>
+    </div>
+    <div class="two-col" style="grid-template-columns:1fr 1.1fr">
+      <div class="demo-steps">
+        <div class="dstep"><span class="dn">1</span><div class="dt2"><b>Paso 1 · Origen y destino</b><span>Dos clics sobre la ortofoto (Folium/Esri) fijan planta y conexión; la app valida la distancia ≤ 15 km.</span></div></div>
+        <div class="dstep"><span class="dn">2</span><div class="dt2"><b>Paso 2 · Pesos y perfiles</b><span>Los 4 perfiles con sus sliders por capa — aquí se ve que la calibración es transparente y editable.</span></div></div>
+        <div class="dstep"><span class="dn">3</span><div class="dt2"><b>Ejecución del pipeline</b><span>Descarga del AOI → capas de coste → 4 rutas. La barra de progreso narra cada etapa.</span></div></div>
+        <div class="dstep"><span class="dn">4</span><div class="dt2"><b>Resultados</b><span>Mapa con las 4 rutas · tarjetas KPI · pestañas de métricas · matriz de diversidad · informe PDF descargable.</span></div></div>
+      </div>
+      <div class="card glow">
+        <h3>Qué mirar durante la demo</h3>
+        <ul class="bullets" style="margin-top:.6rem">
+          <li><span class="bi">🗺️</span><div><b>Las 4 rutas son visiblemente distintas</b> — cada color cuenta una estrategia, no una variación.</div></li>
+          <li><span class="bi">🔢</span><div><b>La tabla invita al trade-off:</b> la corta cruza más; la ambiental alarga; la de relieve evita valles.</div></li>
+          <li><span class="bi">🔀</span><div><b>Pestaña Diversidad:</b> el solape de cada par por debajo del umbral del 50 %.</div></li>
+          <li><span class="bi">📄</span><div><b>Informe PDF:</b> el resultado se lleva a una reunión sin necesidad de la app.</div></li>
+        </ul>
+        <p class="note">🖥️ <span>Plan B ante fallo de red o servicio: escenario ya preparado en <code>data/processed/</code> — la app detecta las capas existentes y salta directa al trazado.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 · ENTORNO Y REPRODUCIBILIDAD -->
+  <section class="slide" id="s10">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">10</span><span class="dot"></span>Entorno y reproducibilidad</div>
+      <h2>Cualquiera del equipo (o de Enagás) <span class="grad-text">lo ejecuta igual</span></h2>
+      <p class="lead">La ingeniería alrededor del prototipo también es entregable: entorno pineado, puesta en marcha de un comando y una frontera clara entre lo que se versiona y lo que se regenera.</p>
+    </div>
+    <div class="grid g3">
+      <div class="rcard r1">
+        <span class="sp">setup.ps1 / setup.sh</span>
+        <h4>Un comando, mismo entorno</h4>
+        <p>Crea <code>proyecto/.venv</code> (Python 3.10), instala <code>requirements.txt</code> congelado y verifica cada import (OK/FALTA). Idempotente: se repite tras cada <code>git pull</code>.</p>
+      </div>
+      <div class="rcard r3">
+        <span class="sp">git + data/</span>
+        <h4>Qué se versiona y qué no</h4>
+        <p><b style="color:var(--green)">Sí:</b> código, <code>data/config/</code> (escenarios y perfiles), <code>FUENTES.md</code>.<br><b style="color:var(--red)">No:</b> <code>data/raw/</code> y <code>data/processed/</code> — se descargan y regeneran; el repositorio guarda la receta, no el plato.</p>
+      </div>
+      <div class="rcard r4">
+        <span class="sp">determinismo</span>
+        <h4>Mismo YAML, mismas rutas</h4>
+        <p>Pipeline sin azar: misma configuración → mismas 4 rutas y mismas métricas, en cualquier máquina. Es la base para auditar y calibrar con el cliente.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 · CIERRE -->
+  <section class="slide" id="close">
+    <div class="logo-bar right">
+      <div class="logo-chip">
+        <svg viewBox="0 0 184 70" aria-label="CI2LAB Investigación — Comillas ICAI">
+          <path d="M16 13 H7 V49 H16" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <path d="M168 13 H177 V49 H168" fill="none" stroke="#16357c" stroke-width="3.2"/>
+          <text x="92" y="37" text-anchor="middle" font-family="Poppins,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5" fill="#16357c">CI2<tspan fill="#2e74c4">LAB</tspan></text>
+          <text x="92" y="51" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9" font-weight="700" letter-spacing="3" fill="#16357c">INVESTIGACIÓN</text>
+          <text x="92" y="64" text-anchor="middle" font-family="Poppins,sans-serif" font-size="9.5" font-weight="500" letter-spacing="2" fill="#2e74c4">COMILLAS ICAI</text>
+        </svg>
+      </div>
+      <span class="logo-x">×</span>
+      <div class="logo-chip">
+        <img class="enagas-logo" src="data:image/png;base64,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" alt="Enagás">
+      </div>
+    </div>
+    <div style="max-width:64ch">
+      <div class="kicker"><span class="num">11</span><span class="dot"></span>Cierre</div>
+      <h1 style="font-size:clamp(2.2rem,5vw,4rem)">Pipeline completo, <span class="grad-text">conversación abierta</span></h1>
+      <p class="lead" style="margin-top:1.3rem">El prototipo está operativo end-to-end: de un origen y un destino a cuatro trazados diferenciados, medidos y comparables. Lo que mejor puede aportar ahora Enagás:</p>
+      <div class="dlist" style="margin-top:1.6rem;max-width:58ch">
+        <div class="drow" style="grid-template-columns:.9fr 1.45fr">
+          <div class="what">Calibración de pesos<span class="sub">perfiles.yaml · costes intra-capa</span></div>
+          <div class="why">Validar con criterio experto los costes por atributo y los pesos por capa que hoy propone el equipo.</div>
+        </div>
+        <div class="drow" style="grid-template-columns:.9fr 1.45fr">
+          <div class="what">Un ramal real<span class="sub">backtesting del modelo</span></div>
+          <div class="why">Origen y destino de un ramal existente para contrastar los trazados del modelo con el construido.</div>
+        </div>
+      </div>
+      <div style="margin-top:2.4rem;display:flex;gap:2.2rem;flex-wrap:wrap;color:var(--txt-faint);font-size:.85rem">
+        <div><div style="color:var(--txt-dim);font-weight:600;margin-bottom:.2rem">CI2 Lab 2026 — Enagás</div>16 de julio de 2026</div>
+        <div><div style="color:var(--txt-dim);font-weight:600;margin-bottom:.2rem">Cátedra de Industria Inteligente</div>ETSI ICAI · Comillas</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- HUD -->
+<div class="hint" id="hint"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>F</kbd> pantalla completa</div>
+<div class="hud">
+  <div class="dots" id="dots"></div>
+  <div class="ctrls">
+    <button class="nav" id="prevBtn" aria-label="Anterior">‹</button>
+    <span class="count" id="counter">1 / 12</span>
+    <button class="nav" id="nextBtn" aria-label="Siguiente">›</button>
+    <button class="nav" id="fsBtn" aria-label="Pantalla completa">⛶</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total = slides.length;
+  let idx = 0;
+  const topbar = document.getElementById('topbar-fill');
+  const counter = document.getElementById('counter');
+  const dotsWrap = document.getElementById('dots');
+  const hint = document.getElementById('hint');
+
+  slides.forEach((_,i)=>{
+    const b=document.createElement('button');
+    b.addEventListener('click',()=>go(i));
+    dotsWrap.appendChild(b);
+  });
+  const dots = Array.from(dotsWrap.children);
+
+  function render(){
+    slides.forEach((s,i)=>{
+      s.classList.remove('active','prev');
+      if(i===idx) s.classList.add('active');
+      else if(i<idx) s.classList.add('prev');
+    });
+    dots.forEach((d,i)=>d.classList.toggle('on',i===idx));
+    topbar.style.width = ((idx)/(total-1))*100 + '%';
+    counter.textContent = (idx+1)+' / '+total;
+  }
+  function go(n){
+    idx = Math.max(0, Math.min(total-1, n));
+    render();
+    if(idx>0){hint.classList.add('hide');}
+  }
+  function next(){ go(idx+1); }
+  function prev(){ go(idx-1); }
+
+  document.getElementById('nextBtn').addEventListener('click',next);
+  document.getElementById('prevBtn').addEventListener('click',prev);
+  document.getElementById('fsBtn').addEventListener('click',toggleFs);
+
+  function toggleFs(){
+    if(!document.fullscreenElement){ document.documentElement.requestFullscreen?.(); }
+    else{ document.exitFullscreen?.(); }
+  }
+
+  document.addEventListener('keydown',e=>{
+    switch(e.key){
+      case 'ArrowRight': case 'PageDown': case ' ': e.preventDefault(); next(); break;
+      case 'ArrowLeft': case 'PageUp': prev(); break;
+      case 'Home': go(0); break;
+      case 'End': go(total-1); break;
+      case 'f': case 'F': toggleFs(); break;
+    }
+  });
+
+  let tx=0;
+  document.addEventListener('touchstart',e=>{tx=e.changedTouches[0].clientX},{passive:true});
+  document.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-tx;
+    if(Math.abs(dx)>55){ dx<0?next():prev(); }
+  },{passive:true});
+
+  render();
+})();
+</script>
+</body>
+</html>
