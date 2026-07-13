@@ -1002,34 +1002,65 @@ _CSS = """
                   max-width: 720px; line-height: 1.5; }
 
   /* ── Bienvenida: tarjetas de igual altura ─────────────────────────────── */
-  /* Suelo común (por encima de la caja más alta) + estirado flex robusto: la
-     fila estira ambas columnas a la más alta y las tarjetas la rellenan. */
+  /* La fila estira ambas columnas a la más alta; TODA la cadena de envoltorios
+     intermedios (wrapper → div → stVerticalBlock) debe heredar la altura para
+     que la tarjeta con borde llegue hasta abajo en las dos columnas. */
   div[data-testid="stHorizontalBlock"]:has(.st-key-wcard_sim) { align-items: stretch; }
   div[data-testid="stColumn"]:has(.st-key-wcard_sim),
   div[data-testid="stColumn"]:has(.st-key-wcard_docs) {
     display: flex;
   }
   div[data-testid="stColumn"]:has(.st-key-wcard_sim) > div,
-  div[data-testid="stColumn"]:has(.st-key-wcard_docs) > div {
+  div[data-testid="stColumn"]:has(.st-key-wcard_docs) > div,
+  div[data-testid="stColumn"]:has(.st-key-wcard_sim) > div > div,
+  div[data-testid="stColumn"]:has(.st-key-wcard_docs) > div > div,
+  div[data-testid="stColumn"]:has(.st-key-wcard_sim) div[data-testid="stVerticalBlock"]:has(> .st-key-wcard_sim),
+  div[data-testid="stColumn"]:has(.st-key-wcard_docs) div[data-testid="stVerticalBlock"]:has(> .st-key-wcard_docs) {
     width: 100%;
     height: 100%;
   }
   .st-key-wcard_sim,
   .st-key-wcard_docs {
     height: 100%;
+    flex: 1 1 auto;
+  }
+  /* Dentro de cada tarjeta (la clase st-key va en su propio stVerticalBlock):
+     el primer hijo —el bloque de texto— crece y empuja el botón al borde
+     inferior; el contenedor del botón conserva su altura natural. */
+  .st-key-wcard_sim > div[data-testid="stElementContainer"]:first-child,
+  .st-key-wcard_docs > div[data-testid="stElementContainer"]:first-child {
+    flex: 1 1 auto;
+  }
+  .st-key-wcard_sim > div[data-testid="stElementContainer"]:last-child,
+  .st-key-wcard_docs > div[data-testid="stElementContainer"]:last-child {
+    flex: 0 0 auto;
+  }
+  /* La columna izquierda entera llega al suelo del hero: su bloque vertical
+     ocupa toda la altura y la fila de tarjetas absorbe el espacio restante,
+     de modo que el borde inferior de las tarjetas = borde inferior de la
+     imagen de la derecha. */
+  div[data-testid="stColumn"]:has(.st-key-wcard_sim) > div > div > div[data-testid="stVerticalBlock"] {
+    height: 100%;
+  }
+  div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"]:has(.st-key-wcard_sim) {
+    flex: 1 1 auto;
+    align-items: stretch;
   }
 
-  /* ── Bienvenida: hero derecho a toda la altura (con centrado de reserva) ── */
+  /* ── Bienvenida: hero derecho a toda la altura ─────────────────────────── */
+  /* Igual que las tarjetas: toda la cadena de envoltorios entre la columna y
+     el div de la imagen hereda la altura, para que el borde inferior de la
+     imagen coincida con el de las tarjetas de la izquierda. */
   div[data-testid="stHorizontalBlock"]:has(.st-key-hero_col) { align-items: stretch; }
-  div[data-testid="stColumn"]:has(.st-key-hero_col) > div[data-testid="stVerticalBlock"] {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
+  div[data-testid="stColumn"]:has(.st-key-hero_col) { display: flex; }
+  div[data-testid="stColumn"]:has(.st-key-hero_col) > div,
+  div[data-testid="stColumn"]:has(.st-key-hero_col) > div > div,
+  div[data-testid="stColumn"]:has(.st-key-hero_col) [data-testid="stVerticalBlock"],
   .st-key-hero_col,
-  .st-key-hero_col > div[data-testid="stVerticalBlock"],
+  .st-key-hero_col > div,
   .st-key-hero_col div[data-testid="stElementContainer"],
+  .st-key-hero_col div[data-testid="stMarkdown"],
+  .st-key-hero_col div[data-testid="stMarkdown"] > div,
   .st-key-hero_col div[data-testid="stMarkdownContainer"],
   .st-key-hero_col div[data-testid="stMarkdownContainer"] > div {
     height: 100%;
@@ -4031,7 +4062,7 @@ def _docs_buttons() -> None:
       }}
     </script>
     """
-    _html(snippet, height=len(items) * 54 + 12)
+    _html(snippet, height=len(items) * 48 + 6)
 
 
 def _render_bienvenida() -> None:
