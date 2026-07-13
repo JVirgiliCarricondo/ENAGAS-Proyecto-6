@@ -149,8 +149,8 @@ multicriterio.</p>
 │   ├── superficie/    # superficies de coste por criterio (raster [0,1]) + combinación por perfil
 │   ├── trazados/      # motor LCP (Dijkstra 8-conexo) + diferenciación de rutas
 │   ├── metricas/      # métricas multicriterio por ruta + diversidad de corredores
-│   ├── comparacion/   # comparador y scoring formal (esqueleto, Sprint 5)
-│   └── app/           # streamlit_app.py — interfaz web (orquestador puente)
+│   ├── comparacion/   # comparador y scoring formal (esqueleto, Sprint 7)
+│   └── app/           # streamlit_app.py — interfaz web (orquestador puente) + informe.py (PDF)
 ├── data/
 │   ├── config/        # escenario.yaml (AOI, origen/destino) · perfiles.yaml (pesos) — versionados
 │   ├── raw/            # capas GIS originales descargadas o aportadas a mano — NO versionadas
@@ -253,11 +253,18 @@ flowchart LR
   <div class="card">
     <h4 style="margin-top:0">Paso 1 · Origen y Destino <span class="pill">_render_paso1</span></h4>
     <ul class="clean" style="font-size:.88rem">
-      <li>Selector de escenario (<code>A</code>, <code>B</code>, …) y creación de escenarios nuevos.</li>
+      <li>Gestión de escenarios: crear, renombrar y borrar (<code>A</code>, <code>B</code>, …).
+          Los escenarios «de fábrica» se restauran al abrir cada sesión; los añadidos en
+          sesión son efímeros y sus salidas se limpian solas al cerrarla.</li>
       <li>Entradas numéricas <code>X/Y</code> en <b>EPSG:25830</b> (metros) para origen y destino.</li>
       <li>Mapa Folium con ortofoto Esri; un clic fija el punto activo (origen/destino) —
           convierte lat/lon → UTM con <code>pyproj.Transformer</code>.</li>
       <li>Valida la distancia máxima <code>MAX_DIST_M = 15 km</code>; bloquea «Siguiente» si se supera.</li>
+      <li>Tarjeta «Datos para esta zona»: estado real por capa contra disco (descargada /
+          pendiente / manual). Para Catastro, localiza los <b>municipios del corredor</b>
+          (límites IGN), enlaza a la Sede Catastro INSPIRE y acepta el <b>ZIP subido desde la
+          propia interfaz</b> (GML INSPIRE, Shapefile de la Sede o paquete provincial), que se
+          convierte y recorta automáticamente.</li>
       <li>Al avanzar, persiste las coordenadas en <code>data/config/escenario.yaml</code>.</li>
     </ul>
   </div>
@@ -268,6 +275,9 @@ flowchart LR
           <code>corto</code>, <code>equilibrio</code>, <code>ambiental</code>, <code>pendiente</code>.</li>
       <li>7 capas ponderables: longitud, TPI (relieve), protegida, inundable, cruces,
           expropiación, geotecnia.</li>
+      <li>Control de la <b>barrera dura de pendiente</b> (70 % por defecto, editable):
+          pendiente máxima transitable; el pipeline regenera la capa TPI cuando el umbral
+          pedido difiere del grabado en el GeoTIFF.</li>
       <li>«Generar rutas» dispara <code>_ejecutar_pipeline()</code> con
           <code>perfiles_override</code> (los pesos editados en la UI, sin tocar el YAML).</li>
     </ul>
@@ -284,8 +294,12 @@ flowchart LR
         pendiente, km protegida/inundable/urbano, nº cruces) + tarjetas KPI.</li>
     <li><b>Tab Diversidad:</b> matriz de solapamiento dirigido entre corredores (validación de que
         las rutas son realmente distintas).</li>
-    <li>Avisos de preparación: capas de coste que no se pudieron generar y por tanto
-        <b>no entraron</b> en el cálculo de ese escenario.</li>
+    <li><b>Informe PDF por escenario</b> (<code>src/app/informe.py</code>): metodología, ráster +
+        ruta y comparativa por perfil, con caché invalidada por contenido; y <b>descarga ZIP</b>
+        de las rutas (<code>.gpkg</code> + estilos <code>.qml</code>).</li>
+    <li>Avisos de preparación: capas de coste que no se pudieron generar (y por tanto
+        <b>no entraron</b> en el cálculo) o descargadas de forma <b>incompleta</b>
+        (p. ej. una colección SNCZI caída).</li>
   </ul>
 </div>
 
@@ -300,8 +314,11 @@ flowchart LR
   <ul class="clean" style="font-size:.9rem">
     <li>Purga el caché de módulos de <code>sys.modules</code> (para recoger cambios de config en caliente)
         e importa <code>run_perfiles</code>, <code>calcular_todas</code>, <code>preparar</code>.</li>
-    <li>Si el escenario <b>no está preparado</b> (faltan capas en <code>Capas_Coste/</code>) →
+    <li>Limpia las <b>salidas huérfanas</b> (rutas/superficies de escenarios que ya no existen)
+        y, si el escenario <b>no está preparado</b> (faltan capas en <code>Capas_Coste/</code>) →
         llama a <code>preparar()</code> (descarga + alineación + superficies).</li>
+    <li>Regenera la capa TPI cuando el <b>umbral de la barrera de pendiente</b> pedido en la UI
+        difiere del grabado en <code>tpi_{s}.tif</code> (etiqueta del GeoTIFF).</li>
     <li>Traza las rutas (<code>run_perfiles</code>) y calcula las métricas (<code>calcular_todas</code>),
         reportando progreso a la barra de Streamlit vía <code>progress_cb</code>.</li>
   </ul>
@@ -316,32 +333,38 @@ flowchart LR
   <table style="font-size:.8rem">
     <thead><tr><th>Capa</th><th>Fuente / servicio</th><th>Descarga</th><th>Salida</th></tr></thead>
     <tbody>
-      <tr><td>DEM (25 m)</td><td>MDT25 IGN (WCS)</td><td><span class="tag ok">automática</span></td><td><code>DEM_{s}.tif</code></td></tr>
-      <tr><td>Viario + ferrocarril</td><td>OpenStreetMap (Overpass API)</td><td><span class="tag ok">automática</span></td><td><code>OSM_{s}.gpkg</code></td></tr>
-      <tr><td>Hidrografía</td><td>WFS IGN INSPIRE (<code>HY.PhysicalWaters</code>)</td><td><span class="tag ok">automática</span></td><td><code>HID_{s}.gpkg</code></td></tr>
-      <tr><td>Geología (litología)</td><td>IGME MAGNA50 (WFS / ArcGIS REST)</td><td><span class="tag ok">automática</span></td><td><code>IGME_{s}.gpkg</code></td></tr>
-      <tr><td>Zonas inundables</td><td>SNCZI MITECO (servicio web OGC/WMS, T10+T100+T500)</td><td><span class="tag ok">automática</span></td><td><code>INUND_{s}.gpkg</code></td></tr>
-      <tr><td>Red Natura 2000</td><td>Capa nacional (WFS IGN INSPIRE <code>PS.ProtectedSite</code>)</td><td><span class="tag stub">manual</span></td><td><code>RN2000_{s}.gpkg</code></td></tr>
-      <tr><td>Catastro (uso del suelo)</td><td>Sede Electrónica del Catastro (<code>PARCELA.shp</code> por municipio)</td><td><span class="tag stub">manual</span></td><td><code>Catastro/…</code></td></tr>
+      <tr><td>DEM (~30 m)</td><td>Copernicus GLO-30 (tiles COG en AWS S3)</td><td><span class="tag ok">automática</span></td><td><code>DEM_{s}.tif</code></td></tr>
+      <tr><td>Viario + ferrocarril</td><td>OpenStreetMap (Overpass API, 3 endpoints con reintento)</td><td><span class="tag ok">automática</span></td><td><code>OSM_{s}.gpkg</code></td></tr>
+      <tr><td>Hidrografía</td><td>WFS IGN INSPIRE (<code>hy-n:WatercourseLink</code>)</td><td><span class="tag ok">automática</span></td><td><code>HID_{s}.gpkg</code></td></tr>
+      <tr><td>Geología (litología)</td><td>IGME MAGNA50 (ArcGIS REST)</td><td><span class="tag ok">automática</span></td><td><code>IGME_{s}.gpkg</code></td></tr>
+      <tr><td>Zonas inundables</td><td>SNCZI MITECO (OGC API Features, <b>vector</b>; unión T10+T100+T500)</td><td><span class="tag ok">automática</span></td><td><code>INUND_{s}.gpkg</code></td></tr>
+      <tr><td>Red Natura 2000</td><td>MITECO (OGC API Features, <code>biodiversidad:RedNatura</code>)</td><td><span class="tag ok">automática</span></td><td><code>RN2000_{s}.gpkg</code></td></tr>
+      <tr><td>Catastro (uso del suelo)</td><td>Sede Catastro INSPIRE — ZIP por municipio subido desde la app; foral (Navarra/P. Vasco) por bbox</td><td><span class="tag stub">manual asistida</span></td><td><code>Catastro/…</code></td></tr>
     </tbody>
   </table>
   <div class="warn" style="font-size:.86rem;margin-top:10px">
     <b>Qué se descarga solo y qué hay que aportar a mano:</b>
     <ul class="clean" style="margin:6px 0 0">
-      <li><b>Red Natura 2000 y Catastro NO se descargan automáticamente.</b> Hay que colocarlos a mano en
-          <code>data/raw/RN2000/</code> y <code>data/raw/Catastro/</code>. Si faltan, esas capas se
-          <b>omiten con un aviso</b> (no es un error del pipeline) y su criterio no entra en el coste.</li>
-      <li><b>Zonas inundables (SNCZI): el pipeline las descarga automáticamente</b> del servicio web de MITECO
-          (OGC/<b>WMS</b>) y las integra vía <code>zonas_inundables.py</code>. Pero el WMS devuelve una
-          <b>imagen aproximada</b> (ráster renderizado, sin atributos). <b>Siguiente paso previsto:</b> permitir
-          que el usuario <b>descargue la capa oficial desde la web del SNCZI (MITECO) y la aporte a mano</b>
-          —igual que Red Natura 2000 y Catastro—, más fiable que la imagen WMS; <b>aún no está implementado</b>.</li>
+      <li><b>Todas las capas GIS se descargan automáticamente salvo el Catastro nacional</b> (no hay
+          servicio bbox fiable). La aportación es <b>asistida desde la app</b>: la tarjeta de Catastro
+          del Paso 1 localiza los municipios del corredor, enlaza a la Sede Catastro INSPIRE y
+          convierte el ZIP subido (GML INSPIRE, Shapefile de la Sede o paquete provincial) en
+          <code>PARCELA.shp</code> recortado al AOI. El catastro <b>foral</b> (Navarra y País Vasco)
+          sí se descarga por bbox (<code>catastro_foral.py</code>).</li>
+      <li><b>Red Natura 2000 es automática pero opcional:</b> se descarga vía OGC API Features de
+          MITECO (el WFS INSPIRE del IGN, inestable, se abandonó); si el servicio falla, el pipeline
+          <b>continúa con un aviso</b> y ese criterio no entra en el coste del escenario.</li>
+      <li><b>Zonas inundables (SNCZI):</b> vector oficial con atributos vía OGC API Features de MITECO
+          (colecciones T10/T100/T500). Si alguna colección falla habiendo datos de otras, la capa se
+          marca <b>parcial</b> y llega como aviso a la pantalla de resultados.</li>
     </ul>
   </div>
   <p style="font-size:.86rem;margin-top:10px">Para las capas automáticas, escribe un <b>manifiesto de estado</b>
      (<code>manifiesto_estado.json</code>) con contrato <code>ok</code> / <code>empty</code> /
-     <code>failed</code>: <code>failed</code> <b>no</b> escribe un GPKG vacío y devuelve código ≠ 0
-     para que el pipeline no avance a ciegas (distingue «sin cobertura confirmada» de «descarga fallida»).</p>
+     <code>failed</code> / <code>partial</code>: <code>failed</code> <b>no</b> escribe un GPKG vacío y devuelve
+     código ≠ 0 para que el pipeline no avance a ciegas (distingue «sin cobertura confirmada» de «descarga
+     fallida»); <code>partial</code> escribe los datos disponibles pero se degrada a <b>aviso visible</b>
+     en resultados (capa posiblemente incompleta).</p>
   <p style="font-size:.9rem"><b><code>alinear_capas.py</code></b> — construye el AOI, reproyecta todo a
      <b>EPSG:25830</b>, remuestrea rasters a la rejilla común, recorta/reproyecta vectores a GeoPackage,
      detecta solapamientos (umbral 70 %) y <b>deriva la capa de coste TPI</b> del DEM alineado.</p>
@@ -407,7 +430,7 @@ flowchart LR
 
 <div class="warn" style="font-size:.88rem">
   <b>Comparación/scoring formal:</b> los módulos <code>src/comparacion/comparador.py</code> y
-  <code>src/app/cli.py</code> son <b>esqueletos</b> (Sprint 5). Hoy la comparativa y el ranking se
+  <code>src/app/cli.py</code> son <b>esqueletos</b> (Sprint 7). Hoy la comparativa y el ranking se
   construyen directamente en la página de resultados de Streamlit (DataFrames + KPIs + matriz de diversidad),
   no en un módulo de scoring dedicado.
 </div>
@@ -419,16 +442,15 @@ flowchart LR
 sale cada número y <b>retomar o mejorar</b> el sistema en el futuro.</p>
 
 <h3>Cómo reproducir una ejecución</h3>
-<pre style="font-size:.8rem"># 1. Entorno (desde proyecto/)
-python -m venv .venv
-.venv\Scripts\Activate.ps1            # Windows PowerShell
-pip install -r requirements.txt        # en Windows es más cómodo con conda-forge
+<pre style="font-size:.8rem"># 1. Entorno (desde proyecto/) — script oficial: crea proyecto/.venv (Python 3.10),
+#    instala requirements.txt (pip freeze del entorno validado) y verifica los imports
+.\setup.ps1                            # Windows PowerShell   (Linux/macOS: ./setup.sh)
+python check_entorno.py                # verificación OK/FALTA, útil tras cada git pull
 
-# 2. Datos que hay que aportar a mano en data/raw/ (NO se descargan solos):
-#    · Red Natura 2000  → data/raw/RN2000/
-#    · Catastro          → data/raw/Catastro/  (PARCELA.shp por municipio)
-#    (Zonas inundables SÍ se descargan solas del SNCZI vía WMS, pero es una imagen aproximada;
-#     que el usuario las descargue de la web del SNCZI y las aporte a mano —como RN2000/Catastro— es un paso previsto, aún no implementado)
+# 2. Única capa manual: CATASTRO nacional. Se aporta desde la propia app:
+#    tarjeta de Catastro del Paso 1 → enlaces por municipio a la Sede Catastro
+#    INSPIRE → subir el ZIP (la app lo convierte y recorta sola).
+#    (RN2000 y zonas inundables SNCZI se descargan solas, vía OGC API Features de MITECO)
 
 # 3a. Interfaz web (recomendado):
 streamlit run src/app/streamlit_app.py
@@ -489,9 +511,10 @@ coste del factor de ponderación oficial <code>A</code> con divisor común
 <ul class="clean" style="font-size:.9rem">
   <li>El <b>TPI (relieve)</b> queda fuera del esquema A/38 (no es un condicionante de la tabla):
       se normaliza por z-score sobre el AOI y se acota a ±2σ → cresta 0.0 / valle 1.0.</li>
-  <li>Existe una <b>barrera dura</b> de transitabilidad: pendiente (Horn) <b>&gt; 70 %, que es lo mismo
-      que decir una inclinación &gt; 35°</b> → celda intransitable (<code>inf</code> → <code>nan</code>),
-      independiente del coste.</li>
+  <li>Existe una <b>barrera dura</b> de transitabilidad: pendiente (Horn) por encima del umbral →
+      celda intransitable (<code>inf</code> → <code>nan</code>), independiente del coste. El umbral es
+      <b>70 % por defecto (≈ 35° de inclinación) y editable desde el Paso 2</b> de la interfaz; el valor
+      usado queda grabado como etiqueta del GeoTIFF de la capa TPI, que se regenera si cambia.</li>
   <li>El peso por perfil (en <code>perfiles.yaml</code>) modula el énfasis; el valor base de cada capa
       ya refleja la severidad oficial del condicionante.</li>
 </ul>
@@ -532,7 +555,9 @@ coste del factor de ponderación oficial <code>A</code> con divisor común
 <div class="card">
     <h4 style="margin-top:0">Stack</h4>
     <ul class="clean" style="font-size:.86rem">
-      <li><b>Lenguaje:</b> Python 3.11+ (código en inglés, docs en español).</li>
+      <li><b>Lenguaje:</b> Python 3.10 (fijado en <code>.python-version</code>; entorno oficial
+          <code>proyecto/.venv</code> creado por <code>setup.ps1</code>/<code>setup.sh</code>).
+          Código en inglés, docs en español.</li>
       <li><b>Geoespacial:</b> rasterio · geopandas · shapely · pyproj · numpy.</li>
       <li><b>Descarga:</b> requests / urllib · osmnx-Overpass (WFS/WCS/OGC API).</li>
       <li><b>UI y mapas:</b> Streamlit · folium · streamlit-folium.</li>
