@@ -93,8 +93,8 @@
 
 <p>Pipeline geoespacial y determinista — <b>alinear antes de combinar, diferenciar antes de comparar</b>.
    Lo orquesta la interfaz Streamlit (<code>src/app/streamlit_app.py</code>), que encadena preparación del
-   escenario, cálculo de rutas y métricas. El diagrama recorre el flujo de arriba abajo e incluye las
-   compuertas de decisión reales del código.</p>
+   escenario, cálculo de rutas y métricas. El diagrama recorre el flujo de arriba abajo; la única compuerta
+   de decisión real del código es «¿escenario nuevo?» (preparar o reutilizar).</p>
 
 <div class="lgd">
   <span><span class="sw" style="background:#004e7e"></span> Terminal (entrada / salida)</span>
@@ -114,16 +114,15 @@ flowchart TB
   S1 --> S2["2 · CAPAS DE COSTE (6 en 0–1)<br/>tpi · geotecnia · expropiación · protegida · inundable · cruces"]
   S2 --> S3["3 · COMBINACIÓN POR PERFIL<br/>Σ pesoᵢ · capaᵢ + BASE_LONG"]
   S3 --> S4["4 · CAMINO DE MÍNIMO COSTE<br/>Dijkstra 8-conexo isótropo"]
-  S4 --> DIF{"5 · DIFERENCIACIÓN<br/>¿algún par ≥ 50 % de solapamiento?"}
-  DIF -- "Sí · redundantes" --> RED["Se reporta redundante<br/>revisar pesos del perfil"]
-  DIF -- "No · diferenciadas" --> S6["6 · MÉTRICAS MULTICRITERIO<br/>longitud · coste · pendiente · cruces · zonas"]
+  S4 --> S5["5 · DIFERENCIACIÓN (informativa)<br/>mide el solapamiento entre pares y marca los redundantes · NO descarta ni regenera rutas"]
+  S5 --> S6["6 · MÉTRICAS MULTICRITERIO<br/>longitud · coste · pendiente · cruces · zonas"]
   S6 --> OUT(["SALIDA — KPIs · tabla comparativa · mapa de 4 rutas"])
 
   classDef term fill:#004e7e,stroke:#002b5c,color:#ffffff;
   classDef dec fill:#fbeccb,stroke:#b4791a,color:#5a3d00;
   classDef auto fill:#eef3f7,stroke:#0067a3,color:#181c1e;
   class E,OUT term;
-  class NEW,DIF,MAN,RED dec;
+  class NEW,MAN dec;
   class AUTO auto;
 </div>
 
@@ -134,6 +133,13 @@ flowchart TB
    asistida desde la app (enlaces por municipio a la Sede Catastro INSPIRE → subir el ZIP → conversión y recorte
    automáticos). El estado por capa se registra en <code>manifiesto_estado.json</code>
    (<code>ok</code>/<code>empty</code>/<code>failed</code>/<code>partial</code>).</p>
+
+<p class="note" style="font-size:.9rem"><b>Diferenciación (paso 5), informativa:</b> la diversidad de corredores es
+   una <b>medición a posteriori</b>, no una compuerta. Se generan siempre las 4 rutas (una por perfil) y todas
+   pasan a métricas y al mapa <b>aunque un par supere el 50 % de solapamiento</b>. La app muestra la matriz de
+   solapamiento en la pestaña «Diversidad» para que el usuario juzgue; el sistema <b>no descarta, no regenera ni
+   reajusta pesos</b> por sí mismo. La diferenciación se persigue <em>de raíz</em>, dando pesos distintos a cada
+   perfil (superficies de coste distintas ⇒ corredores distintos), no filtrando al final.</p>
 
 <!-- ============================================================ -->
 <h2 id="capas"><span class="n">02</span>Capas de coste y estandarización</h2>
