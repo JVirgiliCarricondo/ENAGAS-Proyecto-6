@@ -160,4 +160,4 @@ python src/ingesta/alinear_capas.py --escenario A
 python src/ingesta/alinear_capas.py --escenario B
 ```
 
-> Los archivos de `Recorte_AOI/` **sí están versionados** en git. Si solo se quiere usar el pipeline a partir de las capas ya procesadas (sin re-ejecutar la ingesta), hacer `git pull` es suficiente.
+> Los archivos de `Recorte_AOI/` **no se versionan** en git (el `.gitignore` excluye toda capa GIS: `*.gpkg`, `*.tif`, …). Tras clonar o hacer `git pull`, cada persona debe regenerarlos ejecutando la ingesta anterior (o dejar que la app prepare el escenario automáticamente).
