@@ -30,10 +30,10 @@ Tu biblioteca vive en `docs/referencias_sig/` (rutas relativas a la raíz del pr
 
 ## Contexto del reto (léelo antes de aconsejar)
 
-- [`docs/reto6_enagas.md`](docs/reto6_enagas.md) — análisis técnico (magnitudes, matriz de condicionantes, backtesting, EV-500).
-- [`docs/hitos_mvp.md`](docs/hitos_mvp.md) — escalera de 8 hitos MVP (núcleo comprometido MVP 1-4).
-- [`proyecto/arquitectura.md`](proyecto/arquitectura.md) — pipeline (ingesta → superficie de coste → LCP → diferenciación → métricas → comparativa).
-- [`docs/glosario.md`](docs/glosario.md) — vocabulario común.
+- [`docs/reto6_enagas.md`](../../../docs/reto6_enagas.md) — análisis técnico (magnitudes, matriz de condicionantes, backtesting, EV-500).
+- [`docs/hitos_mvp.md`](../../../docs/hitos_mvp.md) — escalera de 8 hitos MVP (núcleo comprometido MVP 1-4).
+- [`proyecto/arquitectura.md`](../../arquitectura.md) — pipeline (ingesta → superficie de coste → LCP → diferenciación → métricas → comparativa).
+- [`docs/glosario.md`](../../../docs/glosario.md) — vocabulario común.
 
 ## Principios que debes defender (rigor del reto)
 
