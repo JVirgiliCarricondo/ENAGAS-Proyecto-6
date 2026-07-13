@@ -40,7 +40,16 @@ copy .env.example .env      # Windows  (cp en macOS/Linux)
 
 Y define el caso de estudio en `data/config/` (AOI, origen, destino, perfiles), registrando las capas en `data/raw/FUENTES.md`.
 
-> **Un único entorno:** el entorno oficial es **`proyecto/.venv`** (el que crean los scripts). Si tienes un `.venv` en la **raíz del repositorio**, no se usa y conviene borrarlo para no confundir al IDE.
+> ⚠️ **CONGELADO HASTA DESPUÉS DE LA DEMO (17-jul-2026):** el entorno con el que se ha validado la
+> demo es el **`.venv` de la RAÍZ del repo** (Python 3.14) — `proyecto/.venv` no existe ahora mismo.
+> Hasta el viernes, **no ejecutes `setup.ps1`/`setup.sh` ni borres el `.venv` raíz** en el portátil de
+> la demo: crearías/estrenarías un entorno (Python 3.10 + versiones pineadas) nunca probado con el
+> código actual. Tras la demo se unificará la historia de entornos y se retirará este aviso
+> (ver `coordinacion/auditoria_2026-07-13.md`, hallazgo de entornos).
+>
+> **Un único entorno** (objetivo, hoy suspendido por el aviso de arriba): el entorno oficial es
+> **`proyecto/.venv`** (el que crean los scripts). Si tienes un `.venv` en la **raíz del repositorio**,
+> no se usa y conviene borrarlo para no confundir al IDE.
 
 ### Todo esto es automático si usas VS Code
 

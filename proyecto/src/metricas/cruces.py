@@ -14,7 +14,7 @@ Uso como script:
   python src/metricas/cruces.py
 
 Uso como librería (desde calculo.py u otros módulos):
-  from src.metricas.cruces import contar_cruces, cruces_escenario
+  from metricas.cruces import contar_cruces, cruces_escenario  # con proyecto/src en sys.path
   resultado = cruces_escenario(ruta_path, escenario="A")
 """
 

@@ -496,7 +496,8 @@ def _load_download_manifest(scenario: str, log: logging.Logger) -> dict[str, dic
 def _scenario_raw_name(spec: "LayerSpec", scenario: str) -> str | None:
     """Nombre del archivo raw que descargar_capas.py generaría para esta capa y
     escenario (p. ej. IGME_A.gpkg), o None si la capa no proviene de la descarga
-    automática (RN2000, Catastro… se colocan a mano y no tienen manifiesto)."""
+    automática (hoy solo el Catastro de régimen común, que se aporta a mano y no
+    tiene manifiesto; RN2000 y el catastro foral ya se descargan solos)."""
     tmpl = _SCENARIO_FILES.get(spec.label)
     return tmpl.replace("{s}", scenario) if tmpl else None
 

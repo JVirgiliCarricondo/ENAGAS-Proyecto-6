@@ -3645,7 +3645,13 @@ def _boton_descargar_rutas_zip(escenarios: list[str]) -> None:
         )
         return
 
-    firma = tuple((s, perfil) for s, perfil, _ in rutas)
+    # La firma incluye el mtime de cada ruta: regenerar una ruta (mismo
+    # escenario/perfil, fichero reescrito) debe invalidar el ZIP cacheado.
+    # Sin esto, tras reprocesar se descargaba el ZIP viejo (mismo bug que se
+    # corrigió en la firma del informe PDF).
+    firma = tuple(
+        (s, perfil, path.stat().st_mtime) for s, perfil, path in rutas
+    )
     cache = st.session_state.get("_zip_rutas_cache")
     if not (cache and cache[0] == firma):
         buf = io.BytesIO()
