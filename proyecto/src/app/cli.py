@@ -1,4 +1,4 @@
-"""Punto de entrada CLI del generador de trazados (esqueleto — Sprint 7).
+"""Punto de entrada CLI del generador de ramales (esqueleto — Sprint 7).
 
 Orquestador por línea de comandos: ejecuta el pipeline geoespacial completo para
 cada perfil de prioridad y genera la tabla comparativa + el mapa de las rutas. Es
