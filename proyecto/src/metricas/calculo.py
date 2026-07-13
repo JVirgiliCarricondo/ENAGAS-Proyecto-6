@@ -71,6 +71,14 @@ _NODATA_DEM = -9999.0
 
 @dataclass
 class MetricasRuta:
+    """Contenedor de todas las métricas multicriterio de una ruta.
+
+    Agrupa el resultado de cada módulo de métricas para una ruta identificada por
+    (escenario, perfil). Los campos numéricos arrancan a 0.0 y se rellenan a medida
+    que cada métrica se calcula; los módulos que fallen quedan en ``errores`` y sus
+    campos se serializan como None (ver ``to_dict`` y ``_CAMPOS_POR_ERROR``).
+    """
+
     escenario: str
     perfil: str
 
@@ -155,6 +163,11 @@ class MetricasRuta:
 # ── Helpers internos ─────────────────────────────────────────────────────────
 
 def _cargar_linea(escenario: str, perfil: str) -> LineString:
+    """Lee el .gpkg de la ruta (escenario, perfil) y devuelve su geometría.
+
+    Raises:
+        FileNotFoundError: Si no existe el .gpkg de la ruta.
+    """
     path = _RUTAS_DIR / f"ruta_{escenario}_{perfil}.gpkg"
     if not path.exists():
         raise FileNotFoundError(f"Ruta no encontrada: {path}")
@@ -163,7 +176,12 @@ def _cargar_linea(escenario: str, perfil: str) -> LineString:
 
 
 def _superficie_path(escenario: str) -> Path | None:
-    """Superficie de referencia común del escenario (pesos iguales)."""
+    """Superficie de referencia común del escenario (pesos iguales).
+
+    Se usa la superficie neutral (no la del perfil) para que el coste_relativo de
+    todas las rutas del escenario se normalice contra la misma escala y sea
+    comparable entre perfiles. Devuelve None si el .tif no existe.
+    """
     p = _TRAZADOS_DIR / f"superficie_{escenario}.tif"
     return p if p.exists() else None
 
@@ -173,7 +191,20 @@ def _linea_a_celdas(
     transform: rasterio.Affine,
     shape: tuple[int, int],
 ) -> list[tuple[int, int]]:
-    """Convierte vértices de un LineString a índices (row, col) de la rejilla."""
+    """Convierte vértices de un LineString a índices (row, col) de la rejilla.
+
+    Conversión coordenada→celda de cada vértice (rasterio.transform.rowcol invierte
+    la afín del raster). Los índices se recortan (clip) al rango válido de la rejilla
+    por si un vértice cae justo en el borde y su fila/columna se sale por 1.
+
+    Args:
+        linea: Ruta en EPSG:25830 (mismas coordenadas que el raster del DEM).
+        transform: Transformación afín del raster de referencia.
+        shape: Forma (H, W) del raster, para recortar los índices al rango válido.
+
+    Returns:
+        Lista de celdas ``(row, col)``, una por vértice de la línea.
+    """
     coords = list(linea.coords)
     xs = [c[0] for c in coords]
     ys = [c[1] for c in coords]
@@ -190,9 +221,22 @@ def _linea_a_celdas(
 def calcular_metricas_ruta(escenario: str, perfil: str) -> MetricasRuta:
     """Reúne todas las métricas de una ruta dada por escenario y perfil.
 
-    Los módulos que no puedan ejecutarse (archivo de entrada ausente, etc.) no
-    abortan el cálculo: su error queda registrado en MetricasRuta.errores y
-    sus campos quedan a 0.
+    Ejecuta cada métrica parcial en su propio try/except: un módulo que falle
+    (archivo de entrada ausente, capa sin CRS, etc.) NO aborta el resto. Su error
+    queda anotado en ``MetricasRuta.errores`` y, al serializar con ``to_dict``, sus
+    campos salen como None ("sin dato"), no como el 0.0 por defecto del dataclass
+    (un fallo de cálculo no es un cero real).
+
+    Args:
+        escenario: Identificador de escenario (p. ej. 'A'); se normaliza a mayúsculas.
+        perfil: Perfil de prioridad de la ruta (p. ej. 'equilibrio').
+
+    Returns:
+        MetricasRuta con todas las métricas de la ruta y el registro de errores.
+
+    Raises:
+        FileNotFoundError: Si no existe el .gpkg de la ruta (se carga antes de las
+            métricas parciales, así que este fallo sí se propaga al llamante).
     """
     s = escenario.upper()
     m = MetricasRuta(escenario=s, perfil=perfil)

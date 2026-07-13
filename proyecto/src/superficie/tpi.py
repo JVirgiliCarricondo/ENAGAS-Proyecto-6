@@ -104,7 +104,20 @@ def _pendiente_horn_pct_numpy(dem: np.ndarray, cellsize: float, nodata: float) -
 
 def calcular_pendiente_pct(dem: np.ndarray, transform, nodata: float = NODATA,
                            cellsize: float = RESOLUCION_M) -> np.ndarray:
-    """Pendiente en PORCENTAJE (Horn). Usa richdem si esta instalado; si no, numpy."""
+    """Pendiente en PORCENTAJE (Horn). Usa richdem si esta instalado; si no, numpy.
+
+    Solo se usa para la BARRERA de transitabilidad (celdas demasiado inclinadas),
+    no para el coste morfológico (de eso se encarga el TPI).
+
+    Args:
+        dem: Array de elevaciones del DEM.
+        transform: Transform afín del DEM (para georreferenciar en richdem).
+        nodata: Valor centinela de nodata en el DEM.
+        cellsize: Tamaño de celda en metros (fallback si no se usa richdem).
+
+    Returns:
+        Array float32 de pendiente en porcentaje (nan en celdas inválidas).
+    """
     try:
         import richdem as rd
         dem_rd = rd.rdarray(dem.astype(np.float64), no_data=nodata)
@@ -117,8 +130,21 @@ def calcular_pendiente_pct(dem: np.ndarray, transform, nodata: float = NODATA,
 
 
 def _kernel_anular(radio_ext_celdas: float, radio_int_celdas: float) -> np.ndarray:
-    """Kernel binario del vecindario: 1 dentro del anillo (centro excluido), 0 fuera."""
+    """Kernel binario del vecindario: 1 dentro del anillo (centro excluido), 0 fuera.
+
+    El TPI compara la celda con la media de un ANILLO (corona circular) a su
+    alrededor: solo cuentan las celdas cuya distancia al centro está entre el
+    radio interior y el exterior. Un radio interior 0 equivale a un disco.
+
+    Args:
+        radio_ext_celdas: Radio exterior del anillo, en celdas.
+        radio_int_celdas: Radio interior del anillo, en celdas (0 = disco).
+
+    Returns:
+        Kernel 2D (float64) con 1 en las celdas del anillo y 0 fuera.
+    """
     r = int(np.ceil(radio_ext_celdas))
+    # Rejilla de offsets (x, y) centrada; dist = distancia euclídea al centro.
     y, x = np.ogrid[-r : r + 1, -r : r + 1]
     dist = np.hypot(x, y)
     k = ((dist <= radio_ext_celdas) & (dist > radio_int_celdas)).astype(np.float64)
@@ -131,14 +157,27 @@ def _media_vecindario(z: np.ndarray, valid: np.ndarray, kernel: np.ndarray) -> n
 
     Los bordes del AOI y las celdas nodata se excluyen de forma natural (cuentan 0
     en el denominador), igual que el suavizado de gradiente.py.
+
+    Args:
+        z: Elevaciones (con nan o cualquier valor en las celdas inválidas).
+        valid: Máscara True en las celdas con dato real.
+        kernel: Kernel del vecindario anular (ver ``_kernel_anular``).
+
+    Returns:
+        Media del vecindario por celda (float64); nan donde el anillo no cubre
+        ninguna celda válida.
     """
     from scipy.ndimage import convolve  # kernel simetrico -> convolve == correlate
 
+    # Truco "media consciente de nodata": se convoluciona el numerador (suma de
+    # z sobre celdas válidas) y el denominador (nº de celdas válidas) por separado
+    # y se dividen. Así una celda inválida aporta 0 arriba y 0 abajo (no sesga).
     zf = np.where(valid, z, 0.0).astype(np.float64)
     w = valid.astype(np.float64)
     num = convolve(zf, kernel, mode="constant", cval=0.0)
     den = convolve(w, kernel, mode="constant", cval=0.0)
     mean = np.full(z.shape, np.nan, dtype=np.float64)
+    # where=den>0 evita dividir por cero donde el anillo no toca celdas válidas.
     np.divide(num, den, out=mean, where=den > 0)
     return mean
 
@@ -146,7 +185,22 @@ def _media_vecindario(z: np.ndarray, valid: np.ndarray, kernel: np.ndarray) -> n
 def calcular_tpi(dem: np.ndarray, valid: np.ndarray, cellsize: float,
                  radio_ext_m: float = RADIO_EXT_M,
                  radio_int_m: float = RADIO_INT_M) -> np.ndarray:
-    """TPI bruto en metros: z - media(vecindario anular). nan donde invalido."""
+    """TPI bruto en metros: z - media(vecindario anular). nan donde invalido.
+
+    Los radios se dan en metros y se convierten a celdas dividiendo por el
+    tamaño de celda del DEM.
+
+    Args:
+        dem: Elevaciones del DEM.
+        valid: Máscara True en celdas con dato.
+        cellsize: Tamaño de celda en metros (para convertir los radios).
+        radio_ext_m: Radio exterior del anillo en metros.
+        radio_int_m: Radio interior del anillo en metros (0 = disco).
+
+    Returns:
+        TPI bruto por celda en metros (positivo = cresta, negativo = valle);
+        nan en las celdas inválidas.
+    """
     z = np.where(valid, dem.astype(np.float64), np.nan)
     kernel = _kernel_anular(radio_ext_m / cellsize, radio_int_m / cellsize)
     media = _media_vecindario(z, valid, kernel)
@@ -162,12 +216,21 @@ def mapeo_coste_tpi(tpi: np.ndarray, sigma_clip: float = SIGMA_CLIP) -> np.ndarr
       TPI = +sigma_clip*sigma (cresta) -> coste 0.0
       TPI = 0 (llano/ladera)            -> coste 0.5
       TPI = -sigma_clip*sigma (valle)   -> coste 1.0
+
+    Args:
+        tpi: TPI bruto en metros (ver ``calcular_tpi``); nan en celdas inválidas.
+        sigma_clip: Nº de sigmas a los que se acota el z-score.
+
+    Returns:
+        Coste morfológico por celda en [0, 1] (float32); nan donde el TPI es nan.
     """
     finito = np.isfinite(tpi)
     coste = np.full(tpi.shape, np.nan, dtype=np.float32)
     if not finito.any():
         return coste
 
+    # z-score: centra en la media del AOI y escala por su desviación típica, de
+    # modo que el TPI (relativo al terreno) sea comparable entre escenarios.
     mu = float(np.mean(tpi[finito]))
     sigma = float(np.std(tpi[finito]))
     if sigma <= 0:  # terreno perfectamente plano: morfologia neutra
@@ -175,7 +238,11 @@ def mapeo_coste_tpi(tpi: np.ndarray, sigma_clip: float = SIGMA_CLIP) -> np.ndarr
         return coste
 
     tpi_std = (tpi[finito] - mu) / sigma
+    # Acotar a +/- sigma_clip sigmas: fija los extremos de la escala y evita que
+    # unos pocos picos/hondonadas atípicos dominen la normalización.
     tpi_std = np.clip(tpi_std, -sigma_clip, sigma_clip)
+    # Mapeo lineal DECRECIENTE a [0, 1]: +sigma_clip (cresta) → 0, 0 → 0.5,
+    # -sigma_clip (valle) → 1. Cresta barata, valle caro.
     coste[finito] = ((sigma_clip - tpi_std) / (2.0 * sigma_clip)).astype(np.float32)
     return coste
 
@@ -219,7 +286,20 @@ def _write_qml(tif_path: Path) -> None:
 
 
 def validar_contrato_salida(raster_path: Path, dem_path: Path) -> None:
-    """Valida el contrato de salida obligatorio frente al DEM de referencia."""
+    """Valida el contrato de salida obligatorio frente al DEM de referencia.
+
+    Comprueba que el raster generado está perfectamente ALINEADO con el DEM
+    (mismo CRS, transform y shape) y cumple el formato del pipeline (float32,
+    nodata -9999, compresión LZW, valores válidos en [0, 1]). Es la garantía de
+    que la capa puede combinarse celda a celda con las demás.
+
+    Args:
+        raster_path: Ruta del GeoTIFF de coste TPI a validar.
+        dem_path: Ruta del DEM de referencia contra el que se compara.
+
+    Raises:
+        ValueError: Si alguna comprobación de alineación o formato falla.
+    """
     with rasterio.open(dem_path) as dem:
         dem_transform = dem.transform
         dem_shape = (dem.height, dem.width)
@@ -266,7 +346,33 @@ def umbral_barrera_en_tif(s: str) -> float | None:
 
 def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
                        radio_int_m: float = RADIO_INT_M) -> Path:
-    """Genera tpi_{s}.tif a partir de dem_aoi_{s}.tif."""
+    """Genera tpi_{s}.tif a partir de dem_aoi_{s}.tif.
+
+    Calcula el TPI (posición topográfica), lo mapea a coste [0, 1] decreciente
+    (cresta barata, valle caro) y añade la BARRERA dura de pendiente (celdas con
+    pendiente > UMBRAL_BARRERA_PCT quedan como nodata, intransitables). El umbral
+    usado se graba como etiqueta del GeoTIFF para que la app sepa si regenerar.
+
+    Entrada (data/processed/Recorte_AOI/):
+        - dem_aoi_{s}.tif : DEM alineado (rejilla de referencia y fuente del relieve).
+
+    Salida (data/processed/Capas_Coste/):
+        - tpi_{s}.tif     : coste morfológico [0, 1] con barreras (nodata -9999),
+                            + su .qml de leyenda.
+
+    Args:
+        s: Identificador de escenario ('A' o 'B').
+        radio_ext_m: Radio exterior del anillo del TPI, en metros.
+        radio_int_m: Radio interior del anillo, en metros (0 = disco).
+
+    Returns:
+        Ruta del GeoTIFF de coste TPI generado.
+
+    Raises:
+        FileNotFoundError: Si no existe el DEM de referencia.
+        ValueError: Si el DEM no está en EPSG:25830, no tiene celdas válidas, o
+            la barrera de pendiente deja el AOI completamente intransitable.
+    """
     dem_path = ENTRADA_DIR / f"dem_aoi_{s}.tif"
     if not dem_path.exists():
         raise FileNotFoundError(f"No existe el DEM de referencia: {dem_path}")
@@ -358,6 +464,7 @@ def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
 
 
 def main() -> None:
+    """CLI: genera la capa TPI para el escenario indicado (o A y B) desde consola."""
     parser = argparse.ArgumentParser(description="Capa de coste TPI (posicion topografica).")
     parser.add_argument("--escenario", default="ambos",
                         help="id de escenario.yaml (p. ej. A, B o C) o 'ambos' (=A y B)")

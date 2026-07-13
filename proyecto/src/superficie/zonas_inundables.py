@@ -67,7 +67,22 @@ VALOR_FONDO: float = float(_icfg["valor_fondo"])
 
 
 def procesar_escenario(s: str) -> None:
-    """Genera inundable_{s}.tif a partir de inundable_aoi_{s}.gpkg."""
+    """Genera inundable_{s}.tif a partir de inundable_aoi_{s}.gpkg.
+
+    Entradas (data/processed/Recorte_AOI/):
+        - dem_aoi_{s}.tif       : rejilla de referencia (define transform/tamaño/CRS).
+        - inundable_aoi_{s}.gpkg: láminas de inundación SNCZI recortadas al AOI.
+
+    Salida (data/processed/Capas_Coste/):
+        - inundable_{s}.tif     : coste binario {0, VALOR_INUNDABLE} en escala [0, 1].
+
+    Args:
+        s: Identificador de escenario ('A' o 'B').
+
+    Raises:
+        FileNotFoundError: Si falta el DEM o la capa de zonas inundables.
+        ValueError: Si la capa de zonas inundables no tiene CRS definido.
+    """
     dem_path = ENTRADA_DIR / f"dem_aoi_{s}.tif"
     inund_path = ENTRADA_DIR / f"inundable_aoi_{s}.gpkg"
 
@@ -132,6 +147,7 @@ def procesar_escenario(s: str) -> None:
 
 
 def main() -> None:
+    """Genera inundable_A.tif y inundable_B.tif (capa de zonas inundables)."""
     for s in ESCENARIOS:
         procesar_escenario(s)
     print("Script 06b completado: capa de coste 'inundable' generada (A y B).")

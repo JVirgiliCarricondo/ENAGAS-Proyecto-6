@@ -1,11 +1,36 @@
 """
 Ingesta y alineación de capas GIS al CRS y rejilla comunes del proyecto.
 
-Paso 1: Construye el AOI (desde escenario.yaml o desde origen+destino+1 km buffer).
-Paso 2: Reproyecta todas las capas a EPSG:25830.
-Paso 3: Remuestrea rasters a la rejilla común; recorta y reproyecta vectores → GeoPackage.
-Paso 4: Detecta solapamientos entre capas vectoriales (umbral: 70 %).
-Paso 5: Deriva la capa de coste TPI (posición topográfica) del DEM ya alineado.
+Corazón del reto: ninguna capa entra en el pipeline sin estar reproyectada al
+CRS común (EPSG:25830) y remuestreada/rasterizada a la MISMA rejilla. Solo así la
+celda (i, j) representa el mismo trozo de terreno en todas las capas y los costes
+son comparables. Si las capas no están alineadas, los costes mienten.
+
+Entradas:
+    * ``data/config/escenario.yaml`` — origen, destino y (opcional) AOI del escenario.
+    * ``data/raw/*`` — crudos GIS descargados por ``descargar_capas.py`` (sufijo
+      ``_A`` / ``_B``) o colocados a mano (DEM ``.tif``, vectores ``.gpkg`` / ``.shp``
+      / ``.geojson``, ZIP del Catastro).
+    * ``data/raw/manifiesto_estado.json`` — manifiesto de estado por capa
+      (contrato con ``descargar_capas.py``): ``ok`` / ``empty`` / ``failed`` /
+      ``partial``. Un ``failed`` NO se alinea (evita recortes vacíos engañosos).
+
+Salidas (en ``data/processed/``):
+    * ``Recorte_AOI/*_{escenario}.tif`` — rasters (DEM) alineados a la rejilla.
+    * ``Recorte_AOI/*_{escenario}.gpkg`` — vectores reproyectados y recortados al AOI.
+    * ``aoi_corredor_{escenario}.gpkg`` / ``puntos_{escenario}.gpkg`` — AOI y O/D.
+    * ``Capas_Coste/tpi_{escenario}.tif`` — capa de coste TPI (Paso 5).
+    * ``log_alineacion.txt`` — traza completa de la ejecución.
+
+Pasos del pipeline:
+    Paso 1: Construye el AOI (desde escenario.yaml o desde origen+destino+1 km buffer).
+    Paso 2: Reproyecta todas las capas a EPSG:25830.
+    Paso 3: Remuestrea rasters a la rejilla común; recorta y reproyecta vectores → GeoPackage.
+    Paso 4: Detecta solapamientos entre capas vectoriales (umbral: 70 %).
+    Paso 5: Deriva la capa de coste TPI (posición topográfica) del DEM ya alineado.
+
+Papel en el pipeline: segundo bloque de ingesta (tras ``descargar_capas.py``).
+Produce el recorte alineado que consumen los módulos de ``superficie/``.
 
 Ejecutar desde la raíz del proyecto (proyecto/):
     python -m src.ingesta.alinear_capas
@@ -72,6 +97,21 @@ CATASTRO_MUNICIPALITY_RE = re.compile(r"^\d+[ur]A \d+ .+", re.IGNORECASE)
 # Registro de capas esperadas                                                  #
 # --------------------------------------------------------------------------- #
 class LayerSpec(NamedTuple):
+    """Especificación de una capa esperada: cómo encontrarla y cómo alinearla.
+
+    El campo ``categorical`` decide el método de remuestreo: en datos
+    categóricos (clases discretas, p. ej. tipo de zona protegida) hay que usar
+    ``nearest`` (vecino más cercano) para no inventar valores intermedios; en
+    datos continuos (elevación del DEM) se usa ``bilinear``, que interpola suave.
+
+    Attributes:
+        label:         Nombre canónico de la capa (clave para logs y manifiesto).
+        layer_type:    ``"raster"`` o ``"vector"``.
+        categorical:   True → remuestreo ``nearest``; False → ``bilinear``.
+        glob_patterns: Patrones buscados recursivamente bajo ``data/raw/``.
+        output_name:   Nombre base de salida en ``data/processed/Recorte_AOI/``.
+        multi_source:  True → fusionar varias fuentes (p. ej. municipios de Catastro).
+    """
     label: str
     layer_type: str            # "raster" | "vector"
     categorical: bool          # True → nearest; False → bilinear
@@ -224,6 +264,15 @@ _DOWNLOAD_HINTS: dict[str, str] = {
 # Utilidades                                                                   #
 # --------------------------------------------------------------------------- #
 def _setup_logging() -> logging.Logger:
+    """Configura el logger 'ingesta' con salida a consola y a fichero.
+
+    Crea los directorios de salida, fuerza UTF-8 en la consola de Windows (para
+    no romper con acentos ni símbolos ✓/✗) y añade dos handlers idempotentes:
+    consola (stdout) y fichero (``log_alineacion.txt``, modo 'w').
+
+    Returns:
+        El logger configurado, listo para usar en todo el módulo.
+    """
     DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
     DATA_RECORTE.mkdir(parents=True, exist_ok=True)
     if sys.platform == "win32":
@@ -250,6 +299,14 @@ def _setup_logging() -> logging.Logger:
 
 
 def _load_escenario(path: Path) -> dict:
+    """Carga y parsea ``escenario.yaml`` (CRS de trabajo, resolución y escenarios).
+
+    Args:
+        path: Ruta al fichero YAML de configuración de escenarios.
+
+    Returns:
+        Diccionario con el contenido del YAML.
+    """
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
@@ -263,11 +320,27 @@ def _build_aoi(cfg: dict):
     El rectángulo tiene como largo la distancia origen→destino y 1 km a cada
     lado perpendicular. Los puntos origen y destino caen exactamente en el punto
     medio del lado corto más próximo (cap_style=2 → tapas planas en los extremos).
+
+    Si el escenario define un AOI explícito (``aoi`` con xmin/ymin/xmax/ymax no
+    nulos), se usa ese rectángulo axis-aligned en lugar del corredor orientado.
+
+    Args:
+        cfg: Sub-diccionario del escenario activo. Coordenadas en EPSG:25830
+             (metros). Debe contener ``origen`` y ``destino`` (claves x, y), y
+             opcionalmente ``aoi`` (xmin, ymin, xmax, ymax).
+
+    Returns:
+        Polígono Shapely del AOI en EPSG:25830.
     """
+    # AOI explícito en la config: rectángulo alineado a ejes (no orientado).
     aoi = cfg.get("aoi", {})
     if aoi and all(aoi.get(k, 0) != 0 for k in ("xmin", "ymin", "xmax", "ymax")):
         return box(aoi["xmin"], aoi["ymin"], aoi["xmax"], aoi["ymax"])
 
+    # Corredor orientado: buffer perpendicular a la línea origen→destino. El
+    # buffer de una línea genera un "capsule"; cap_style=2 (flat) recorta las
+    # tapas semicirculares de los extremos, dejando un rectángulo girado cuyos
+    # lados cortos pasan justo por el origen y el destino.
     ox, oy = cfg["origen"]["x"], cfg["origen"]["y"]
     dx, dy = cfg["destino"]["x"], cfg["destino"]["y"]
     line = LineString([(ox, oy), (dx, dy)])
@@ -284,12 +357,36 @@ _GRID_ANCHOR_Y = 0.0
 
 
 def _snap_down(value: float, res: float, anchor: float) -> float:
-    """Baja `value` al múltiplo de `res` (respecto a `anchor`) igual o menor."""
+    """Baja `value` al múltiplo de `res` (respecto a `anchor`) igual o menor.
+
+    "Snap" = ajustar una coordenada al borde de píxel más cercano de la malla
+    global. Aquí se ajusta hacia abajo (floor), para los bordes oeste/sur del AOI.
+
+    Args:
+        value:  Coordenada a ajustar (metros, EPSG:25830).
+        res:    Tamaño de celda / paso de la rejilla (metros).
+        anchor: Origen de la malla global de referencia (metros).
+
+    Returns:
+        La coordenada ajustada al borde de píxel igual o inferior.
+    """
     return anchor + math.floor((value - anchor) / res) * res
 
 
 def _snap_up(value: float, res: float, anchor: float) -> float:
-    """Sube `value` al múltiplo de `res` (respecto a `anchor`) igual o mayor."""
+    """Sube `value` al múltiplo de `res` (respecto a `anchor`) igual o mayor.
+
+    Igual que ``_snap_down`` pero redondeando hacia arriba (ceil), para los
+    bordes este/norte del AOI, de modo que el AOI quede totalmente cubierto.
+
+    Args:
+        value:  Coordenada a ajustar (metros, EPSG:25830).
+        res:    Tamaño de celda / paso de la rejilla (metros).
+        anchor: Origen de la malla global de referencia (metros).
+
+    Returns:
+        La coordenada ajustada al borde de píxel igual o superior.
+    """
     return anchor + math.ceil((value - anchor) / res) * res
 
 
@@ -302,7 +399,22 @@ def _common_transform(xmin: float, ymin: float, xmax: float, ymax: float,
     exactos de `res` y por tanto reproducibles entre AOIs y escenarios. El
     AOI se expande hacia fuera hasta el múltiplo de `res` más cercano para
     quedar cubierto por completo.
+
+    El "transform" (transformación afín de rasterio) es la fórmula que traduce
+    coordenadas de píxel (fila, columna) a coordenadas de terreno (x, y) en
+    EPSG:25830. Fijar este transform es lo que garantiza que todas las capas
+    remuestreadas compartan exactamente la misma rejilla.
+
+    Args:
+        xmin, ymin, xmax, ymax: Bounding box del AOI (metros, EPSG:25830).
+        res:                    Tamaño de celda de la rejilla común (metros).
+
+    Returns:
+        Tupla ``(transform, width, height)``: el ``Affine`` de la rejilla y sus
+        dimensiones en número de columnas (width) y filas (height).
     """
+    # Ajustar cada borde del AOI a la malla global: oeste/sur hacia fuera (abajo),
+    # este/norte hacia fuera (arriba), de modo que el AOI quede envuelto.
     west = _snap_down(xmin, res, _GRID_ANCHOR_X)
     east = _snap_up(xmax, res, _GRID_ANCHOR_X)
     south = _snap_down(ymin, res, _GRID_ANCHOR_Y)
@@ -331,7 +443,18 @@ def _discover_layer_sources(
     """Devuelve una o varias fuentes para la capa.
 
     Si se indica escenario ('A' o 'B'), busca primero el archivo generado por
-    descargar_capas.py (p. ej. DEM_A.tif) antes de recorrer glob_patterns.
+    descargar_capas.py (p. ej. DEM_A.tif) antes de recorrer glob_patterns. Así
+    los datos descargados automáticamente tienen prioridad sobre los colocados
+    a mano. Se descartan los archivos comprimidos (.gz/.zip/.tar) sin extraer.
+
+    Args:
+        spec:     Especificación de la capa a buscar.
+        log:      Logger para trazar la fuente elegida.
+        scenario: Id de escenario ('A', 'B', …) o None si no se filtra por él.
+
+    Returns:
+        Lista de rutas fuente (una para la mayoría de capas; varias para el
+        Catastro multi-municipio). Lista vacía si no se encuentra nada.
     """
     if spec.multi_source and spec.label.startswith("Catastro"):
         return _discover_catastro_sources(log)
@@ -431,6 +554,7 @@ def _safe_extract_zip(archive: Path, target_dir: Path, log: logging.Logger) -> t
 
 
 def _has_extracted_municipalities(catastro_dir: Path) -> bool:
+    """True si ya hay algún ``PARCELA.shp`` extraído bajo el árbol del Catastro."""
     return any(catastro_dir.rglob("PARCELA.shp"))
 
 
@@ -556,8 +680,28 @@ def process_raster(
     aoi_box,
     log: logging.Logger,
 ) -> Path | None:
-    """Reproyecta, remuestrea y recorta un raster al AOI orientado. Devuelve la ruta de salida."""
+    """Reproyecta, remuestrea y recorta un raster al AOI orientado.
+
+    Núcleo de la alineación raster: lee el raster crudo (con su CRS y resolución
+    originales) y lo re-genera sobre la rejilla común (``target_transform`` +
+    ``grid_w`` × ``grid_h``) en EPSG:25830. Fuera del corredor orientado los
+    píxeles se marcan como ``nodata`` (valor centinela que indica "sin dato").
+
+    Args:
+        src_path:         Ruta del raster de entrada (p. ej. el DEM crudo).
+        spec:             Especificación de la capa (decide nearest/bilinear).
+        target_crs:       CRS de destino (EPSG:25830).
+        target_transform: ``Affine`` de la rejilla común (píxel → terreno).
+        grid_w:           Ancho de la rejilla común (nº de columnas).
+        grid_h:           Alto de la rejilla común (nº de filas).
+        aoi_box:          Polígono AOI orientado; recorta a nodata lo de fuera.
+        log:              Logger de la ejecución.
+
+    Returns:
+        Ruta del GeoTIFF alineado escrito en ``Recorte_AOI/``, o None si falló.
+    """
     out_path = DATA_RECORTE / spec.output_name
+    # Categórico → nearest (no inventa clases); continuo (DEM) → bilinear (suaviza).
     resampling = Resampling.nearest if spec.categorical else Resampling.bilinear
 
     try:
@@ -568,10 +712,16 @@ def process_raster(
             log.info(f"  Bandas       : {src.count}")
 
             dst_crs = RasterioCRS.from_string(target_crs)
+            # nodata: valor que marca "celda sin dato". Si el origen no lo define,
+            # se usa -9999 como centinela. El destino se pre-rellena con nodata,
+            # de modo que lo que el reproyectado no cubra queda como "sin dato".
             nodata = float(src.nodata) if src.nodata is not None else -9999.0
             n_bands = src.count
             dst_data = np.full((n_bands, grid_h, grid_w), nodata, dtype=np.float32)
 
+            # Reproyecta+remuestrea banda a banda desde el CRS/rejilla de origen a
+            # la rejilla común de destino. rio_reproject hace warp (cambio de CRS)
+            # y resample (cambio de resolución) en un solo paso.
             for band in range(1, n_bands + 1):
                 rio_reproject(
                     source=rasterio.band(src, band),
@@ -582,7 +732,9 @@ def process_raster(
                     dst_nodata=nodata,
                 )
 
-        # Aplicar máscara del polígono AOI orientado: píxeles fuera del corredor → nodata
+        # Aplicar máscara del polígono AOI orientado: píxeles fuera del corredor → nodata.
+        # geometry_mask devuelve un booleano por píxel; con invert=False, True =
+        # el píxel está FUERA de la geometría (ausente), así que ahí ponemos nodata.
         if aoi_box is not None:
             outside = rio_geometry_mask(
                 [shapely_mapping(aoi_box)],
@@ -593,6 +745,8 @@ def process_raster(
             for band_idx in range(n_bands):
                 dst_data[band_idx][outside] = nodata
 
+        # Perfil del GeoTIFF de salida: fija el CRS común y el transform de la
+        # rejilla, de modo que este raster queda alineado con el resto de capas.
         profile = {
             "driver": "GTiff",
             "dtype": "float32",
@@ -622,13 +776,36 @@ def process_vector(
     aoi_box,
     log: logging.Logger,
 ) -> tuple[Path | None, "gpd.GeoDataFrame | None"]:
-    """Reproyecta y recorta una capa vectorial al AOI. Devuelve (ruta_salida, gdf)."""
+    """Reproyecta y recorta una capa vectorial al AOI.
+
+    A diferencia de los rasters, los vectores no se remuestrean a la rejilla:
+    basta con reproyectarlos al CRS común (EPSG:25830) y recortarlos al polígono
+    del AOI. La rasterización a la rejilla común (cuando hace falta) la hacen
+    después los módulos de ``superficie/``.
+
+    Si la capa es multi-fuente (Catastro), fusiona todos los municipios en un
+    único GeoDataFrame. Si ninguna geometría cae dentro del AOI, escribe un GPKG
+    vacío legítimo (capa "sin cobertura", no un error) y devuelve gdf None.
+
+    Args:
+        src_paths:   Ruta única o lista de rutas fuente (multi-municipio).
+        spec:        Especificación de la capa.
+        target_crs:  CRS de destino (EPSG:25830).
+        aoi_box:     Polígono AOI de recorte (en target_crs).
+        log:         Logger de la ejecución.
+
+    Returns:
+        Tupla ``(ruta_salida, gdf)``. ``gdf`` es None si no hubo datos en el AOI
+        o si el procesado falló (en cuyo caso ruta_salida también es None).
+    """
     out_path = DATA_RECORTE / spec.output_name
     paths = [src_paths] if isinstance(src_paths, Path) else list(src_paths)
 
     try:
         frames: list["gpd.GeoDataFrame"] = []
         read_kwargs: dict = {}
+        # Multi-fuente: filtrar en lectura por el bbox del AOI (bounds = caja
+        # axis-aligned) para no cargar municipios enteros en memoria innecesariamente.
         if spec.multi_source and len(paths) > 1:
             read_kwargs["bbox"] = aoi_box.bounds
 
@@ -665,12 +842,16 @@ def process_vector(
         log.info(f"  CRS original : {orig_crs}")
         log.info(f"  Filas        : {len(gdf)}")
 
+        # Sin CRS declarado no se puede reproyectar con seguridad. Se asume
+        # EPSG:4326 (lon/lat WGS84), el más habitual en GeoJSON/GML sin metadatos.
         if gdf.crs is None:
             log.warning(f"  CRS no definido en {paths[0].name}; se asume EPSG:4326")
             gdf = gdf.set_crs(epsg=4326)
 
+        # Reproyección al CRS común: el paso que alinea el vector con el resto.
         gdf = gdf.to_crs(target_crs)
 
+        # Recorte al AOI: descarta la parte de las geometrías que cae fuera del corredor.
         aoi_gdf = gpd.GeoDataFrame({"geometry": [aoi_box]}, crs=target_crs)
         try:
             gdf_clipped = gpd.clip(gdf, aoi_gdf)
@@ -722,13 +903,25 @@ def detect_duplicates(
     threshold: float,
     log: logging.Logger,
 ) -> None:
-    """Avisa si dos capas vectoriales se solapan más del umbral dado."""
+    """Avisa si dos capas vectoriales se solapan más del umbral dado.
+
+    Compara cada par de capas por área de solapamiento. Un solapamiento alto
+    sugiere que dos fuentes distintas representan la misma información (duplicado),
+    lo que distorsionaría los costes al contar el mismo terreno dos veces.
+
+    Args:
+        processed_vectors: Lista de ``(nombre, GeoDataFrame)`` ya alineados.
+        threshold:         Fracción de solapamiento [0, 1] a partir de la cual avisar.
+        log:               Logger de la ejecución.
+    """
     if len(processed_vectors) < 2:
         log.info("  Solo hay una capa vectorial procesada; no hay pares que comparar.")
         return
 
     found_any = False
     for i, (name1, gdf1) in enumerate(processed_vectors):
+        # unary_union: fusiona todas las geometrías de la capa en una sola, para
+        # medir el área total sin contar dos veces las que se solapan entre sí.
         union1 = unary_union(gdf1.geometry)
         for name2, gdf2 in processed_vectors[i + 1:]:
             union2 = unary_union(gdf2.geometry)
@@ -738,6 +931,8 @@ def detect_duplicates(
                 area_inter = union1.intersection(union2).area
             except Exception:
                 continue
+            # Solapamiento relativo respecto a la capa MÁS pequeña: si la menor
+            # está casi contenida en la mayor, overlap ≈ 1 (probable duplicado).
             min_area = min(union1.area, union2.area)
             if min_area == 0:
                 continue
@@ -796,6 +991,7 @@ def _generar_tpi(scenario: str, log: logging.Logger) -> None:
 # Punto de entrada                                                              #
 # --------------------------------------------------------------------------- #
 def _parse_args() -> argparse.Namespace:
+    """Parsea los argumentos de línea de comandos (--escenario, --only, -y)."""
     parser = argparse.ArgumentParser(description="Ingesta y alineación de capas GIS al AOI.")
     parser.add_argument(
         "--escenario", default="A",
@@ -816,6 +1012,14 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Ejecuta el pipeline de alineación completo (Pasos 1-5) para un escenario.
+
+    Carga la config, construye el AOI, comprueba el manifiesto de descarga,
+    alinea cada capa (reproyección + remuestreo/recorte a la rejilla común),
+    detecta duplicados y deriva el TPI. Sale con código ≠ 0 si alguna descarga
+    estaba marcada como ``failed`` (para no continuar con capas ausentes por un
+    fallo de red confundido con "sin datos").
+    """
     args = _parse_args()
     args.escenario = args.escenario.upper()
 
@@ -915,7 +1119,9 @@ def main() -> None:
             log.error(f"Capa desconocida: {args.only!r}. Opciones: {valid}")
             sys.exit(1)
 
-    # Añadir sufijo de escenario a los nombres de salida (e.g. catastro_aoi_A.gpkg)
+    # Añadir sufijo de escenario a los nombres de salida (e.g. catastro_aoi_A.gpkg).
+    # spec._replace es el copy-with-changes de los NamedTuple: crea una copia con
+    # output_name modificado sin mutar el registro LAYERS original.
     layers_to_run = [
         spec._replace(
             output_name=(

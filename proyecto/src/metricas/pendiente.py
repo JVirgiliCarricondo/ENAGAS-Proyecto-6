@@ -29,6 +29,11 @@ class MetricasPendienteRuta:
 
 
 def _distancia_tramo_m(dr: int, dc: int, resolucion_m: float) -> float:
+    """Longitud en metros de un paso de (dr, dc) celdas sobre la rejilla.
+
+    hypot(dr, dc) da 1 para un paso ortogonal y √2 para uno diagonal; multiplicado
+    por el tamaño de celda se obtiene la distancia real del tramo en metros.
+    """
     return math.hypot(dr, dc) * resolucion_m
 
 
@@ -39,10 +44,23 @@ def calcular_metricas_pendiente(
 ) -> MetricasPendienteRuta:
     """Calcula metricas de pendiente para una ruta.
 
+    Recorre la ruta tramo a tramo (celda→celda), estima la pendiente local de cada
+    tramo como |dz| / distancia · 100 (%) y agrega: la maxima es el mayor valor de
+    tramo; la media se pondera por la longitud de cada tramo (los tramos diagonales,
+    mas largos, pesan mas que los ortogonales). Los tramos con elevacion nodata/nan
+    en alguno de sus extremos se descartan.
+
     Args:
         celdas: Ruta como secuencia de celdas (row, col).
-        dem: Elevacion (misma rejilla que celdas).
-        resolucion_m: Tamano de celda.
+        dem: Elevacion en metros (misma rejilla que celdas; nan = sin dato).
+        resolucion_m: Tamano de celda en metros.
+
+    Returns:
+        MetricasPendienteRuta con pendiente_max_pct y pendiente_media_pct (%).
+        Ambas 0.0 si la ruta tiene <2 celdas o ningun tramo valido.
+
+    Raises:
+        ValueError: Si `dem` no es un array 2D.
     """
     if len(celdas) < 2:
         return MetricasPendienteRuta(

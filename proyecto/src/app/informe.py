@@ -36,6 +36,7 @@ from reportlab.lib.pagesizes import A4  # noqa: E402
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # noqa: E402
 from reportlab.lib.units import mm  # noqa: E402
 from reportlab.platypus import (  # noqa: E402
+    HRFlowable,
     Image as RLImage,
     KeepTogether,
     PageBreak,
@@ -64,27 +65,53 @@ _DECIMALES = {
 
 
 def _primera_frase(texto: str) -> str:
-    """Primera frase de un texto más largo (p.ej. la 'descripcion' de un perfil
-    en perfiles.yaml), para usar como resumen breve en el informe."""
+    """Extrae la primera frase de un texto más largo.
+
+    Se usa para resumir en una línea la ``descripcion`` de un perfil (definida en
+    perfiles.yaml) dentro del informe. Corta en el primer punto seguido de espacio
+    y garantiza que la frase termine en punto.
+
+    Args:
+        texto: Texto de partida (puede ir vacío).
+
+    Returns:
+        str: La primera frase con punto final, o cadena vacía si ``texto`` es vacío.
+    """
     if not texto:
         return ""
+    # Corta en el primer ". " (punto seguido): el resto se descarta.
     primera = texto.strip().split(". ")[0].strip()
+    # Reañade el punto final salvo que ya termine en punto o puntos suspensivos.
     if primera and not primera.endswith((".", "…")):
         primera += "."
     return primera
 
 
 def _fmt_valor(etiqueta: str, valor) -> str:
-    """Formatea un valor de métrica con como mucho 3 decimales."""
+    """Formatea un valor de métrica para mostrarlo en una tabla del PDF.
+
+    El número de decimales depende de la columna (ver ``_DECIMALES``): las columnas
+    no listadas (recuentos de cruces y demás) se muestran como enteros si el valor
+    es entero, y con 3 decimales en caso contrario. Los valores ausentes se
+    representan con un guión largo.
+
+    Args:
+        etiqueta: Etiqueta ya renombrada de la columna (clave de ``_DECIMALES``).
+        valor: Valor a formatear; puede ser ``None`` o no numérico.
+
+    Returns:
+        str: Representación textual del valor lista para la tabla.
+    """
     if valor is None:
         return "—"
     try:
         num = float(valor)
     except (TypeError, ValueError):
+        # Valor no numérico: se muestra tal cual.
         return str(valor)
     dec = _DECIMALES.get(etiqueta)
     if dec is None:
-        # Recuentos y demás enteros.
+        # Recuentos y demás enteros: sin decimales si el valor es entero.
         if num == int(num):
             return str(int(num))
         return f"{num:.3f}"
@@ -92,12 +119,25 @@ def _fmt_valor(etiqueta: str, valor) -> str:
 
 
 def _marcar_origen_destino(ax, origen: dict | None, destino: dict | None, transform=None) -> list:
-    """Dibuja el origen (círculo verde) y el destino (cuadrado rojo) de un
-    escenario sobre unos ejes ya construidos. `transform` se pasa cuando la
-    figura está rotada (ver _figura_raster_ruta) para que los marcadores
-    queden en el mismo sistema de coordenadas que el ráster/ruta. Devuelve
-    los handles de leyenda (Origen/Destino) para que el llamante decida cómo
-    combinarlos con el resto de su leyenda (una figura solo puede tener una)."""
+    """Dibuja los marcadores de origen y destino sobre unos ejes de matplotlib.
+
+    Pinta el origen como un círculo verde y el destino como un cuadrado rojo. El
+    argumento ``transform`` se pasa cuando la figura está rotada (ver
+    ``_figura_raster_ruta``) para que los marcadores queden en el mismo sistema de
+    coordenadas que el ráster y la ruta.
+
+    Args:
+        ax: Ejes de matplotlib sobre los que dibujar.
+        origen: Dict con claves ``x``/``y`` del origen, o ``None``.
+        destino: Dict con claves ``x``/``y`` del destino, o ``None``.
+        transform: Transformación de coordenadas (rotación) a aplicar; ``None`` si
+            los ejes no están rotados.
+
+    Returns:
+        list: Handles de leyenda (Origen/Destino) para que el llamante decida cómo
+        combinarlos con el resto de su leyenda (una figura solo puede tener una).
+    """
+    # Solo se propaga transform a scatter si se ha pasado (ejes rotados).
     kwargs = {"transform": transform} if transform is not None else {}
     handles = []
     if origen:
@@ -126,19 +166,37 @@ def _figura_raster_ruta(
     origen: dict | None,
     destino: dict | None,
 ) -> bytes | None:
-    """Imagen PNG (bytes): ráster de coste del perfil (verde=barato, rojo=caro)
-    con la ruta encima, rotada para que el corredor origen→destino quede
-    siempre en horizontal (evita huecos en blanco cuando el trazado es
-    predominantemente norte-sur)."""
+    """Genera la imagen ráster de coste + ruta de un perfil, rotada a horizontal.
+
+    Produce un PNG (en bytes) con el ráster de coste del perfil (verde = paso
+    barato, rojo = paso caro) y la ruta del LCP encima. La figura se rota para que
+    el corredor origen→destino quede siempre en horizontal, lo que evita huecos en
+    blanco cuando el trazado es predominantemente norte-sur.
+
+    Args:
+        sid: Id del escenario.
+        perfil: Id del perfil de prioridad.
+        trazados_dir: Directorio con las superficies de coste (``superficie_*.tif``).
+        rutas_dir: Directorio con las rutas LCP (``ruta_*.gpkg``).
+        color: Color de la línea de la ruta.
+        origen: Dict con ``x``/``y`` del origen, o ``None``.
+        destino: Dict con ``x``/``y`` del destino, o ``None``.
+
+    Returns:
+        bytes | None: PNG codificado, o ``None`` si no existe el ráster del perfil.
+    """
     raster_path = trazados_dir / f"superficie_{sid}_{perfil}.tif"
     if not raster_path.exists():
         return None
 
+    # Lee la banda 1 del ráster (enmascarada) junto con sus bounds y transform.
     with rasterio.open(raster_path) as src:
         arr = src.read(1, masked=True)
         b = src.bounds
         transform = src.transform
 
+    # Ángulo de rotación: el que pone la línea origen→destino en horizontal.
+    # Se niega el ángulo porque el eje Y de la imagen crece hacia abajo.
     angle_deg = 0.0
     if origen and destino:
         dx = destino["x"] - origen["x"]
@@ -146,6 +204,7 @@ def _figura_raster_ruta(
         if dx or dy:
             angle_deg = -math.degrees(math.atan2(dy, dx))
 
+    # Centro del ráster: pivote de la rotación.
     cx, cy = (b.left + b.right) / 2, (b.bottom + b.top) / 2
 
     # El coste combinado NO está acotado a [0,1] (incluye BASE_LONG · peso
@@ -184,19 +243,32 @@ def _figura_raster_ruta(
     # rotados y los ejes ocupan el 100% de la figura: así no queda ningún
     # margen en blanco que recortar (evita el recorte "tight" poco fiable
     # cuando se combina con transformaciones de rotación de artistas).
+    # Si algún límite de tamaño recorta el ancho, el ALTO se reajusta a la
+    # misma proporción: si no, con aspect="equal" los datos no llenan el
+    # lienzo y el PNG sale con bandas blancas arriba y abajo (espacios en
+    # blanco en el informe).
+    ratio = (xmax - xmin) / (ymax - ymin)
     fig_h = 5.2
-    fig_w = max(3.5, min(fig_h * (xmax - xmin) / (ymax - ymin), 15.0))
+    fig_w = max(3.5, min(fig_h * ratio, 15.0))
+    fig_h = fig_w / ratio
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=150)
     ax = fig.add_axes([0, 0, 1, 1])
 
+    # Rampa verde→rojo invertida (verde barato, rojo caro); celdas sin dato
+    # (nan/enmascaradas) en blanco para que no ensucien el fondo.
     cmap = plt.get_cmap("RdYlGn_r").copy()
     cmap.set_bad("white")
+    # Transformación compuesta: rota los artistas alrededor del centro y luego los
+    # sitúa en las coordenadas de datos de los ejes.
     rot = Affine2D().rotate_deg_around(cx, cy, angle_deg) + ax.transData
 
+    # Pinta el ráster y le aplica la rotación (imshow no admite transform directo).
     im = ax.imshow(arr, extent=(b.left, b.right, b.bottom, b.top),
                     origin="upper", cmap=cmap, vmin=vmin, vmax=vmax)
     im.set_transform(rot)
 
+    # Superpone la ruta con la misma rotación: primero un halo blanco grueso y
+    # encima la línea del color del perfil, para que resalte sobre el ráster.
     ruta_path = rutas_dir / f"ruta_{sid}_{perfil}.gpkg"
     if ruta_path.exists():
         try:
@@ -204,18 +276,22 @@ def _figura_raster_ruta(
             gdf.plot(ax=ax, color="white", linewidth=3.4, transform=rot, zorder=3)
             gdf.plot(ax=ax, color=color, linewidth=1.7, transform=rot, zorder=4)
         except Exception:
+            # Ruta ilegible o corrupta: se omite la línea, no el ráster.
             pass
 
+    # Marcadores origen/destino con la misma rotación + leyenda en la esquina.
     od_handles = _marcar_origen_destino(ax, origen, destino, transform=rot)
     if od_handles:
         ax.legend(handles=od_handles, loc="lower right", fontsize=7.5, frameon=True,
                   framealpha=0.9, edgecolor="#c9d2da", handletextpad=0.4)
 
+    # Encuadre por la extensión real de los píxeles ya rotados (calculada arriba).
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
     ax.set_aspect("equal")
     ax.set_axis_off()
 
+    # Vuelca la figura a PNG en memoria (no a disco) y libera la figura.
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor="white")
     plt.close(fig)
@@ -231,9 +307,25 @@ def _figura_todas_rutas(
     origen: dict | None = None,
     destino: dict | None = None,
 ) -> bytes | None:
-    """Imagen PNG (bytes) con los 4 trazados de un escenario superpuestos
-    (uno por perfil, coloreados) y el origen/destino, con leyenda — sin
-    ráster de fondo."""
+    """Genera la imagen comparativa con todos los trazados de un escenario.
+
+    Superpone los trazados de un escenario (uno por perfil, cada uno con su color)
+    más los marcadores de origen y destino, con leyenda y sin ráster de fondo. Es
+    la figura de la sección "Comparativa de perfiles superpuestos".
+
+    Args:
+        sid: Id del escenario.
+        rutas_dir: Directorio con las rutas LCP (``ruta_*.gpkg``).
+        perfiles_orden: Ids de perfil en el orden en que se dibujan.
+        colores: Color por id de perfil.
+        nombre_perfil: Nombre legible por id de perfil (para la leyenda).
+        origen: Dict con ``x``/``y`` del origen, o ``None``.
+        destino: Dict con ``x``/``y`` del destino, o ``None``.
+
+    Returns:
+        bytes | None: PNG codificado, o ``None`` si no hay ninguna ruta disponible.
+    """
+    # Empareja cada perfil con su fichero de ruta y descarta los que no existen.
     paths = [(p, rutas_dir / f"ruta_{sid}_{p}.gpkg") for p in perfiles_orden]
     paths = [(p, pt) for p, pt in paths if pt.exists()]
     if not paths:
@@ -241,6 +333,7 @@ def _figura_todas_rutas(
 
     fig, ax = plt.subplots(figsize=(4.4, 4.4), dpi=150)
     handles = []
+    # Dibuja cada ruta con su color y acumula un handle de leyenda por perfil.
     for perfil, pt in paths:
         try:
             gdf = gpd.read_file(pt)
@@ -253,6 +346,7 @@ def _figura_todas_rutas(
                    label=nombre_perfil.get(perfil, perfil))
         )
 
+    # Añade origen/destino a la leyenda (aquí los ejes no van rotados).
     handles += _marcar_origen_destino(ax, origen, destino)
 
     ax.set_aspect("equal")
@@ -265,6 +359,8 @@ def _figura_todas_rutas(
                   fontsize=8, frameon=True, framealpha=0.9,
                   edgecolor="#c9d2da", borderaxespad=0)
 
+    # bbox_inches="tight" recorta el margen sobrante alrededor de los trazados
+    # y de la leyenda externa antes de exportar el PNG en memoria.
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -272,7 +368,19 @@ def _figura_todas_rutas(
 
 
 def _tabla(datos: list[list[str]], anchos: list[float] | None = None) -> Table:
-    """Tabla con cabecera corporativa (fila 0) y filas alternas."""
+    """Construye una tabla reportlab con el estilo corporativo del informe.
+
+    La fila 0 es la cabecera (fondo azul, texto blanco en negrita) y se repite en
+    cada página (``repeatRows=1``); las filas de datos pares llevan fondo claro
+    (efecto cebra) para facilitar la lectura.
+
+    Args:
+        datos: Filas de la tabla; la primera es la cabecera.
+        anchos: Anchos de columna en puntos, o ``None`` para reparto automático.
+
+    Returns:
+        Table: Flowable de reportlab listo para añadir al ``story``.
+    """
     t = Table(datos, colWidths=anchos, repeatRows=1)
     estilo = [
         ("BACKGROUND", (0, 0), (-1, 0), _PRIMARY),
@@ -290,6 +398,7 @@ def _tabla(datos: list[list[str]], anchos: list[float] | None = None) -> Table:
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d7dee5")),
         ("LINEBELOW", (0, 0), (-1, 0), 0.8, _PRIMARY),
     ]
+    # Efecto cebra: sombrea las filas de datos con índice par.
     for i in range(1, len(datos)):
         if i % 2 == 0:
             estilo.append(("BACKGROUND", (0, i), (-1, i), _PRIMARY_LIGHT))
@@ -314,13 +423,36 @@ def construir_informe_pdf(
 ) -> bytes:
     """Genera el informe PDF completo y devuelve sus bytes.
 
-    Incluye: portada, explicación breve de cómo se genera el ráster de coste
-    global (capas de coste + pesos del perfil) y las rutas sobre él, los
-    escenarios seleccionados (origen/destino), los pesos de cada perfil de
-    prioridad, la comparativa de perfiles superpuestos y, por cada escenario,
-    la imagen del ráster de coste con la ruta encima (horizontal) de cada
-    perfil de prioridad y la tabla de métricas de esas rutas en ese escenario.
+    Compone el documento (mediante reportlab/platypus) acumulando "flowables" en
+    una lista ``story`` que finalmente se maqueta en A4. El informe incluye, en
+    orden: portada con logo, explicación breve de cómo se genera el ráster de
+    coste global (capas de coste + pesos del perfil) y las rutas sobre él, la
+    tabla de escenarios seleccionados (origen/destino), la tabla de pesos por
+    perfil de prioridad, la comparativa de perfiles superpuestos y, por cada
+    escenario (en página nueva), la imagen del ráster de coste con la ruta encima
+    (horizontal) de cada perfil y la tabla de métricas de esas rutas.
+
+    Args:
+        escenarios: Ids de los escenarios a incluir.
+        resultados: Resultados por escenario; cada uno con la lista de ``rutas``
+            (objetos con atributo ``perfil`` y método ``to_dict``).
+        perfiles: Perfiles de prioridad (dicts con ``id``, ``pesos``,
+            ``descripcion``), o ``None`` si no hay.
+        coords: Coordenadas de origen/destino por escenario.
+        rutas_dir: Directorio con las rutas LCP (``ruta_*.gpkg``).
+        trazados_dir: Directorio con las superficies de coste (``superficie_*.tif``).
+        perfiles_orden: Orden en que se muestran los perfiles.
+        colores: Color por id de perfil.
+        nombre_perfil: Nombre legible por id de perfil.
+        capas_peso: Pares (clave, etiqueta) de las capas de coste, para la tabla
+            de pesos.
+        col_rename: Renombrado de columnas de métricas (clave interna → etiqueta).
+        logo_path: Ruta al logo de portada, o ``None``.
+
+    Returns:
+        bytes: El PDF completo codificado.
     """
+    # Documento base A4 con márgenes y metadatos (título/autor del PDF).
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -330,6 +462,9 @@ def construir_informe_pdf(
         author="CI2 Lab 2026 — Grupo 6 (Reto 6, Enagás)",
     )
 
+    # Estilos de párrafo del informe (títulos, subtítulos, cabeceras de sección,
+    # bandas de perfil, cuerpo de texto y cabeceras de tabla). Todos derivan de la
+    # hoja de estilos por defecto y aplican la paleta corporativa.
     ss = getSampleStyleSheet()
     h_title = ParagraphStyle(
         "h_title", parent=ss["Title"], fontName="Helvetica-Bold",
@@ -347,6 +482,13 @@ def construir_informe_pdf(
         fontSize=12.5, textColor=colors.white, spaceBefore=2, spaceAfter=2,
         leftIndent=6,
     )
+    # Título de escenario: texto grande en azul corporativo con filete debajo,
+    # SIN banda de fondo — para que no se confunda con las bandas de los
+    # perfiles (que sí llevan color de fondo).
+    h_escenario = ParagraphStyle(
+        "h_escenario", parent=ss["Heading1"], fontName="Helvetica-Bold",
+        fontSize=17, textColor=_PRIMARY, spaceBefore=0, spaceAfter=3,
+    )
     h_esc = ParagraphStyle(
         "h_esc", parent=ss["Heading3"], fontName="Helvetica-Bold",
         fontSize=10, textColor=_PRIMARY, spaceBefore=8, spaceAfter=4,
@@ -363,6 +505,8 @@ def construir_informe_pdf(
         textColor=colors.white, alignment=TA_CENTER,
     )
 
+    # story: secuencia de flowables (párrafos, tablas, imágenes, saltos de página)
+    # que reportlab maqueta en orden. Se va rellenando sección a sección.
     story: list = []
 
     # ── Cabecera / portada: logo pequeño arriba a la izquierda, título y
@@ -494,9 +638,12 @@ def construir_informe_pdf(
 
     # ── Una sección por escenario: ráster+ruta (horizontal) de cada perfil +
     # métricas de sus rutas ───────────────────────────────────────────────────
+    # Perfiles a incluir: los de perfiles_orden que además estén disponibles
+    # (definidos en `perfiles`; si no hay `perfiles`, se asumen todos).
     ids_disponibles = [p.get("id") for p in perfiles] if perfiles else list(perfiles_orden)
     perfiles_a_incluir = [pid for pid in perfiles_orden if pid in ids_disponibles]
 
+    # Columnas de métricas (todas las de col_rename salvo el propio "perfil").
     cols_metricas = [c for c in col_rename if c != "perfil"]
     desc_por_perfil = {
         p.get("id"): _primera_frase(p.get("descripcion", "")) for p in (perfiles or [])
@@ -508,101 +655,91 @@ def construir_informe_pdf(
         "del recorrido en zona protegida, inundable o urbana."
     )
 
-    # Hasta 2 imágenes de perfil por página (mismo criterio de tamaño que antes
-    # con hasta 2 escenarios por página): alto que garantiza que ambas quepan
-    # en una sola cara A4 junto con banda/descripción (alto útil ≈ 265 mm).
-    PERFILES_POR_PAGINA = 2
-    n_perfiles = max(len(perfiles_a_incluir), 1)
-    alto_img_mm = 78 if n_perfiles > 1 else 92
+    # Alto máximo de cada imagen de perfil. El contenido fluye de corrido: cada
+    # bloque de perfil (banda + descripción + imagen) es una unidad KeepTogether
+    # y reportlab mete en cada página tantas como quepan — sin saltos de página
+    # forzados entre perfiles ni antes de la tabla, que dejaban medias caras y
+    # páginas casi vacías. Solo cada ESCENARIO arranca en página nueva.
+    alto_img_mm = 78
 
     for s in escenarios:
         pts = coords.get(s, {})
         origen_s, destino_s = pts.get("origen"), pts.get("destino")
 
-        banda_esc = _tabla([[Paragraph(f"Escenario {s}", h_perfil)]], anchos=[170 * mm])
-        banda_esc.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), _PRIMARY),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        # Cada escenario arranca SIEMPRE en página nueva: en una misma cara
+        # nunca se mezclan datos de escenarios distintos.
+        story.append(PageBreak())
+        story.append(Paragraph(f"Escenario {s}", h_escenario))
+        story.append(HRFlowable(width="100%", thickness=1.1, color=_PRIMARY,
+                                spaceBefore=0, spaceAfter=8))
+
+        if not perfiles_a_incluir:
+            story.append(Paragraph("Sin perfiles de prioridad configurados.", body))
 
         filas_perfil = []
-        pendientes = list(perfiles_a_incluir) or [None]
-        primera_pagina_esc = True
-        while pendientes:
-            chunk = pendientes[:PERFILES_POR_PAGINA]
-            pendientes = pendientes[PERFILES_POR_PAGINA:]
+        for pid in perfiles_a_incluir:
+            banda_perfil = _tabla(
+                [[Paragraph(nombre_perfil.get(pid, pid), h_perfil)]],
+                anchos=[170 * mm])
+            banda_perfil.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1),
+                 colors.HexColor(colores.get(pid, "#004e7e"))),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            bloque: list = [banda_perfil]
+            descripcion = desc_por_perfil.get(pid, "")
+            if descripcion:
+                bloque.append(Paragraph(descripcion, desc_perfil_style))
 
-            pagina: list = []
-            if primera_pagina_esc:
-                pagina.append(banda_esc)
-                pagina.append(Spacer(1, 6))
-                primera_pagina_esc = False
+            img = _figura_raster_ruta(
+                s, pid, trazados_dir, rutas_dir, colores.get(pid, "#004e7e"),
+                origen_s, destino_s,
+            )
+            if img is not None:
+                bloque.append(RLImage(io.BytesIO(img), width=165 * mm,
+                                       height=alto_img_mm * mm, kind="proportional"))
             else:
-                pagina.append(Paragraph(f"Escenario {s} (continuación)", h_esc))
+                bloque.append(Paragraph(
+                    "Sin ráster de coste / trazado disponible para este perfil.", body))
+            bloque.append(Spacer(1, 8))
+            # KeepTogether por perfil: si no cabe entero en lo que queda de
+            # página, pasa completo a la siguiente (nunca se parte una banda
+            # de su imagen).
+            story.append(KeepTogether(bloque))
 
-            for pid in chunk:
-                if pid is None:
-                    pagina.append(Paragraph(
-                        "Sin perfiles de prioridad configurados.", body))
-                    break
-
-                banda_perfil = _tabla(
-                    [[Paragraph(nombre_perfil.get(pid, pid), h_perfil)]],
-                    anchos=[170 * mm])
-                banda_perfil.setStyle(TableStyle([
-                    ("BACKGROUND", (0, 0), (-1, -1),
-                     colors.HexColor(colores.get(pid, "#004e7e"))),
-                    ("TOPPADDING", (0, 0), (-1, -1), 5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ]))
-                pagina.append(banda_perfil)
-                descripcion = desc_por_perfil.get(pid, "")
-                if descripcion:
-                    pagina.append(Paragraph(descripcion, desc_perfil_style))
-
-                img = _figura_raster_ruta(
-                    s, pid, trazados_dir, rutas_dir, colores.get(pid, "#004e7e"),
-                    origen_s, destino_s,
-                )
-                if img is not None:
-                    pagina.append(RLImage(io.BytesIO(img), width=165 * mm,
-                                           height=alto_img_mm * mm, kind="proportional"))
-                else:
-                    pagina.append(Paragraph(
-                        "Sin ráster de coste / trazado disponible para este perfil.", body))
-                pagina.append(Spacer(1, 6))
-
-                ruta = next(
-                    (r for r in resultados.get(s, {}).get("rutas", []) if r.perfil == pid),
-                    None,
-                )
-                if ruta is not None:
-                    filas_perfil.append({"perfil": pid, **ruta.to_dict()})
-
-            # Página nueva por cada tanda de perfiles; KeepTogether es red de
-            # seguridad para que, si el contenido no cupiera exactamente, no se
-            # corte a mitad de un perfil dejando el resto en la página siguiente.
-            story.append(PageBreak())
-            story.append(KeepTogether(pagina))
+            # Localiza la ruta de este perfil en los resultados del escenario y
+            # acumula sus métricas (aplanadas con to_dict) para la tabla final.
+            ruta = next(
+                (r for r in resultados.get(s, {}).get("rutas", []) if r.perfil == pid),
+                None,
+            )
+            if ruta is not None:
+                filas_perfil.append({"perfil": pid, **ruta.to_dict()})
 
         if filas_perfil:
+            # Solo se muestran las columnas de métricas presentes en al menos una
+            # fila: evita columnas totalmente vacías cuando una métrica no aplica.
             cols_usadas = [c for c in cols_metricas if any(c in f for f in filas_perfil)]
+            # Cabecera (etiquetas renombradas) + una fila por perfil con sus
+            # valores formateados.
             datos_met = [["Perfil"] + [col_rename[c] for c in cols_usadas]]
             for f in filas_perfil:
                 nombre_fila = nombre_perfil.get(f["perfil"], f["perfil"])
                 datos_met.append(
                     [nombre_fila] + [_fmt_valor(col_rename[c], f.get(c)) for c in cols_usadas]
                 )
-            story.append(PageBreak())
-            story.append(Paragraph(f"Comparativa de perfiles — Escenario {s}", h_sec))
-            story.append(Paragraph(comentario_metricas, body))
-            story.append(Spacer(1, 4))
-            story.append(_tabla(datos_met))
+            # La tabla fluye tras el último perfil (sin página propia).
+            story.append(KeepTogether([
+                Paragraph(f"Comparativa de perfiles — Escenario {s}", h_sec),
+                Paragraph(comentario_metricas, body),
+                Spacer(1, 4),
+                _tabla(datos_met),
+            ]))
         else:
             story.append(Paragraph("Sin métricas calculadas para este escenario.", body))
 
+    # Maqueta todos los flowables acumulados en el PDF y devuelve sus bytes.
     doc.build(story)
     return buf.getvalue()

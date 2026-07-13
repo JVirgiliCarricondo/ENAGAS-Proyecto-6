@@ -58,7 +58,14 @@ class PreparacionError(Exception):
 # Estado de preparación                                                        #
 # --------------------------------------------------------------------------- #
 def capas_faltantes(scenario: str) -> list[str]:
-    """Capas de coste esperadas que aún no existen para el escenario."""
+    """Capas de coste esperadas que aún no existen para el escenario.
+
+    Args:
+        scenario: Id del escenario (p. ej. 'C'); se normaliza a mayúsculas.
+
+    Returns:
+        Sublista de ``CAPAS_ESPERADAS`` cuyo ``.tif`` no está en Capas_Coste/.
+    """
     s = scenario.upper()
     return [
         cap for cap in CAPAS_ESPERADAS
@@ -102,12 +109,15 @@ def recorte_desactualizado(scenario: str) -> bool:
     import numpy as np       # noqa: PLC0415
     import rasterio          # noqa: PLC0415
     with rasterio.open(dem_path) as src:
-        b = src.bounds
+        b = src.bounds       # extensión geográfica real del recorte (EPSG:25830)
         data = src.read(1)
         nodata = src.nodata
+    # Si algún borde del recorte se aleja del AOI esperado más que la tolerancia,
+    # el recorte es de otra zona (cambiaron las coordenadas) → hay que rehacerlo.
     if any(abs(real - esp) > _TOL_RECORTE_M
            for real, esp in zip((b.left, b.bottom, b.right, b.top), esperado)):
         return True
+    # Máscara de celdas válidas: finitas y distintas del valor nodata (sin dato).
     valid = np.isfinite(data)
     if nodata is not None:
         valid &= data != nodata
@@ -136,6 +146,8 @@ def _raw_cubre_aoi(scenario: str) -> bool:
     with rasterio.open(dem_path) as src:
         b = src.bounds
     xmin, ymin, xmax, ymax = esperado
+    # El DEM crudo cubre el AOI si su bbox lo envuelve por los cuatro lados
+    # (con margen de tolerancia): oeste/sur por debajo del AOI, este/norte por encima.
     return (b.left <= xmin + _TOL_RAW_M and b.bottom <= ymin + _TOL_RAW_M
             and b.right >= xmax - _TOL_RAW_M and b.top >= ymax - _TOL_RAW_M)
 
@@ -151,10 +163,12 @@ def escenario_preparado(scenario: str) -> bool:
 # Utilidades internas                                                          #
 # --------------------------------------------------------------------------- #
 def _noop(_pct: float, _msg: str) -> None:
+    """Callback de progreso nulo (por defecto, cuando no se pasa uno de UI)."""
     pass
 
 
 def _escenario_en_config(scenario: str) -> bool:
+    """True si ``escenario_{scenario}`` está definido en escenario.yaml."""
     if not CONFIG_ESCENARIO.exists():
         return False
     cfg = yaml.safe_load(CONFIG_ESCENARIO.read_text(encoding="utf-8")) or {}
@@ -162,7 +176,21 @@ def _escenario_en_config(scenario: str) -> bool:
 
 
 def _run_modulo(modulo: str, scenario: str) -> subprocess.CompletedProcess:
-    """Ejecuta `python -m {modulo} --escenario {s} -y` desde proyecto/."""
+    """Ejecuta `python -m {modulo} --escenario {s} -y` como subproceso desde proyecto/.
+
+    Se lanza en subproceso (y no en proceso) porque descargar_capas y
+    alinear_capas ya gestionan su propio logging a fichero, manifiesto y código
+    de salida. Ajusta el entorno en Windows para que el subproceso encuentre las
+    DLLs de GDAL/PROJ de QGIS, y para descargar_capas decide entre --keep-existing
+    (reutilizar crudos que ya cubren el AOI) y -y (forzar re-descarga).
+
+    Args:
+        modulo:   Módulo a ejecutar (p. ej. ``"src.ingesta.descargar_capas"``).
+        scenario: Id del escenario a pasar con ``--escenario``.
+
+    Returns:
+        El ``CompletedProcess`` con returncode, stdout y stderr capturados.
+    """
     import os
     env = os.environ.copy()
 
@@ -381,6 +409,12 @@ def preparar(scenario: str, progress_cb=None) -> dict:
 # Punto de entrada CLI                                                          #
 # --------------------------------------------------------------------------- #
 def main() -> int:
+    """Punto de entrada CLI: prepara un escenario y reporta capas y avisos.
+
+    Returns:
+        0 si el escenario se preparó (aunque haya avisos); 1 si falló la
+        preparación (``PreparacionError``).
+    """
     parser = argparse.ArgumentParser(
         description="Prepara todas las capas de coste de un escenario "
                     "(descarga + alineación + superficies)."
