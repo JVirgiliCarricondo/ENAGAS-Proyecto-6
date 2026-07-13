@@ -18,8 +18,11 @@ Archivos generados en data/raw/ (sufijo _A o _B según el escenario):
   INUND_{s}.gpkg   → Zonas inundables SNCZI (MITECO), OGC API Features, unión T10+T100+T500
   RN2000_{s}.gpkg  → Red Natura 2000 (ZEPA/LIC/ZEC), OGC API Features MITECO (biodiversidad:RedNatura)
 
-Solo Catastro NO se descarga automáticamente (no hay servicio bbox fiable):
-se coloca a mano en data/raw/Catastro/ y alinear_capas.py lo recorta al AOI.
+El Catastro NACIONAL (régimen común) NO se descarga automáticamente (no hay
+servicio bbox fiable): se coloca a mano en data/raw/Catastro/ y alinear_capas.py
+lo recorta al AOI. El Catastro FORAL (Navarra y País Vasco, no cubierto por el
+nacional) SÍ se descarga por bbox — lo gestiona catastro_foral.py y aterriza
+también bajo data/raw/Catastro/ como PARCELA.shp.
 
 Además se escribe un manifiesto de estado por capa en data/raw/manifiesto_estado.json
 que distingue tres situaciones que antes se confundían en "guardar vacío y seguir":
@@ -751,8 +754,10 @@ SOURCES: list[tuple[str, str, Callable]] = [
     ("IGME geológico",        "IGME_{s}.gpkg", download_igme),
     ("Zonas inundables",      "INUND_{s}.gpkg",download_zonas_inundables),
     ("Red Natura 2000",       "RN2000_{s}.gpkg",download_rn2000),
-    # Catastro: sin descarga automática (no hay servicio bbox fiable).
-    # Se coloca a mano en data/raw/Catastro/ y alinear_capas.py lo recorta.
+    # Catastro NACIONAL (régimen común): sin descarga automática (no hay servicio
+    # bbox fiable). Se coloca a mano en data/raw/Catastro/ y alinear_capas.py lo
+    # recorta. El catastro FORAL (Navarra/País Vasco) SÍ se descarga por bbox: lo
+    # gestiona catastro_foral.py, llamado al final de _run_scenario.
 ]
 
 
@@ -805,6 +810,23 @@ def _run_scenario(
             results[out_name] = LayerResult(LayerStatus.FAILED, 0, str(exc))
 
         time.sleep(0.5)   # cortesía con los servidores públicos
+
+    # Catastro FORAL (Navarra y País Vasco): el Catastro nacional no los cubre.
+    # Best-effort y no bloqueante — si el AOI cae en territorio de régimen común
+    # (p. ej. Aragón) no hace ninguna petición. Se escribe como PARCELA.shp bajo
+    # data/raw/Catastro/, donde alinear_capas.py lo descubre y fusiona solo.
+    log.info("\n[Catastro foral (Navarra / País Vasco)]")
+    try:
+        try:
+            from src.ingesta.catastro_foral import descargar_catastro_foral
+        except ImportError:
+            from ingesta.catastro_foral import descargar_catastro_foral  # type: ignore
+        foral = descargar_catastro_foral(bbox, s, log, overwrite=overwrite)
+        if not foral:
+            log.info("  AOI fuera de Navarra/País Vasco → sin catastro foral")
+    except Exception as exc:
+        # Nunca debe tumbar la descarga del resto de capas.
+        log.warning(f"  Catastro foral omitido (best-effort): {exc}")
 
     return results
 
