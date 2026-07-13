@@ -1,4 +1,4 @@
-"""Punto de entrada CLI del generador de trazados.
+"""Punto de entrada CLI del generador de ramales.
 
 Esqueleto de partida — completar en el Sprint 5. Uso previsto:
     python -m src.app.cli --escenario data/config/escenario.yaml --perfiles data/config/perfiles.yaml

@@ -1,4 +1,4 @@
-"""Interfaz web — Generador de trazados (Enagás / CI2 Lab 2026).
+"""Interfaz web — Generador de ramales (Enagás / CI2 Lab 2026).
 
 Ejecutar desde proyecto/:
     streamlit run src/app/streamlit_app.py
@@ -37,7 +37,7 @@ from shapely.ops import unary_union
 # Page config — DEBE ser la primera llamada a Streamlit
 _ICON_PATH = Path(__file__).resolve().parent / "assets" / "Logo.png"
 st.set_page_config(
-    page_title="Generador de Trazados",
+    page_title="Generador de Ramales",
     page_icon=str(_ICON_PATH) if _ICON_PATH.exists() else ":droplet:",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -3711,11 +3711,13 @@ def _render_bienvenida() -> None:
             'margin-bottom:6px;">Infrastructure Routing Tool</div>'
             '<div style="font-family:var(--font-head);font-size:2.3rem;font-weight:800;'
             'color:var(--primary);line-height:1.1;letter-spacing:-0.02em;margin-bottom:14px;">'
-            'Generador<br>de Trazados</div>'
-            '<p class="welcome-sub" style="text-align:justify;">Herramienta avanzada '
-            'para la optimización y diseño de trazados de infraestructuras lineales. Utilice algoritmos '
-            'de última generación para calcular las rutas más eficientes basadas en criterios '
-            'geográficos, ambientales y de coste.</p>',
+            'Generador<br>de Ramales</div>'
+            '<p class="welcome-sub" style="text-align:justify;">De un origen y un destino '
+            'a una decisión fundamentada: genere en minutos cuatro trazados alternativos, '
+            'cada uno optimizado bajo un perfil de prioridades diferente —el más corto, el '
+            'de menor impacto ambiental, el que mejor se adapta al relieve y una solución '
+            'de equilibrio—, y compárelos sobre el mapa con métricas objetivas: longitud, '
+            'coste relativo, cruces especiales, zonas protegidas y pendiente.</p>',
             unsafe_allow_html=True,
         )
         st.write("")
