@@ -217,6 +217,29 @@ def _run_modulo(modulo: str, scenario: str) -> subprocess.CompletedProcess:
     )
 
 
+def _descargas_parciales(scenario: str) -> list[str]:
+    """Avisos de capas 'partial' del manifiesto: datos escritos pero con alguna
+    subfuente caída (p. ej. una colección SNCZI). Formato "Capa: detalle", el
+    mismo que los avisos del Paso 3, para que la UI los presente igual."""
+    etiquetas = {"INUND": "Zonas inundables", "RN2000": "Zonas protegidas",
+                 "HID": "Hidrografía", "OSM": "Viario (OSM)",
+                 "IGME": "Geología (IGME)", "DEM": "DEM"}
+    if not DOWNLOAD_MANIFEST_PATH.exists():
+        return []
+    try:
+        data = json.loads(DOWNLOAD_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    entradas = data.get("escenarios", {}).get(scenario.upper(), {})
+    avisos = []
+    for name, e in entradas.items():
+        if e.get("status") != "partial":
+            continue
+        label = etiquetas.get(name.split("_")[0], name)
+        avisos.append(f"{label}: {e.get('detail') or 'descarga incompleta'}")
+    return avisos
+
+
 def _descargas_fallidas(scenario: str) -> list[str]:
     """Lee el manifiesto y devuelve las capas marcadas como 'failed'."""
     if not DOWNLOAD_MANIFEST_PATH.exists():
@@ -326,7 +349,10 @@ def preparar(scenario: str, progress_cb=None) -> dict:
 
     # ── Paso 3: generación de las capas de coste (en proceso) ──────────────── #
     steps = _superficie_steps()
-    avisos: list[str] = []
+    # Arranca con los avisos de descarga parcial del Paso 1 (p. ej. SNCZI con
+    # una colección caída): la capa existe pero puede estar incompleta, y el
+    # usuario debe verlo en resultados junto al resto de avisos de preparación.
+    avisos: list[str] = _descargas_parciales(s)
     for i, (label, fn, pista) in enumerate(steps):
         cb(0.62 + 0.36 * i / len(steps), f"Generando capa de coste: {label}…")
         try:

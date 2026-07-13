@@ -247,6 +247,23 @@ def validar_contrato_salida(raster_path: Path, dem_path: Path) -> None:
             )
 
 
+def umbral_barrera_en_tif(s: str) -> float | None:
+    """Umbral de barrera con el que se generó tpi_{s}.tif (etiqueta del GeoTIFF).
+
+    None si el fichero no existe, no se puede leer o no lleva la etiqueta
+    (tifs anteriores a este cambio): el llamante debe regenerar la capa.
+    """
+    path = SALIDA_DIR / f"tpi_{s}.tif"
+    if not path.exists():
+        return None
+    try:
+        with rasterio.open(path) as src:
+            val = src.tags().get("umbral_barrera_pct")
+        return float(val) if val is not None else None
+    except (OSError, ValueError):
+        return None
+
+
 def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
                        radio_int_m: float = RADIO_INT_M) -> Path:
     """Genera tpi_{s}.tif a partir de dem_aoi_{s}.tif."""
@@ -315,6 +332,10 @@ def procesar_escenario(s: str, radio_ext_m: float = RADIO_EXT_M,
     salida = SALIDA_DIR / f"tpi_{s}.tif"
     with rasterio.open(salida, "w", **profile) as dst:
         dst.write(cost_array.astype(np.float32), 1)
+        # La barrera queda HORNEADA en el tif (celdas nodata), así que se graba
+        # el umbral usado como etiqueta del GeoTIFF: la app compara esta
+        # etiqueta con el umbral pedido para decidir si regenerar la capa.
+        dst.update_tags(umbral_barrera_pct=f"{UMBRAL_BARRERA_PCT:g}")
 
     validar_contrato_salida(salida, dem_path)
     _write_qml(salida)
