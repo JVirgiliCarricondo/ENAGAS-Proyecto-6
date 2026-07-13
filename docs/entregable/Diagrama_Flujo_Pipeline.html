@@ -108,8 +108,8 @@ flowchart TB
   E(["ENTRADA — origen · destino (UTM) · pesos por perfil"])
   E --> NEW{"¿escenario nuevo?<br/>sin capas en Capas_Coste/"}
   NEW -- "No · ya preparado" --> S3
-  NEW -- "Sí · preparar" --> AUTO["Descarga automática<br/>DEM · OSM · Hidrografía IGN · IGME · inundables (aprox. WMS)"]
-  AUTO --> MAN["Aporte manual — data/raw/<br/>Catastro (Cl@ve) · Red Natura 2000"]
+  NEW -- "Sí · preparar" --> AUTO["Descarga automática (OGC API / WFS / Overpass)<br/>DEM Copernicus · OSM · Hidrografía IGN · IGME · inundables SNCZI (vector) · Red Natura 2000"]
+  AUTO --> MAN["Aporte manual asistido — Catastro nacional<br/>ZIP de la Sede INSPIRE subido desde la app (foral por bbox)"]
   MAN --> S1["1 · INGESTA Y ALINEACIÓN<br/>recorte al corredor · EPSG:25830 · rejilla 30 m"]
   S1 --> S2["2 · CAPAS DE COSTE (6 en 0–1)<br/>tpi · geotecnia · expropiación · protegida · inundable · cruces"]
   S2 --> S3["3 · COMBINACIÓN POR PERFIL<br/>Σ pesoᵢ · capaᵢ + BASE_LONG"]
@@ -127,10 +127,13 @@ flowchart TB
   class AUTO auto;
 </div>
 
-<p class="note" style="font-size:.9rem"><b>Zonas inundables:</b> el pipeline las autodescarga vía
-   <b>WMS</b> (SNCZI / MITECO) como imagen ráster — una <b>primera aproximación</b> sin intervención del
-   usuario —, pero al ser una imagen <b>no trae los datos asociados</b> que sí daría un WFS. Por fiabilidad,
-   lo recomendable es <b>aportar la capa a mano</b> (paso previsto, aún no implementado).</p>
+<p class="note" style="font-size:.9rem"><b>Fuentes automáticas:</b> todas las capas GIS se descargan solas
+   por bbox del corredor vía <b>OGC API Features</b> de MITECO (zonas inundables SNCZI —vector con atributos,
+   unión T10∪T100∪T500— y Red Natura 2000), WFS/ArcGIS REST (hidrografía IGN, geología IGME), Overpass (OSM)
+   y tiles COG (DEM Copernicus GLO-30). La <b>única capa manual</b> es el Catastro nacional, aportado de forma
+   asistida desde la app (enlaces por municipio a la Sede Catastro INSPIRE → subir el ZIP → conversión y recorte
+   automáticos). El estado por capa se registra en <code>manifiesto_estado.json</code>
+   (<code>ok</code>/<code>empty</code>/<code>failed</code>/<code>partial</code>).</p>
 
 <!-- ============================================================ -->
 <h2 id="capas"><span class="n">02</span>Capas de coste y estandarización</h2>
@@ -143,7 +146,8 @@ flowchart TB
 <pre>coste_celda = A_oficial / 38</pre>
 
 <p><b>No existe capa de pendiente</b>: el relieve lo describe el índice de posición topográfica (TPI);
-   la inclinación solo actúa como <b>barrera dura</b> (pendiente Horn &gt; 70 %, es decir &gt; 35°).</p>
+   la inclinación solo actúa como <b>barrera dura</b> (pendiente Horn &gt; 70 % ≈ 35° <b>por defecto, editable
+   desde el Paso 2</b>).</p>
 
 <div class="grid2">
   <table>
@@ -191,7 +195,7 @@ flowchart TB
 <pre>TPI(c) = z(c) − media( z en anillo de radio 300 m )        # Weiss (2001)
 z-score sobre el AOI, acotado a ±2σ → coste decreciente (cresta más barata):
     cresta (+2σ) → 0.0     llano / ladera → 0.5     valle (−2σ) → 1.0
-barrera dura: pendiente (Horn) > 70 % (≈ 35°) → celda intransitable</pre>
+barrera dura: pendiente (Horn) > umbral (70 % ≈ 35°, editable) → celda intransitable</pre>
 
 <h4>Combinación ponderada por perfil · <code>superficie/combinar.py</code></h4>
 <pre>coste_total(i,j) = BASE_LONG · w_longitud
