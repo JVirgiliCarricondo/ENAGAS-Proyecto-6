@@ -115,7 +115,13 @@ class LayerStatus(str, Enum):
 
 @dataclass
 class LayerResult:
-    """Resultado de descargar una capa: estado + nº de filas + detalle."""
+    """Resultado de descargar una capa: estado + nº de filas + detalle.
+
+    Attributes:
+        status: Estado de la descarga (LayerStatus).
+        rows: Nº de filas/píxeles escritos (0 si vacío o fallido).
+        detail: Texto libre con la fuente o el motivo del fallo, para el manifiesto.
+    """
     status: LayerStatus
     rows: int = 0
     detail: str = ""
@@ -161,6 +167,15 @@ _HEADERS = {
 # Utilidades                                                                   #
 # ──────────────────────────────────────────────────────────────────────────── #
 def _setup_logging() -> logging.Logger:
+    """Configura el logger 'descarga' con salida a consola y a fichero.
+
+    Crea data/raw/ si no existe, fuerza UTF-8 en la consola de Windows (para que
+    los símbolos ✓/✗/○ y los acentos no rompan) y añade dos handlers: uno a
+    stdout y otro al fichero de log (modo 'w', se reescribe en cada ejecución).
+
+    Returns:
+        El logger configurado, reutilizable en todas las funciones del módulo.
+    """
     DATA_RAW.mkdir(parents=True, exist_ok=True)
     if sys.platform == "win32":
         try:
@@ -186,12 +201,30 @@ def _setup_logging() -> logging.Logger:
 
 
 def _load_yaml(path: Path) -> dict:
+    """Carga un fichero YAML (UTF-8) y lo devuelve como diccionario."""
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def _scenario_aoi(cfg_s: dict) -> tuple[float, float, float, float]:
-    """Devuelve (xmin, ymin, xmax, ymax) en EPSG:25830."""
+    """Calcula el AOI (área de interés) de un escenario en EPSG:25830.
+
+    El AOI es el rectángulo (bbox) que envuelve la zona sobre la que se piden
+    datos a los servicios. Se obtiene de dos maneras, por orden de preferencia:
+
+      1. Si el escenario declara un bloque `aoi` con los cuatro límites no nulos,
+         se usa tal cual.
+      2. En su defecto, se traza la recta origen→destino y se toma su envolvente
+         con un buffer de 1000 m (cap_style=2 = extremos planos), de modo que el
+         AOI cubra el corredor con un margen de 1 km a cada lado.
+
+    Args:
+        cfg_s: Configuración del escenario (bloque `escenario_X` de escenario.yaml),
+            con claves `aoi`, `origen` y `destino` en coordenadas EPSG:25830.
+
+    Returns:
+        Tupla (xmin, ymin, xmax, ymax) en metros, EPSG:25830.
+    """
     aoi = cfg_s.get("aoi", {})
     if aoi and all(aoi.get(k, 0) != 0 for k in ("xmin", "ymin", "xmax", "ymax")):
         return aoi["xmin"], aoi["ymin"], aoi["xmax"], aoi["ymax"]
@@ -204,7 +237,19 @@ def _scenario_aoi(cfg_s: dict) -> tuple[float, float, float, float]:
 
 def _to_4326(xmin: float, ymin: float, xmax: float, ymax: float
              ) -> tuple[float, float, float, float]:
-    """Convierte bbox EPSG:25830 → (west, south, east, north) en WGS84."""
+    """Convierte un bbox de EPSG:25830 a coordenadas geográficas WGS84.
+
+    EPSG:25830 (ETRS89 / UTM 30N) trabaja en metros; muchos servicios (Overpass,
+    OGC API Features, Copernicus S3) esperan el bbox en grados (WGS84, EPSG:4326).
+    `always_xy=True` fuerza el orden lon/lat (x/y) para evitar la inversión de
+    ejes habitual en pyproj.
+
+    Args:
+        xmin, ymin, xmax, ymax: Límites del bbox en metros, EPSG:25830.
+
+    Returns:
+        Tupla (west, south, east, north) en grados decimales WGS84.
+    """
     tr = Transformer.from_crs("EPSG:25830", "EPSG:4326", always_xy=True)
     w, s = tr.transform(xmin, ymin)
     e, n = tr.transform(xmax, ymax)
@@ -216,8 +261,20 @@ def _write_gpkg(
     out_path: Path,
     log: logging.Logger,
 ) -> int:
-    """Escribe un GeoDataFrame (posiblemente vacío, pero válido) reproyectado a
-    EPSG:25830. Devuelve el nº de filas escritas."""
+    """Escribe un GeoDataFrame en un GeoPackage reproyectado a EPSG:25830.
+
+    Garantiza que la capa quede en el CRS común del pipeline antes de guardarla:
+    si no tiene CRS lo asigna, y si tiene otro reproyecta. Acepta capas vacías
+    (pero válidas) para materializar una ausencia de datos confirmada.
+
+    Args:
+        gdf: Capa vectorial a escribir (con o sin geometrías).
+        out_path: Ruta del GeoPackage (.gpkg) de salida.
+        log: Logger (parámetro por coherencia con el resto de utilidades).
+
+    Returns:
+        Número de filas escritas.
+    """
     if gdf.crs is None:
         gdf = gdf.set_crs("EPSG:25830")
     elif gdf.crs.to_epsg() != 25830:
@@ -263,9 +320,25 @@ def _parse_wfs_response(
     resp: requests.Response,
     fallback_crs: str = "EPSG:25830",
 ) -> "gpd.GeoDataFrame | None":
-    """Intenta parsear la respuesta de un WFS como GeoDataFrame."""
+    """Intenta parsear la respuesta de un WFS como GeoDataFrame.
+
+    Un WFS (Web Feature Service) puede devolver GeoJSON o distintas variantes de
+    GML; y ante un error responde con un XML de excepción (ExceptionReport /
+    ServiceException) que geopandas no sabe leer. Esta función filtra primero esas
+    respuestas de error, intenta una lectura directa en memoria y, si falla, prueba
+    guardando a un fichero temporal (algunos GML solo se leen bien desde disco).
+
+    Args:
+        resp: Respuesta HTTP del servicio WFS.
+        fallback_crs: CRS a asignar si la respuesta no declara ninguno.
+
+    Returns:
+        GeoDataFrame con los datos, o None si la respuesta es un error o no se
+        puede parsear (que aguas arriba se traduce en estado FAILED).
+    """
     content = resp.content
-    # Descartar respuestas de error OGC
+    # Descartar respuestas de error OGC: el servidor devuelve HTTP 200 con un XML
+    # de excepción en el cuerpo, así que hay que mirar el contenido, no el código.
     if b"ExceptionReport" in content[:2000] or b"ServiceException" in content[:2000]:
         return None
     # Intentar lectura directa (GeoJSON o GML)
@@ -306,6 +379,20 @@ def _wfs_url(
     Construye la URL de un WFS GetFeature preservando los dos puntos del namespace
     (lcv:LandCoverUnit, hy-n:WatercourseLink…) sin URL-encodificarlos.
     requests.get(params=…) encoda ':' como '%3A', lo que algunos servidores rechazan.
+
+    Los nombres de parámetro cambian entre versiones del estándar WFS: 2.0.0 usa
+    TYPENAMES/COUNT, mientras 1.1.0 usa TYPENAME/MAXFEATURES.
+
+    Args:
+        endpoint: URL base del servicio WFS.
+        typename: Nombre de la capa (typename) a pedir, con su namespace.
+        version: Versión del protocolo WFS ("2.0.0" o "1.1.0").
+        bbox_str: bbox ya formateado como "xmin,ymin,xmax,ymax,EPSG:25830".
+        out_fmt: Formato de salida solicitado (GeoJSON o variante de GML).
+        max_features: Tope de features a devolver (salvaguarda de truncado).
+
+    Returns:
+        La URL completa de la petición GetFeature.
     """
     tname_key = "TYPENAMES" if version == "2.0.0" else "TYPENAME"
     count_key = "COUNT" if version == "2.0.0" else "MAXFEATURES"
@@ -338,7 +425,24 @@ def _wfs_bbox(
 ) -> "gpd.GeoDataFrame | None":
     """
     Descarga capa WFS por bbox probando WFS 2.0.0 y 1.1.0 con JSON y GML.
-    Devuelve GeoDataFrame en EPSG:25830, o None si todos los intentos fallan.
+
+    Los servicios IGN INSPIRE no siempre aceptan la misma combinación de versión
+    y formato de salida, así que se intentan varias en cascada (definidas en
+    `attempts`, en orden de preferencia) y se devuelve la primera que responde con
+    geometrías. Filtrar por bbox hace que el servidor solo devuelva las features
+    dentro del AOI, sin descargar la capa regional o nacional completa.
+
+    Args:
+        endpoint: URL base del servicio WFS.
+        typename: Nombre de la capa (typename) a pedir, con su namespace.
+        bbox_25830: AOI como (xmin, ymin, xmax, ymax) en EPSG:25830.
+        log: Logger para el detalle de cada intento.
+        max_features: Tope de features por petición; si la respuesta lo alcanza,
+            la capa podría estar truncada y se avisa por log.
+
+    Returns:
+        GeoDataFrame en EPSG:25830, o None si todos los intentos fallan
+        (→ FAILED aguas arriba).
     """
     xmin, ymin, xmax, ymax = bbox_25830
 
@@ -362,6 +466,8 @@ def _wfs_bbox(
             gdf = _parse_wfs_response(resp)
             if gdf is not None:
                 log.debug(f"    OK WFS {version} / {out_fmt[:30]} → {len(gdf)} filas")
+                # Si la respuesta llega justo al tope de features, es probable que
+                # el servidor la haya cortado y falten geometrías del AOI: se avisa.
                 if len(gdf) >= max_features:
                     log.warning(
                         f"    Respuesta WFS en el límite ({max_features} features): "
@@ -392,7 +498,20 @@ def _ogc_features_bbox(
       - None                → el servicio no respondió o dio un error (FAILED).
       - GeoDataFrame vacío  → respondió correctamente sin features en el AOI.
       - GeoDataFrame lleno  → features reproyectadas a EPSG:25830.
+
+    Args:
+        base_url: URL base del servicio OGC API Features (hasta /v1).
+        collection_id: Id de la colección a consultar (p. ej. "agua:Zi_laminas_q100").
+        bbox_25830: AOI como (xmin, ymin, xmax, ymax) en EPSG:25830.
+        log: Logger para el detalle de errores y avisos de truncado.
+        limit: Tope de features por petición; si se alcanza, la capa podría
+            estar truncada y se avisa por log.
+
+    Returns:
+        GeoDataFrame en EPSG:25830 (con datos o vacío), o None si el servicio
+        falla.
     """
+    # El estándar exige el bbox en CRS84 (WGS84, lon/lat), no en 25830.
     w, s, e, n = _to_4326(*bbox_25830)
     url = (
         f"{base_url}/collections/{collection_id}/items"
@@ -426,7 +545,20 @@ _COP_S3 = "https://copernicus-dem-30m.s3.amazonaws.com"
 
 
 def _cop_tile_url(lat: int, lon: int) -> str:
-    """URL de un tile Copernicus GLO-30 (1°×1°) en AWS S3 según lat/lon floor."""
+    """Construye la URL de un tile Copernicus GLO-30 (1°×1°) en AWS S3.
+
+    El DEM (modelo digital de elevaciones) Copernicus se publica en teselas de
+    1°×1° nombradas por la esquina suroeste (p. ej. N42_00_W002_00). Esta función
+    compone el nombre del tile y su ruta en el bucket S3 a partir de la latitud y
+    longitud enteras (floor) de esa esquina.
+
+    Args:
+        lat: Latitud entera de la esquina SW del tile (grados).
+        lon: Longitud entera de la esquina SW del tile (grados).
+
+    Returns:
+        URL del GeoTIFF (COG) del tile en AWS S3.
+    """
     ns = "N" if lat >= 0 else "S"
     ew = "E" if lon >= 0 else "W"
     la = abs(lat)
@@ -472,12 +604,26 @@ def download_dem(
     out_path: Path,
     log: logging.Logger,
 ) -> LayerResult:
-    """
-    DEM Copernicus GLO-30 (30 m) desde tiles COG en AWS S3.
-    Lee solo la ventana del AOI sin descargar el tile completo (~40 MB).
+    """Descarga el DEM Copernicus GLO-30 (~30 m) del AOI y lo deja en EPSG:25830.
 
-    Un fallo (ningún tile accesible) lanza excepción y se registra como FAILED
-    aguas arriba; nunca se produce un raster vacío que finja "sin cobertura".
+    Usa tiles COG (Cloud Optimized GeoTIFF) alojados en AWS S3: gracias a
+    /vsicurl y a que el COG está indexado internamente, rasterio lee solo la
+    ventana del AOI mediante peticiones HTTP por rango, sin bajar el tile completo
+    (~40 MB). Los tiles que cubren el AOI se mosaican, se recortan al AOI y se
+    reproyectan de WGS84 a EPSG:25830 con remuestreo bilineal.
+
+    Args:
+        bbox_25830: AOI como (xmin, ymin, xmax, ymax) en EPSG:25830.
+        out_path: Ruta del GeoTIFF de salida.
+        log: Logger para el progreso y los avisos.
+
+    Returns:
+        LayerResult OK con el tamaño del raster en píxeles.
+
+    Raises:
+        RuntimeError: Si ningún tile Copernicus del AOI pudo abrirse. El error se
+            registra como FAILED aguas arriba; nunca se produce un raster vacío
+            que finja "sin cobertura".
     """
     import os
     import rasterio
@@ -494,7 +640,8 @@ def download_dem(
     lon_tiles = range(int(w) - 1, int(e) + 1)
     tile_urls = [_cop_tile_url(la, lo) for la in lat_tiles for lo in lon_tiles]
 
-    # Configurar GDAL para leer COGs remotos
+    # Configurar GDAL para leer COGs remotos vía /vsicurl (lectura HTTP por rangos):
+    # timeouts de red y restricción a extensiones .tif para acelerar el sondeo.
     os.environ.setdefault("GDAL_HTTP_CONNECTTIMEOUT", "30")
     os.environ.setdefault("GDAL_HTTP_TIMEOUT", "120")
     os.environ.setdefault("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", ".tif")
@@ -523,13 +670,16 @@ def download_dem(
     if not datasets:
         raise RuntimeError("Ningún tile Copernicus GLO-30 pudo abrirse.")
 
-    # Mosaico y recorte al AOI (en WGS84)
+    # Mosaico y recorte al AOI (aún en WGS84). merge() une los tiles y los recorta
+    # al bbox; nodata=-9999 marca los píxeles sin valor (fuera de dato).
     mosaic, mosaic_transform = merge(datasets, bounds=(w, s, e, n), nodata=-9999)
     mosaic_crs = datasets[0].crs
     for ds in datasets:
         ds.close()
 
-    # Reproyectar a EPSG:25830
+    # Reproyectar de WGS84 (grados) a EPSG:25830 (metros): calculate_default_transform
+    # calcula la rejilla destino (transform + tamaño en píxeles) y reproject remuestrea
+    # los valores de elevación a esa rejilla con interpolación bilineal.
     import numpy as np
     dst_crs = CRS.from_epsg(25830)
     dst_transform, dst_width, dst_height = calculate_default_transform(
@@ -583,6 +733,15 @@ def download_zonas_inundables(
     legítima → EMPTY. Si alguna responde pero otra(s) fallan, la capa escrita
     puede estar incompleta (infravaloraría el riesgo de inundación) → PARTIAL,
     que aguas arriba se convierte en aviso visible en la pantalla de resultados.
+
+    Args:
+        bbox_25830: AOI como (xmin, ymin, xmax, ymax) en EPSG:25830.
+        out_path: Ruta del GeoPackage de salida.
+        log: Logger para el progreso y los avisos.
+
+    Returns:
+        LayerResult con estado OK / EMPTY / PARTIAL / FAILED según el resultado de
+        la unión de colecciones (ver descripción).
     """
     log.info(f"  OGC API Features SNCZI/MITECO → {_MITECO_OAFEAT}")
     partes = []
@@ -596,6 +755,8 @@ def download_zonas_inundables(
             continue
         respondidas += 1
         if not gdf_t.empty:
+            # Anotar el periodo de retorno (q10/q100/q500) por trazabilidad, aunque
+            # el modelo de coste luego solo mire dentro/fuera de la unión.
             gdf_t["periodo_retorno"] = collection_id.rsplit("_q", 1)[-1]
             partes.append(gdf_t[["geometry", "periodo_retorno"]])
             log.info(f"    {collection_id} → {len(gdf_t)} polígonos")
@@ -639,12 +800,27 @@ def download_osm(
     out_path: Path,
     log: logging.Logger,
 ) -> LayerResult:
-    """Carreteras + ferrocarril vía Overpass API. Salida: GeoPackage de LineStrings.
+    """Descarga carreteras y ferrocarril del AOI vía Overpass API (OpenStreetMap).
 
-    Un fallo de Overpass lanza excepción (→ FAILED aguas arriba); una respuesta
-    correcta sin vías es una ausencia de cobertura legítima (→ EMPTY)."""
+    Overpass es la API de consulta de OSM: se le manda una query en su lenguaje
+    (QL) pidiendo las vías (`highway`) y líneas de ferrocarril (`railway`) dentro
+    del bbox, junto con sus nodos, y devuelve JSON con nodos y ways. Aquí se
+    reconstruyen las geometrías LineString uniendo los nodos de cada way. Se
+    prueban varios endpoints (mirrors) en cascada por si alguno está saturado.
+
+    Args:
+        bbox_25830: AOI como (xmin, ymin, xmax, ymax) en EPSG:25830.
+        out_path: Ruta del GeoPackage de salida (LineStrings).
+        log: Logger para el progreso y los fallbacks.
+
+    Returns:
+        LayerResult OK con las vías, o EMPTY si el AOI no tiene ninguna.
+
+    Raises:
+        Exception: Si todos los endpoints Overpass fallan (→ FAILED aguas arriba).
+    """
     w, s, e, n = _to_4326(*bbox_25830)
-    # Overpass usa orden lat,lon: sur,oeste,norte,este
+    # Overpass usa orden lat,lon: sur,oeste,norte,este (al revés que lon,lat).
     bbox_str = f"{s:.6f},{w:.6f},{n:.6f},{e:.6f}"
     query = (
         f"[out:json][timeout:90][bbox:{bbox_str}];"
@@ -669,17 +845,22 @@ def download_osm(
     if last_exc is not None:
         raise last_exc
 
+    # Overpass devuelve nodos y ways por separado: primero se indexan los nodos
+    # (id → coordenada lon/lat) para luego reconstruir cada way encadenando sus
+    # nodos en una LineString.
     nodes = {
         el["id"]: (el["lon"], el["lat"])
         for el in data.get("elements", [])
         if el["type"] == "node"
     }
+    # Solo conservamos las etiquetas OSM útiles aguas abajo (tipo de vía, nombre…).
     keep_tags = {"highway", "railway", "name", "oneway", "maxspeed", "lanes", "surface"}
     features = []
     for el in data.get("elements", []):
         if el["type"] != "way":
             continue
         coords = [nodes[nid] for nid in el.get("nodes", []) if nid in nodes]
+        # Una LineString necesita al menos 2 vértices; descartar ways degenerados.
         if len(coords) < 2:
             continue
         features.append({
@@ -701,10 +882,22 @@ def download_hidrografia(
     out_path: Path,
     log: logging.Logger,
 ) -> LayerResult:
-    """Hidrografía IGN vía WFS INSPIRE (max 2000 features).
+    """Descarga la hidrografía (cursos de agua) del AOI vía WFS INSPIRE del IGN.
+
+    Pide la capa de enlaces de cursos de agua (WatercourseLink) al servicio WFS
+    del IGN, filtrada por bbox y con un tope de 2000 features.
 
     _wfs_bbox devuelve None si TODOS los intentos WFS fallan (→ FAILED); un WFS
-    que responde sin geometrías produce un GeoDataFrame vacío (→ EMPTY)."""
+    que responde sin geometrías produce un GeoDataFrame vacío (→ EMPTY).
+
+    Args:
+        bbox_25830: AOI como (xmin, ymin, xmax, ymax) en EPSG:25830.
+        out_path: Ruta del GeoPackage de salida.
+        log: Logger para el progreso.
+
+    Returns:
+        LayerResult con estado OK / EMPTY / FAILED.
+    """
     log.info(f"  WFS IGN INSPIRE → {_WFS_HID}")
     gdf = _wfs_bbox(_IGN_WFS_HID, _WFS_HID, bbox_25830, log, max_features=2_000)
     return _vector_result(gdf, out_path, log, "WFS IGN INSPIRE hidrografía")
@@ -723,6 +916,14 @@ def download_rn2000(
 
     _ogc_features_bbox devuelve None si el servicio falla (→ FAILED); una
     respuesta correcta sin geometrías es ausencia confirmada en el AOI (→ EMPTY).
+
+    Args:
+        bbox_25830: AOI como (xmin, ymin, xmax, ymax) en EPSG:25830.
+        out_path: Ruta del GeoPackage de salida.
+        log: Logger para el progreso.
+
+    Returns:
+        LayerResult con estado OK / EMPTY / FAILED.
     """
     log.info(f"  OGC API Features MITECO → {_OAFEAT_RN2000}")
     gdf = _ogc_features_bbox(_MITECO_OAFEAT, _OAFEAT_RN2000, bbox_25830, log)
@@ -734,10 +935,25 @@ def download_igme(
     out_path: Path,
     log: logging.Logger,
 ) -> LayerResult:
-    """Litologías IGME MAGNA50 vía ArcGIS REST (layer 11: Litologías color)."""
+    """Descarga las litologías IGME MAGNA50 del AOI vía ArcGIS REST.
+
+    Consulta el servicio ArcGIS REST del IGME (layer 11 = Litologías color) con la
+    operación /query, filtrando por el bbox como envelope (rectángulo) en 25830.
+    A diferencia del WFS, aquí el filtro espacial va en `geometry` +
+    `geometryType=esriGeometryEnvelope` y se pide GeoJSON directamente.
+
+    Args:
+        bbox_25830: AOI como (xmin, ymin, xmax, ymax) en EPSG:25830.
+        out_path: Ruta del GeoPackage de salida.
+        log: Logger para el progreso y los avisos.
+
+    Returns:
+        LayerResult con estado OK / EMPTY / FAILED (FAILED si el servicio falla).
+    """
     xmin, ymin, xmax, ymax = bbox_25830
     log.info("  ArcGIS REST IGME_MAGNA_50 → layer 11 (Litologías color)")
     params = {
+        # El servicio ArcGIS filtra por la geometría del envelope (bbox) en 25830.
         "geometry": f"{xmin},{ymin},{xmax},{ymax}",
         "geometryType": "esriGeometryEnvelope",
         "inSR": "25830",
@@ -889,6 +1105,7 @@ def _write_manifest(
 # Punto de entrada                                                             #
 # ──────────────────────────────────────────────────────────────────────────── #
 def _parse_args() -> argparse.Namespace:
+    """Define y parsea los argumentos de línea de comandos del módulo."""
     p = argparse.ArgumentParser(
         description="Descarga capas GIS por AOI para cada escenario (A y/o B)."
     )
@@ -910,6 +1127,14 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Orquesta la descarga de capas para los escenarios pedidos.
+
+    Comprueba dependencias, resuelve el modo de sobrescritura (flags -y /
+    --keep-existing o pregunta interactiva), ejecuta la descarga de cada escenario,
+    escribe el manifiesto de estado y muestra el resumen. Termina con código de
+    salida ≠ 0 si alguna capa quedó en estado FAILED, para que el pipeline/CI no
+    continúe a ciegas con datos ausentes o desactualizados.
+    """
     args = _parse_args()
 
     if _MISSING:

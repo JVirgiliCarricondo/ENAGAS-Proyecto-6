@@ -57,6 +57,15 @@ _QGIS_PALETTE: list[tuple[float, str, str, int]] = [
 
 
 def _write_qml(tif_path: Path) -> Path:
+    """Escribe el .qml (leyenda QGIS) discreta por tipo de parcela.
+
+    Args:
+        tif_path: Ruta del GeoTIFF de coste; el .qml se escribe con el mismo
+            nombre y extensión .qml.
+
+    Returns:
+        Ruta del fichero .qml generado.
+    """
     # singlebandpseudocolor DISCRETE: cada item cubre valores <= su breakpoint.
     # Los breakpoints son puntos medios entre costes consecutivos, por lo que
     # la imprecisión float32 (p.ej. 0.20000000298) siempre cae en el bin correcto.
@@ -96,7 +105,20 @@ def _write_qml(tif_path: Path) -> Path:
 
 
 def _assign_cost(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Añade columna 'cost' según TIPO y refinamiento de área."""
+    """Añade columna 'cost' según TIPO y refinamiento de área.
+
+    El coste base sale del tipo catastral (columna TIPO → ``TIPO_COST``; los
+    tipos no mapeados reciben ``TIPO_DEFAULT``). Como refinamiento, las parcelas
+    rústicas (TIPO 'R') muy pequeñas (área < ``AREA_PERIURBANO_M2``) se tratan
+    como periurbanas: en la práctica son suelo fraccionado próximo a núcleos,
+    más costoso de expropiar que el rústico extensivo.
+
+    Args:
+        gdf: Parcelas catastrales con la columna 'TIPO' y geometría en metros.
+
+    Returns:
+        Copia del GeoDataFrame con la columna 'cost' (float32 en [0, 1]).
+    """
     gdf = gdf.copy()
     gdf["cost"] = gdf["TIPO"].map(TIPO_COST).fillna(TIPO_DEFAULT).astype("float32")
     # refinamiento opcional: parcelas rústicas muy pequeñas = periurbano
@@ -106,6 +128,26 @@ def _assign_cost(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def run(scenario: str) -> Path:
+    """Genera la capa de coste de expropiación catastral de un escenario.
+
+    Entradas (data/processed/Recorte_AOI/):
+        - dem_aoi_{s}.tif       : rejilla de referencia (define transform/tamaño/CRS
+                                  y la máscara de AOI orientado vía su nodata).
+        - catastro_aoi_{s}.gpkg : parcelas catastrales recortadas al AOI.
+
+    Salida (data/processed/Capas_Coste/):
+        - expropiacion_{s}.tif  : coste catastral por celda en [0, 1] (+ su .qml).
+                                  NODATA (-9999) fuera del AOI orientado.
+
+    Args:
+        scenario: Identificador de escenario ('A' o 'B').
+
+    Returns:
+        Ruta del GeoTIFF de coste generado.
+
+    Raises:
+        FileNotFoundError: Si falta el DEM de referencia o el catastro recortado.
+    """
     s = scenario.upper()
 
     dem_path = RECORTE / f"dem_aoi_{s}.tif"
@@ -155,6 +197,8 @@ def run(scenario: str) -> Path:
             for geom, cost in zip(gdf.geometry, gdf["cost"])
             if geom is not None and not geom.is_empty
         )
+        # all_touched=False: la celda toma el coste de la parcela solo si su
+        # CENTRO cae dentro (evita solapes espurios entre parcelas contiguas).
         arr = rasterize(
             shapes=shapes,
             out_shape=(height, width),
@@ -165,9 +209,11 @@ def run(scenario: str) -> Path:
         )
 
         # ── Paso 4: rellenar fondo ───────────────────────────────────────────
+        # Las celdas sin parcela (quedaron en 0.0) pasan al coste de fondo.
         arr = np.where(arr == 0.0, FONDO_COST, arr)
 
     # celdas fuera del AOI orientado → nodata (transparente en QGIS)
+    # El AOI orientado es el corredor real; su borde viene del nodata del DEM.
     arr = np.where(outside_aoi, NODATA, arr)
 
     # ── Paso 5: guardar ──────────────────────────────────────────────────────
@@ -196,6 +242,7 @@ def run(scenario: str) -> Path:
 
 
 def _verify(path: Path) -> None:
+    """Imprime el contrato de salida del raster (CRS, transform, shape, rango)."""
     with rasterio.open(path) as src:
         arr = src.read(1)
         print(f"  CRS      : {src.crs}")

@@ -54,7 +54,17 @@ PERFILES = ["corto", "ambiental", "pendiente", "equilibrio"]
 
 # ── Carga de entradas ─────────────────────────────────────────────────────────
 def cargar_ruta(path: str | Path) -> LineString:
-    """Lee el .gpkg de la ruta y devuelve su geometría como LineString."""
+    """Lee el .gpkg de la ruta y devuelve su geometría como LineString.
+
+    Args:
+        path: Ruta al GeoPackage de la ruta.
+
+    Returns:
+        La geometría de la ruta como LineString (EPSG:25830).
+
+    Raises:
+        ValueError: Si el .gpkg está vacío o su geometría no es un LineString.
+    """
     gdf = gpd.read_file(path)
     if gdf.empty:
         raise ValueError(f"La ruta {path} no contiene geometrías.")
@@ -134,15 +144,35 @@ def coste_total_indice(geom: LineString, superficie_path: str | Path) -> float:
     Integral ∫ C(s) ds del coste de la superficie sobre el trazado, con C en
     índice adimensional y s en km. Es la magnitud que minimiza el LCP; se expone
     para trazabilidad, pero NO es comparable entre perfiles sin normalizar.
+
+    Args:
+        geom: Geometría de la ruta (EPSG:25830, metros).
+        superficie_path: Raster de la superficie de coste sobre la que se integra.
+
+    Returns:
+        Coste acumulado en índice·km (adimensional × km).
     """
     costes, pasos, _, _ = _muestrear_coste(geom, superficie_path)
-    # Trapecio: cada segmento usa la media del coste de sus dos extremos.
+    # Regla del trapecio: cada segmento aporta media(C_extremos) · longitud_segmento.
+    # /1000 pasa de metros a km, para que la unidad sea índice·km.
     coste_seg = 0.5 * (costes[:-1] + costes[1:])
     return float(np.sum(coste_seg * pasos) / 1000.0)
 
 
 def coste_medio(geom: LineString, superficie_path: str | Path) -> float:
-    """Coste de tránsito MEDIO por metro recorrido (índice adimensional crudo)."""
+    """Coste de tránsito MEDIO por metro recorrido (índice adimensional crudo).
+
+    Es la integral del coste dividida por la longitud total: el coste acumulado
+    "repartido" por metro. Crudo (sin normalizar a [0, 1]); ``coste_relativo`` lo
+    normaliza contra el rango de la superficie.
+
+    Args:
+        geom: Geometría de la ruta (EPSG:25830, metros).
+        superficie_path: Raster de la superficie de coste a muestrear.
+
+    Returns:
+        Coste medio por metro (índice adimensional); 0.0 si la ruta es degenerada.
+    """
     costes, pasos, _, _ = _muestrear_coste(geom, superficie_path)
     coste_seg = 0.5 * (costes[:-1] + costes[1:])
     total = float(np.sum(coste_seg * pasos))

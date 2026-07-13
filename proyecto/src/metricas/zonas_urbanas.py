@@ -51,6 +51,9 @@ def calcular(linea: LineString, escenario: str) -> dict[str, float]:
         dict con claves ``km_suelo_<tipo>`` para cada tipo catastral
         encontrado en el AOI. Los tipos sin intersección devuelven 0.0.
         Tipos conocidos: urbano, diseminado, rustico, especial.
+
+    Raises:
+        FileNotFoundError: Si no existe la capa catastro_aoi_{s}.gpkg del escenario.
     """
     s = escenario.upper()
     cat_path = _RECORTE_AOI / f"catastro_aoi_{s}.gpkg"
@@ -70,6 +73,10 @@ def calcular(linea: LineString, escenario: str) -> dict[str, float]:
         f"km_suelo_{label}": 0.0 for label in _TIPO_LABEL.values()
     }
 
+    # Un grupo por tipo de suelo (columna TIPO del catastro). Para cada tipo:
+    #   union_all fusiona todas sus parcelas en un solo polígono, y la intersección
+    #   de la ruta con ese polígono da los tramos de línea que caen sobre ese suelo.
+    #   Su longitud (m → km) es el km_suelo_<tipo> de la ruta.
     for tipo, grupo in catastro.groupby("TIPO"):
         label = _TIPO_LABEL.get(str(tipo).upper())
         if label is None:

@@ -43,6 +43,7 @@ _CRS_DEFECTO = "EPSG:25830"
 
 
 def _nombres_zip(zip_path: Path) -> list[str]:
+    """Devuelve la lista de nombres internos (rutas) de un ZIP, sin extraerlo."""
     with zipfile.ZipFile(zip_path) as zf:
         return zf.namelist()
 
@@ -69,6 +70,7 @@ def _existe_parcela_legible(dest_dir: Path) -> Path | None:
 
 
 def _extraer_zip(zip_path: Path, dest_dir: Path) -> None:
+    """Extrae todo el contenido de un ZIP en dest_dir (creándolo si no existe)."""
     dest_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(dest_dir)
@@ -77,14 +79,25 @@ def _extraer_zip(zip_path: Path, dest_dir: Path) -> None:
 def _convertir_gml(zip_path: Path, gml_interno: str, dest_dir: Path) -> tuple[Path, int]:
     """Lee el GML de parcelas del ZIP y lo escribe como PARCELA.shp.
 
-    Devuelve (ruta_shp, n_parcelas). Conserva solo la geometría y la referencia
-    catastral (renombrada a 'refcat' para no exceder el límite de 10 caracteres
-    de los nombres de campo en shapefile).
+    Conserva solo la geometría y la referencia catastral (renombrada a 'refcat'
+    para no exceder el límite de 10 caracteres de los nombres de campo del
+    formato shapefile). El shapefile resultante es lo que el pipeline reconoce.
+
+    Args:
+        zip_path:    Ruta del ZIP INSPIRE que contiene el GML.
+        gml_interno: Nombre interno del GML de parcelas dentro del ZIP.
+        dest_dir:    Directorio destino; se crea ``PARCELA_convertido/`` dentro.
+
+    Returns:
+        Tupla ``(ruta_shp, n_parcelas)``: ruta del PARCELA.shp escrito y número
+        de parcelas convertidas.
     """
-    # /vsizip/ permite leer el GML sin descomprimirlo a disco.
+    # /vsizip/ es el sistema de ficheros virtual de GDAL: permite leer el GML
+    # directamente desde dentro del ZIP, sin descomprimirlo a disco primero.
     src = f"/vsizip/{zip_path}/{gml_interno}"
     gdf = gpd.read_file(src, engine="pyogrio")
 
+    # INSPIRE España va en EPSG:25830; si el GML no declara CRS, se asume ese.
     if gdf.crs is None:
         gdf = gdf.set_crs(_CRS_DEFECTO)
 
@@ -139,6 +152,19 @@ def _fusionar_zip_partido(wrapper: zipfile.ZipFile, partes: list[str],
     parte (disco) donde vive cada entrada, así que tras concatenar hay que
     reescribirlos como offsets absolutos (y poner los números de disco a 0).
     Solo se toca el directorio central y el EOCD (~KB), no los datos.
+
+    Nota: es manipulación de bytes del formato ZIP a bajo nivel (EOCD = End Of
+    Central Directory, el registro final que indexa el archivo). No requiere
+    conocimientos GIS; el objetivo es solo reconstruir un ZIP abrible.
+
+    Args:
+        wrapper: ZIP envoltorio abierto que contiene las partes (.z01, .z02, …, .zip).
+        partes:  Nombres internos de las partes, ya ordenados.
+        salida:  Ruta del ZIP fusionado a escribir.
+
+    Raises:
+        zipfile.BadZipFile: si no se encuentra el EOCD, el directorio central
+            está corrupto o el ZIP está en formato Zip64 (>4 GB), no soportado.
     """
     tamanos = []
     with open(salida, "wb") as out:
@@ -195,11 +221,20 @@ def _fusionar_zip_partido(wrapper: zipfile.ZipFile, partes: list[str],
 def _extraer_parcelas_sede(zip_path: Path, dest_dir: Path,
                            dgc: str | None) -> tuple[int, str | None]:
     """Extrae las capas *_PARCELA del municipio `dgc` desde un paquete
-    provincial de la Sede. Devuelve (nº de capas extraídas, error | None).
+    provincial de la Sede.
 
     El envoltorio y el ZIP provincial fusionado son temporales y se borran al
     terminar: si quedaran partes .zNN sueltas bajo data/raw/Catastro/, el
     auto-extractor del pipeline (alinear_capas) fallaría al intentar abrirlas.
+
+    Args:
+        zip_path: Ruta del paquete provincial de la Sede (envoltorio multiparte).
+        dest_dir: Directorio destino donde dejar las capas del municipio.
+        dgc:      Código DGC del municipio a extraer, o None para no filtrar.
+
+    Returns:
+        Tupla ``(n_capas_extraidas, error)``: número de capas *_PARCELA extraídas
+        y un mensaje de error (str) si algo falló, o None si fue bien.
     """
     tmp = dest_dir / "_paquete_sede_tmp"
     tmp.mkdir(parents=True, exist_ok=True)

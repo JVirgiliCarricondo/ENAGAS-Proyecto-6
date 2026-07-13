@@ -1,7 +1,46 @@
 """Interfaz web — Generador de trazados (Enagás / CI2 Lab 2026).
 
+Interfaz Streamlit que orquesta el pipeline geoespacial de principio a fin: el
+usuario introduce el origen y el destino de un ramal de H₂ (o varios, uno por
+"escenario"), la app descarga los datos GIS del área de interés (AOI), genera
+las capas de coste, traza 4 rutas por perfil con Dijkstra 8-conexo, valida que
+sean alternativas diferenciadas y presenta métricas multicriterio + mapa +
+informe PDF descargable.
+
+Flujo de pantallas (una sola página, navegada por ``st.session_state.pantalla``):
+
+    bienvenida  → paso1 (Origen y Destino) → paso2 (Pesos y Perfiles)
+                → resultados (Comparativa de Trazados)
+
+    - **bienvenida**: portada + accesos a la documentación técnica.
+    - **paso1**: entrada de origen/destino sobre un mapa Folium (clic o
+      coordenadas EPSG:25830), gestión de escenarios, validación (≤ 15 km, no
+      en el mar) y disponibilidad de capas para el corredor.
+    - **paso2**: editor de pesos por capa y perfil + barrera dura de pendiente;
+      el botón "Generar rutas" dispara el pipeline.
+    - **resultados**: KPIs, mapa de rutas, tablas de métricas por escenario,
+      matriz de diversidad de corredores y descargas (PDF + ZIP de rutas).
+
+Convenciones geoespaciales del reto:
+    - Todo se calcula en **EPSG:25830** (ETRS89 / UTM 30N); a WGS84 solo para
+      pintar en Folium/Leaflet, que trabaja en lat/lon.
+    - El **AOI** (corredor) es la línea origen-destino con buffer de 1 km a cada
+      lado (2 km de ancho), el mismo criterio que usa la ingesta.
+    - Coste **relativo**: todas las métricas de coste son índices normalizados,
+      nunca euros.
+
 Ejecutar desde proyecto/:
     streamlit run src/app/streamlit_app.py
+
+Notas de arquitectura de la app:
+    - No hay ``if __name__ == "__main__"``: Streamlit importa el módulo y lo
+      re-ejecuta entero en cada interacción ("rerun"). ``_main()`` se llama al
+      final del módulo y todo el estado que debe sobrevivir a un rerun vive en
+      ``st.session_state`` (o en disco).
+    - Las funciones ``@st.cache_data`` / ``@lru_cache`` evitan repetir descargas
+      y lecturas de disco costosas entre reruns.
+    - Las funciones que empiezan por ``_render_*`` pintan un bloque de UI; las
+      ``_``-privadas restantes son helpers de datos, geometría o estado.
 """
 
 from __future__ import annotations
@@ -1206,16 +1245,38 @@ def _alerta(tipo: str, texto: str = "", titulo: str | None = None,
 
 
 def _utm_to_latlon(x: float, y: float) -> tuple[float, float]:
+    """Convierte (x, y) EPSG:25830 a (lat, lon) WGS84 para pintar en Folium.
+
+    Args:
+        x: Coordenada este (m) en EPSG:25830.
+        y: Coordenada norte (m) en EPSG:25830.
+
+    Returns:
+        La tupla ``(lat, lon)`` en grados WGS84 (orden que espera Leaflet).
+    """
     lon, lat = _to_wgs84.transform(x, y)
     return lat, lon
 
 
 def _latlon_to_utm(lat: float, lon: float) -> tuple[float, float]:
+    """Convierte (lat, lon) WGS84 a (x, y) EPSG:25830 (clic del mapa → coords).
+
+    Args:
+        lat: Latitud en grados WGS84.
+        lon: Longitud en grados WGS84.
+
+    Returns:
+        La tupla ``(x, y)`` en metros EPSG:25830.
+    """
     x, y = _to_utm.transform(lon, lat)
     return x, y
 
 
 def _dist_m(x1: float, y1: float, x2: float, y2: float) -> float:
+    """Devuelve la distancia euclídea en metros entre dos puntos EPSG:25830.
+
+    Al ser un CRS proyectado métrico, la distancia plana equivale a la real.
+    """
     return math.hypot(x2 - x1, y2 - y1)
 
 
@@ -1248,20 +1309,35 @@ def _punto_en_mar(x: float, y: float) -> bool:
 
 
 def _leer_cfg() -> dict:
+    """Carga escenario.yaml (config vigente de la sesión) como diccionario."""
     return yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8"))
 
 
 def _guardar_cfg(cfg: dict) -> None:
+    """Vuelca el diccionario de configuración a escenario.yaml (UTF-8, sin ordenar
+    las claves para preservar el orden origen/destino/escenarios)."""
     txt = yaml.dump(cfg, allow_unicode=True, sort_keys=False, default_flow_style=False)
     _CONFIG_PATH.write_text(txt, encoding="utf-8")
 
 
 def _ids_escenarios(cfg: dict) -> list[str]:
+    """Lista los identificadores de escenario del YAML (p. ej. ['A', 'B']).
+
+    Extrae el sufijo de las claves ``escenario_*`` en mayúsculas y las ordena
+    primero por longitud y luego alfabéticamente (A, B, …, E1, E2), el orden en
+    que se muestran en toda la app.
+    """
     ids = [k.removeprefix("escenario_").upper() for k in cfg if k.startswith("escenario_")]
     return sorted(ids, key=lambda x: (len(x), x))
 
 
 def _coords_desde_cfg(cfg: dict) -> dict[str, dict[str, dict[str, float]]]:
+    """Extrae las coordenadas de todos los escenarios del YAML.
+
+    Returns:
+        Estructura anidada ``{sid: {"origen": {"x", "y"}, "destino": {"x", "y"}}}``
+        con las coordenadas en EPSG:25830 como float.
+    """
     coords: dict[str, dict[str, dict[str, float]]] = {}
     for sid in _ids_escenarios(cfg):
         block = cfg[f"escenario_{sid}"]
@@ -1273,6 +1349,12 @@ def _coords_desde_cfg(cfg: dict) -> dict[str, dict[str, dict[str, float]]]:
 
 
 def _aplicar_coords_a_cfg(cfg: dict, coords: dict[str, dict[str, dict[str, float]]]) -> dict:
+    """Vuelca las coordenadas de ``coords`` sobre el diccionario de config.
+
+    Crea el bloque ``escenario_<sid>`` si no existe, redondea x/y a entero (el
+    YAML guarda metros enteros) y rellena el ``nombre`` por defecto de cada punto
+    si falta. Muta y devuelve ``cfg``.
+    """
     for sid, pts in coords.items():
         key = f"escenario_{sid}"
         if key not in cfg:
@@ -1290,6 +1372,10 @@ def _aplicar_coords_a_cfg(cfg: dict, coords: dict[str, dict[str, dict[str, float
 
 
 def _siguiente_id_escenario(ids: list[str]) -> str:
+    """Devuelve el primer identificador de escenario libre.
+
+    Prueba las letras A–Z en orden; si todas están ocupadas, cae a E1, E2, …
+    """
     for code in range(ord("A"), ord("Z") + 1):
         sid = chr(code)
         if sid not in ids:
@@ -1301,6 +1387,12 @@ def _siguiente_id_escenario(ids: list[str]) -> str:
 
 
 def _normalizar_id_escenario(raw: str) -> str | None:
+    """Sanea el texto que el usuario teclea como nombre de escenario.
+
+    Quita todo lo que no sea alfanumérico/guion, pasa a mayúsculas, convierte los
+    guiones en subrayados y trunca a 20 caracteres. Devuelve ``None`` si el
+    resultado queda vacío (nombre inválido).
+    """
     s = re.sub(r"[^A-Za-z0-9_-]", "", raw.strip()).upper().replace("-", "_")
     return s[:20] or None
 
@@ -1308,6 +1400,15 @@ def _normalizar_id_escenario(raw: str) -> str | None:
 def _plantilla_nuevo_escenario(
     cfg: dict, ref_id: str | None = None, desplazamiento_m: float = 500.0
 ) -> dict[str, dict[str, float]]:
+    """Coordenadas iniciales para un escenario nuevo, desplazadas de una referencia.
+
+    Toma como base el escenario ``ref_id`` (o el primero, o un punto fijo si no
+    hay ninguno) y desplaza origen y destino ``desplazamiento_m`` metros en
+    diagonal, para que el punto nuevo no nazca solapado con el de referencia.
+
+    Returns:
+        ``{"origen": {"x", "y"}, "destino": {"x", "y"}}`` en EPSG:25830.
+    """
     if ref_id and ref_id in _coords_desde_cfg(cfg):
         ref = _coords_desde_cfg(cfg)[ref_id]
     elif _ids_escenarios(cfg):
@@ -1330,6 +1431,11 @@ def _plantilla_nuevo_escenario(
 
 
 def _cargar_perfiles_defecto() -> list[dict]:
+    """Carga la lista de perfiles de prioridad de fábrica desde perfiles.yaml.
+
+    Devuelve una copia profunda para que editar los pesos en la UI no altere el
+    fichero de referencia (que se usa para el botón "Restaurar").
+    """
     data = yaml.safe_load(_PERFILES_PATH.read_text(encoding="utf-8"))
     return copy.deepcopy(data["perfiles"])
 
@@ -1340,6 +1446,11 @@ _BARRERA_PENDIENTE_DEFECTO = 70
 
 
 def _barrera_pendiente_actual() -> int:
+    """Lee el umbral de barrera de pendiente (%) de perfiles.yaml.
+
+    Cae al valor por defecto (70 %) si la clave no existe o no es numérica. Es
+    el valor con el que se precarga el control de la UI en el paso 2.
+    """
     try:
         data = yaml.safe_load(_PERFILES_PATH.read_text(encoding="utf-8"))
         val = data["parametros_capas"]["tpi"]["umbral_barrera_pct"]
@@ -1349,6 +1460,11 @@ def _barrera_pendiente_actual() -> int:
 
 
 def _perfil_por_id(perfiles: list[dict], pid: str) -> dict:
+    """Devuelve el perfil cuyo ``id`` coincide con ``pid``.
+
+    Raises:
+        KeyError: si ningún perfil de la lista tiene ese identificador.
+    """
     for p in perfiles:
         if p["id"] == pid:
             return p
@@ -1356,6 +1472,13 @@ def _perfil_por_id(perfiles: list[dict], pid: str) -> dict:
 
 
 def _init_perfiles_session() -> None:
+    """Siembra en session_state el estado del editor de pesos si aún no existe.
+
+    Inicializa la copia editable de perfiles (``perfiles_cfg``), el perfil
+    seleccionado en el editor (``perfil_pesos_activo``) y un contador de versión
+    (``pesos_version``) que sirve para forzar el remontaje de los sliders al
+    restaurar valores.
+    """
     if "perfiles_cfg" not in st.session_state:
         st.session_state.perfiles_cfg = _cargar_perfiles_defecto()
     if "perfil_pesos_activo" not in st.session_state:
@@ -1365,7 +1488,16 @@ def _init_perfiles_session() -> None:
 
 
 def _render_editor_pesos() -> list[dict]:
-    """Editor de pesos por capa (tarjeta). Devuelve la lista de perfiles actualizada."""
+    """Pinta la tarjeta del editor de pesos por capa y perfil (paso 2).
+
+    Un selector elige el perfil a ajustar y una rejilla de sliders (uno por capa
+    de coste, 0–100 %) edita sus pesos in situ. Los botones "Restaurar" vuelven a
+    los valores de fábrica de perfiles.yaml. El estado vive en session_state, de
+    modo que los cambios sobreviven a los reruns.
+
+    Returns:
+        La lista de perfiles con los pesos ya actualizados por el usuario.
+    """
     _init_perfiles_session()
     perfiles = st.session_state.perfiles_cfg
 
@@ -1425,6 +1557,20 @@ def _render_editor_pesos() -> list[dict]:
 
 
 def _crear_escenario(cfg: dict, coords: dict, nuevo_id: str, ref_id: str | None) -> str:
+    """Crea un escenario nuevo con coordenadas plantilla y persiste la config.
+
+    Args:
+        cfg: Diccionario de configuración (se muta y se guarda a disco).
+        coords: Diccionario de coordenadas en sesión (se muta añadiendo el nuevo).
+        nuevo_id: Identificador propuesto (se normaliza).
+        ref_id: Escenario de referencia del que desplazar las coordenadas iniciales.
+
+    Returns:
+        El identificador normalizado del escenario creado.
+
+    Raises:
+        ValueError: si el identificador es inválido o ya existe.
+    """
     sid = _normalizar_id_escenario(nuevo_id)
     if not sid:
         raise ValueError("Indica un identificador valido (letras, numeros, guion o guion bajo).")
@@ -1508,10 +1654,40 @@ def _ejecutar_pipeline(
     perfiles: list[dict] | None = None,
     umbral_barrera_pct: float | None = None,
 ) -> dict:
+    """Ejecuta el pipeline geoespacial completo para los escenarios dados.
+
+    Por cada escenario, en orden: (1) lo auto-prepara si no tiene capas de coste
+    (descarga GIS del AOI + alineación a EPSG:25830/rejilla común + superficies),
+    (2) regenera la capa TPI si la barrera de pendiente grabada en disco no
+    coincide con la pedida, (3) recalcula la superficie de coste de referencia
+    (pesos iguales), y (4) traza las 4 rutas por perfil (Dijkstra 8-conexo).
+    Al final calcula las métricas multicriterio de todas las rutas.
+
+    Args:
+        progress_cb: Callback ``(fraccion: float, mensaje: str)`` para actualizar
+            la barra de progreso de Streamlit.
+        escenarios: Identificadores de los escenarios a procesar.
+        perfiles: Perfiles de pesos editados en la UI que sobrescriben los del
+            YAML; ``None`` usa los de fábrica.
+        umbral_barrera_pct: Barrera dura de pendiente (%) a hornear en la capa
+            TPI; ``None`` usa el valor por defecto del módulo de superficie.
+
+    Returns:
+        Diccionario de resultados por escenario (rutas, métricas y diversidad),
+        tal cual lo devuelve ``metricas.calculo.calcular_todas``.
+
+    Raises:
+        ValueError: si no se pasa ningún escenario.
+        PreparacionError: si la auto-preparación de un escenario nuevo falla
+            (sin internet, servicio GIS caído…). Se propaga para mostrarla en la UI.
+    """
     import importlib
     import logging as _logging
     _logging.basicConfig(level=_logging.WARNING)
 
+    # Purga los módulos del pipeline de sys.modules para forzar su reimportación
+    # limpia: así los cambios de parámetros globales de una ejecución anterior (p.
+    # ej. UMBRAL_BARRERA_PCT) no se arrastran entre pasadas dentro de la sesión.
     for _mod in list(sys.modules.keys()):
         if _mod.startswith(("trazados.", "metricas.", "superficie.", "ingesta.")):
             del sys.modules[_mod]
@@ -1595,6 +1771,12 @@ _COLORES_ESCENARIO = {
 
 
 def _color_escenario(sid: str) -> str:
+    """Color hexadecimal estable para un escenario (identifica sus puntos en el mapa).
+
+    Los escenarios base A–D tienen colores corporativos fijos; para el resto se
+    deriva un color determinista de una paleta a partir del identificador, para
+    que un mismo escenario siempre salga del mismo color entre reruns.
+    """
     if sid in _COLORES_ESCENARIO:
         return _COLORES_ESCENARIO[sid]
     idx = sum(ord(c) for c in sid) % 5
@@ -1720,6 +1902,21 @@ def _marcador_punto(
 
 
 def _mapa_entrada(coords: dict, escenario_activo: str) -> folium.Map:
+    """Construye el mapa Folium del paso 1 (entrada de origen/destino).
+
+    Pinta, sobre una ortofoto Esri, el origen y destino de cada escenario (con
+    marcador resaltado y línea directa gruesa para el activo, atenuados para el
+    resto), una leyenda de escenarios y un cursor de puntería. El encuadre se
+    ajusta al escenario activo. Las coordenadas llegan en EPSG:25830 y se
+    reproyectan a WGS84 para Leaflet.
+
+    Args:
+        coords: Coordenadas de todos los escenarios en sesión.
+        escenario_activo: Identificador del escenario que se está editando.
+
+    Returns:
+        El objeto ``folium.Map`` listo para renderizar con ``st_folium``.
+    """
     activo_pts = coords[escenario_activo]
     lat_o, lon_o = _utm_to_latlon(activo_pts["origen"]["x"], activo_pts["origen"]["y"])
     lat_d, lon_d = _utm_to_latlon(activo_pts["destino"]["x"], activo_pts["destino"]["y"])
@@ -1793,6 +1990,20 @@ def _mapa_entrada(coords: dict, escenario_activo: str) -> folium.Map:
 
 
 def _mapa_resultados(escenarios: list[str] | None = None) -> folium.Map | None:
+    """Construye el mapa Folium de resultados con las rutas trazadas.
+
+    Lee los .gpkg de rutas de ``Rutas/`` (uno por escenario y perfil), los pinta
+    coloreados por perfil sobre una ortofoto Esri, agrupa las capas por escenario
+    en un LayerControl y añade la leyenda de perfiles. El mapa se encuadra al
+    conjunto de todas las rutas.
+
+    Args:
+        escenarios: Escenarios a incluir; si es ``None`` usa todos los del YAML.
+
+    Returns:
+        El ``folium.Map`` con las rutas, o ``None`` si no hay ningún .gpkg de ruta
+        en disco (aún no se ha ejecutado el pipeline).
+    """
     ess = escenarios or _ids_escenarios(_leer_cfg())
     rutas = [
         (s, perfil, _RUTAS_DIR / f"ruta_{s}_{perfil}.gpkg")
@@ -2004,6 +2215,11 @@ _URL_SNCZI = "https://wmts.mapama.gob.es/sig-api/ogc/features/v1"
 
 
 def _xml_localname(tag: str) -> str:
+    """Devuelve el nombre local de una etiqueta XML con namespace.
+
+    Los servicios del Catastro devuelven XML con espacios de nombres
+    (``{namespace}pc1``); esto extrae solo ``pc1`` para poder buscar por nombre.
+    """
     return tag.rsplit("}", 1)[-1]
 
 
@@ -2345,6 +2561,8 @@ def _catastro_municipios_ovc(coords_esc: dict) -> list[dict]:
     pts, _ = _puntos_ovc_aoi(coords_esc)
 
     def _consulta(p: tuple[int, int]):
+        """Consulta OVC de un punto de la rejilla; devuelve el centinela
+        ``_OVC_NET_ERROR`` si falla la red (para distinguir corte de 'sin parcela')."""
         try:
             return _ovc_parcela(*p)
         except Exception:
@@ -2552,7 +2770,13 @@ def _estado_datos_aoi(coords_esc: dict, esc: str) -> list[dict]:
 
 
 def _render_estado_datos(coords_esc: dict, esc: str) -> None:
-    """Tarjeta de disponibilidad de capas para el corredor origen-destino actual."""
+    """Tarjeta de disponibilidad de capas para el corredor origen-destino actual.
+
+    A la izquierda, la capa manual (Catastro) con el botón "Ver municipios" que
+    localiza los municipios del corredor y despliega sus subidores de ZIP; a la
+    derecha, las capas automáticas con su tick de "ya descargado / pendiente".
+    Tolera cualquier fallo de lectura sin romper el paso 1 (simplemente no pinta).
+    """
     try:
         items = _estado_datos_aoi(coords_esc, esc)
     except Exception:
@@ -2566,6 +2790,8 @@ def _render_estado_datos(coords_esc: dict, esc: str) -> None:
     }
 
     def _celda(it: dict, grow: bool = False) -> str:
+        """Renderiza a HTML la tarjeta de estado de una capa (icono + detalle +
+        enlaces a la fuente). ``grow`` la hace expandir para rellenar la columna."""
         icono, icolor = _ICONO[it["estado"]]
         enlaces = ""
         for en in it.get("enlaces", []):
@@ -2753,6 +2979,13 @@ def _render_estado_datos(coords_esc: dict, esc: str) -> None:
 # ── Paso 1: Origen y Destino ───────────────────────────────────────────────────
 
 def _init_estado_entrada(cfg: dict) -> None:
+    """Siembra en session_state el estado del paso 1 si aún no existe.
+
+    Inicializa las coordenadas de los escenarios (``coords``), el escenario
+    activo, el rol (origen/destino) que fijará el próximo clic del mapa y el
+    registro del último clic procesado. Es idempotente: solo rellena lo que
+    falte y añade los escenarios del YAML que aún no estén en sesión.
+    """
     ids_cfg = _ids_escenarios(cfg)
     if "coords" not in st.session_state:
         st.session_state.coords = _coords_desde_cfg(cfg)
@@ -2770,6 +3003,21 @@ def _init_estado_entrada(cfg: dict) -> None:
 
 
 def _render_paso1():
+    """Pinta el paso 1: entrada de origen y destino sobre el mapa.
+
+    A la izquierda, el panel de control: gestión de escenarios (crear, renombrar,
+    borrar, seleccionar), los cuatro number_input de coordenadas EPSG:25830
+    (origen/destino × X/Y), aviso si un punto cae en el mar y la distancia total
+    con aviso si supera los 15 km. A la derecha, el mapa Folium interactivo:
+    hacer clic fija el punto activo (origen o destino según el control
+    segmentado). Debajo, la disponibilidad de capas para el corredor y la
+    navegación (con la puerta de catastro pendiente).
+
+    El flujo de estado es delicado: un clic en el mapa NO puede escribir directo
+    en la clave de un number_input ya instanciado, así que se guarda como
+    ``_pending_click`` y se aplica al inicio del rerun siguiente, antes de crear
+    los widgets.
+    """
     cfg = _leer_cfg()
     _init_estado_entrada(cfg)
 
@@ -2779,6 +3027,7 @@ def _render_paso1():
 
     col_panel, col_map = st.columns([1.15, 2], gap="small")
 
+    # ── Panel izquierdo: escenarios + coordenadas + distancia ─────────────────
     with col_panel:
         with st.container(border=True):
             st.markdown(
@@ -2980,6 +3229,7 @@ def _render_paso1():
                 unsafe_allow_html=True,
             )
 
+    # ── Mapa interactivo: clic = fijar el punto activo (origen/destino) ───────
     with col_map:
         m = _mapa_entrada(coords, esc_activo)
         if _HAS_ST_FOLIUM:
@@ -3123,6 +3373,14 @@ def _render_paso1():
 # ── Paso 2: Pesos y Perfiles ───────────────────────────────────────────────────
 
 def _render_paso2():
+    """Pinta el paso 2: pesos por perfil, barrera de pendiente y disparo del pipeline.
+
+    Muestra el editor de pesos (``_render_editor_pesos``) y un control para la
+    barrera dura de pendiente. El botón "Generar rutas" lanza ``_ejecutar_pipeline``
+    con una barra de progreso; al terminar guarda los resultados en session_state
+    y salta a la pantalla de resultados. Los errores del pipeline se muestran como
+    alerta sin cambiar de pantalla.
+    """
     coords = st.session_state.get("coords") or _coords_desde_cfg(_leer_cfg())
     escenarios = sorted(coords.keys(), key=lambda x: (len(x), x))
 
@@ -3227,6 +3485,12 @@ def _kpis_resumen(resultados: dict, escenarios: list[str]) -> list[tuple[str, st
 
 
 def _render_kpis(resultados: dict, escenarios: list[str]) -> None:
+    """Pinta las cuatro tarjetas KPI resumen del escenario (longitud, coste, etc.).
+
+    Calcula los valores con ``_kpis_resumen`` y los muestra como tarjetas; añade
+    una nota explicando que son medias entre perfiles y el criterio de impacto
+    ambiental. No pinta nada si no hay KPIs (escenario sin rutas).
+    """
     kpis = _kpis_resumen(resultados, escenarios)
     if not kpis:
         return
@@ -3290,6 +3554,7 @@ def _firma_pdf_informe(
     )
 
     def _mtime(p: Path) -> float:
+        """Fecha de modificación del fichero, o -1.0 si no existe/no se puede leer."""
         try:
             return p.stat().st_mtime
         except OSError:
@@ -3406,6 +3671,15 @@ def _boton_descargar_rutas_zip(escenarios: list[str]) -> None:
 
 
 def _render_results():
+    """Pinta la pantalla de resultados: comparativa completa de trazados.
+
+    Contenido: cabecera con botones de descarga (informe PDF + ZIP de rutas),
+    avisos de capas no incluidas en el cálculo, resumen de los pesos usados, y una
+    fila de pestañas con el mapa de rutas, una tabla de métricas por escenario
+    (con sus KPIs) y la matriz de diversidad de corredores (% de solapamiento
+    dirigido entre rutas). Lee los resultados y los escenarios procesados de
+    session_state.
+    """
     resultados = st.session_state.get("resultados", {})
     escenarios = st.session_state.get(
         "escenarios_procesados", sorted(resultados.keys(), key=lambda x: (len(x), x))
@@ -3755,6 +4029,8 @@ def _docs_buttons() -> None:
 
 
 def _render_bienvenida() -> None:
+    """Pinta la portada: título, dos tarjetas (nueva simulación / documentación)
+    y el panel visual (hero). "Comenzar simulación" salta al paso 1."""
     col_left, col_right = st.columns([1.15, 1], gap="large")
     with col_left:
         st.markdown(
@@ -3809,6 +4085,13 @@ def _render_bienvenida() -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def _main():
+    """Punto de entrada de la app: inyecta el CSS/JS global, pinta la barra
+    superior y despacha a la pantalla activa según ``st.session_state.pantalla``
+    (bienvenida / paso1 / paso2 / resultados), con su stepper y el footer.
+
+    Se invoca directamente al importar el módulo (Streamlit re-ejecuta todo el
+    fichero en cada interacción), no bajo ``if __name__ == "__main__"``.
+    """
     import logging
     logging.disable(logging.WARNING)
 

@@ -55,11 +55,25 @@ PASO_MUESTREO_M = 50.0  # separación entre puntos al muestrear una ruta (distan
 
 def solapamiento_dirigido(linea_a: BaseGeometry, linea_b: BaseGeometry,
                           buffer_m: float) -> float:
-    """% de la longitud de A que cae dentro del corredor (buffer) de B."""
+    """% de la longitud de A que cae dentro del corredor (buffer) de B.
+
+    La línea B se "engorda" a corredor con un buffer de semiancho ``buffer_m``
+    (un polígono de anchura 2·buffer_m centrado en B). La porción de A que queda
+    dentro de ese polígono es la longitud que A comparte con el corredor de B.
+    Es dirigido (A dentro de B) y por tanto asimétrico.
+
+    Args:
+        linea_a: Ruta A (la que se mide).
+        linea_b: Ruta B (la que se engorda a corredor).
+        buffer_m: Semiancho del corredor de B, en metros.
+
+    Returns:
+        Porcentaje [0, 100] de la longitud de A contenida en el corredor de B.
+    """
     if linea_a is None or linea_a.is_empty or linea_a.length == 0:
         return 0.0
-    corredor_b = linea_b.buffer(buffer_m)
-    compartido = linea_a.intersection(corredor_b)
+    corredor_b = linea_b.buffer(buffer_m)          # línea B → polígono corredor
+    compartido = linea_a.intersection(corredor_b)  # tramos de A dentro del corredor
     return 100.0 * compartido.length / linea_a.length
 
 
@@ -122,6 +136,8 @@ def calcular(escenario: str, buffer_m: float = BUFFER_M,
     rutas = _cargar_rutas(escenario)
     perfiles = list(rutas.keys())
 
+    # Matriz de solapamiento dirigido: matriz[i][j] = % de la ruta i dentro del
+    # corredor de la ruta j. La diagonal es 100 (toda ruta cae en su propio corredor).
     matriz: dict[str, dict[str, float]] = {}
     for pi in perfiles:
         matriz[pi] = {}
@@ -131,6 +147,9 @@ def calcular(escenario: str, buffer_m: float = BUFFER_M,
             else:
                 matriz[pi][pj] = solapamiento_dirigido(rutas[pi], rutas[pj], buffer_m)
 
+    # Para cada par no ordenado (combinations evita repetir i,j y j,i):
+    #   solapamiento del par = máximo de las dos direcciones (el más restrictivo);
+    #   distancias = separación media y máxima entre los dos ramales.
     pares = []
     distancias = []
     for pi, pj in combinations(perfiles, 2):
@@ -138,6 +157,8 @@ def calcular(escenario: str, buffer_m: float = BUFFER_M,
         media, maxima = distancias_entre(rutas[pi], rutas[pj], paso_muestreo)
         distancias.append((pi, pj, media, maxima))
 
+    # El par más redundante fija el veredicto global: si el peor par supera el
+    # umbral, el abanico no está suficientemente diferenciado.
     solap_max_par = max((s for _, _, s in pares), default=0.0)
 
     # La diferenciación solo tiene sentido si hay al menos 2 rutas que comparar:

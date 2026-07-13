@@ -96,13 +96,32 @@ UMBRAL_RIO_M: float = float(_ccfg["umbral_rio_m"])
 
 
 def coste_highway(valor) -> float:
-    """Coste de cruce de una via segun su categoria 'highway'."""
+    """Coste de cruce de una via segun su categoria 'highway'.
+
+    Args:
+        valor: Valor de la columna 'highway' de OSM (p.ej. 'primary', 'track').
+
+    Returns:
+        Índice de coste de cruce; ``COSTE_HIGHWAY_DEFECTO`` si la categoría no
+        está en la tabla.
+    """
     clave = str(valor).strip().lower()
     return COSTE_HIGHWAY.get(clave, COSTE_HIGHWAY_DEFECTO)
 
 
 def coste_rio(nombre, longitud) -> float:
-    """Coste de cruce de un curso de agua segun nombre y longitud (m)."""
+    """Coste de cruce de un curso de agua segun nombre y longitud (m).
+
+    Sin nombre → rambla/curso estacional (coste bajo). Con nombre, se separa río
+    menor (<= UMBRAL_RIO_M) de río principal (> UMBRAL_RIO_M) por longitud.
+
+    Args:
+        nombre: Nombre del curso (columna 'text'); None/vacío = sin nombre.
+        longitud: Longitud del tramo en metros (columna 'length').
+
+    Returns:
+        Índice de coste de cruce del curso de agua.
+    """
     tiene_nombre = nombre is not None and str(nombre).strip() != ""
     if not tiene_nombre:
         return COSTE_RIO_SIN_NOMBRE
@@ -115,7 +134,20 @@ def coste_rio(nombre, longitud) -> float:
 
 
 def _limpiar_geom(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Reproyecta al CRS comun y descarta geometrias vacias o nulas."""
+    """Reproyecta al CRS comun (EPSG:25830) y descarta geometrias vacias o nulas.
+
+    Reproyectar es imprescindible antes de rasterizar: la geometría debe estar
+    en el mismo CRS que la rejilla del DEM para que las líneas caigan donde toca.
+
+    Args:
+        gdf: Capa vectorial de líneas (viario o hidrografía).
+
+    Returns:
+        Copia reproyectada y sin geometrías nulas/vacías.
+
+    Raises:
+        ValueError: Si la capa no tiene CRS definido.
+    """
     if gdf.crs is None:
         raise ValueError("La capa no tiene CRS definido.")
     gdf = gdf.to_crs(CRS_TRABAJO)
@@ -123,7 +155,18 @@ def _limpiar_geom(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def rasterizar_osm(path: Path, transform, width: int, height: int) -> np.ndarray:
-    """Rasteriza el viario OSM (+ ferrocarril) a coste de cruce."""
+    """Rasteriza el viario OSM (+ ferrocarril) a coste de cruce.
+
+    Args:
+        path: Ruta al GPKG de viario OSM recortado al AOI.
+        transform: Transform afín de la rejilla del DEM.
+        width: Ancho de la rejilla en celdas.
+        height: Alto de la rejilla en celdas.
+
+    Returns:
+        Array float32 con el coste de cruce del viario por celda (fondo
+        ``COSTE_FONDO`` donde no hay línea).
+    """
     osm = _limpiar_geom(gpd.read_file(path))
     if osm.empty:
         return np.full((height, width), COSTE_FONDO, dtype="float32")
@@ -153,7 +196,18 @@ def rasterizar_osm(path: Path, transform, width: int, height: int) -> np.ndarray
 
 
 def rasterizar_hidro(path: Path, transform, width: int, height: int) -> np.ndarray:
-    """Rasteriza la hidrografia IGN a coste de cruce."""
+    """Rasteriza la hidrografia IGN a coste de cruce.
+
+    Args:
+        path: Ruta al GPKG de hidrografía recortada al AOI.
+        transform: Transform afín de la rejilla del DEM.
+        width: Ancho de la rejilla en celdas.
+        height: Alto de la rejilla en celdas.
+
+    Returns:
+        Array float32 con el coste de cruce de los cursos de agua por celda
+        (fondo ``COSTE_FONDO`` donde no hay curso).
+    """
     hid = _limpiar_geom(gpd.read_file(path))
     if hid.empty:
         return np.full((height, width), COSTE_FONDO, dtype="float32")
@@ -181,7 +235,22 @@ def rasterizar_hidro(path: Path, transform, width: int, height: int) -> np.ndarr
 
 
 def procesar_escenario(s: str) -> None:
-    """Genera cruces_{s}.tif fundiendo OSM e hidrografia (maximo por celda)."""
+    """Genera cruces_{s}.tif fundiendo OSM e hidrografia (maximo por celda).
+
+    Entradas (data/processed/Recorte_AOI/):
+        - dem_aoi_{s}.tif        : rejilla de referencia.
+        - osm_aoi_{s}.gpkg       : viario + ferrocarril OSM del AOI.
+        - hidrografia_aoi_{s}.gpkg: red hidrográfica IGN del AOI.
+
+    Salida (data/processed/Capas_Coste/):
+        - cruces_{s}.tif         : coste de cruce por celda en [0, 0.9] (fondo 0).
+
+    Args:
+        s: Identificador de escenario ('A' o 'B').
+
+    Raises:
+        FileNotFoundError: Si falta alguna de las entradas esperadas.
+    """
     dem_path = ENTRADA_DIR / f"dem_aoi_{s}.tif"
     osm_path = ENTRADA_DIR / f"osm_aoi_{s}.gpkg"
     hidro_path = ENTRADA_DIR / f"hidrografia_aoi_{s}.gpkg"
@@ -227,6 +296,7 @@ def procesar_escenario(s: str) -> None:
 
 
 def main() -> None:
+    """Genera cruces_A.tif y cruces_B.tif (capa de cruces viario/ríos)."""
     for s in ESCENARIOS:
         procesar_escenario(s)
     print("Script 07 completado: capa de coste 'cruces' generada (A y B).")
