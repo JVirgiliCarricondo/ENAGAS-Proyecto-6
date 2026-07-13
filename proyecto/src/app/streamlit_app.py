@@ -1501,13 +1501,15 @@ def _ejecutar_pipeline(
     # anterior), de modo que en disco solo queden los escenarios vigentes.
     _limpiar_salidas_huerfanas(escenarios)
 
-    # Barrera dura de pendiente: si el usuario la cambió respecto al valor por
-    # defecto, se sobreescribe el global de la capa TPI y se regenera esa capa
-    # (donde vive la barrera) para los escenarios ya preparados.
-    _tpimod = None
-    if umbral_barrera_pct is not None:
-        import superficie.tpi as _tpimod
-        _tpimod.UMBRAL_BARRERA_PCT = float(umbral_barrera_pct)
+    # Barrera dura de pendiente: la barrera vive HORNEADA en tpi_{s}.tif (celdas
+    # nodata), así que hay que regenerar esa capa siempre que el umbral pedido
+    # no coincida con el grabado en el tif (etiqueta umbral_barrera_pct) —
+    # incluido el caso de volver al valor por defecto, o un tif de otra sesión.
+    import superficie.tpi as _tpimod
+    if umbral_barrera_pct is None:
+        umbral_barrera_pct = _tpimod.UMBRAL_BARRERA_PCT
+    umbral_barrera_pct = float(umbral_barrera_pct)
+    _tpimod.UMBRAL_BARRERA_PCT = umbral_barrera_pct
 
     n = len(escenarios)
     avisos_prep: dict[str, list[str]] = {}
@@ -1528,11 +1530,11 @@ def _ejecutar_pipeline(
             )
             if res_prep.get("avisos"):
                 avisos_prep[s] = res_prep["avisos"]
-        if _tpimod is not None:
-            # Regenerar la capa TPI (donde vive la barrera) con el umbral de la
-            # UI. También tras preparar un escenario nuevo: la preparación corre
-            # en subproceso con el umbral por defecto del YAML, así que sin este
-            # paso el valor elegido por el usuario se ignoraría.
+        if _tpimod.umbral_barrera_en_tif(s) != umbral_barrera_pct:
+            # El tif en disco se horneó con otro umbral (o sin etiqueta, o no
+            # existe): regenerar la capa TPI (donde vive la barrera). Cubre
+            # también la preparación de un escenario nuevo, que corre en
+            # subproceso con el umbral por defecto del YAML.
             progress_cb(base + span * 0.70, f"Aplicando barrera de pendiente "
                               f"({umbral_barrera_pct:.0f}%) — Escenario {s}…")
             _tpimod.procesar_escenario(s)
@@ -1894,11 +1896,14 @@ def _aoi_bounds(coords_esc: dict) -> tuple[float, float, float, float]:
 
 
 @st.cache_data(show_spinner=False)
-def _catastro_cobertura_wkt(recorte_dir: str) -> str | None:
+def _catastro_cobertura_wkt(recorte_dir: str, firma: tuple) -> str | None:
     """Envolvente (WKT) de la cobertura de catastro ya preparada (recortes A/B, …).
 
     Se cachea porque implica leer los GPKG. Devolvemos WKT para que el valor sea
-    hasheable/serializable por st.cache_data.
+    hasheable/serializable por st.cache_data. `firma` (lista de (nombre, mtime)
+    de los catastro_aoi_*.gpkg) no se usa en el cuerpo: forma parte de la clave
+    de caché para releer cuando un recorte cambia, aparece o desaparece — mismo
+    patrón que el mtime de _recorte_bbox_wkt.
     """
     cajas = []
     for p in sorted(Path(recorte_dir).glob("catastro_aoi_*.gpkg")):
@@ -2479,7 +2484,11 @@ def _estado_datos_aoi(coords_esc: dict, esc: str) -> list[dict]:
                 "enlaces": enlaces}
 
     # Catastro — comprobacion real de cobertura contra lo ya descargado/preparado
-    cob_wkt = _catastro_cobertura_wkt(str(recorte_dir))
+    firma_catastro = tuple(
+        (p.name, p.stat().st_mtime)
+        for p in sorted(recorte_dir.glob("catastro_aoi_*.gpkg"))
+    )
+    cob_wkt = _catastro_cobertura_wkt(str(recorte_dir), firma_catastro)
     frac = 0.0
     if cob_wkt and aoi.area > 0:
         try:
@@ -3106,9 +3115,9 @@ def _render_paso2():
                             use_container_width=True, key="btn_generar_rutas")
 
     if generar:
-        # Solo se pasa el umbral si cambió respecto al valor por defecto (evita
-        # regenerar la capa TPI innecesariamente).
-        umbral = float(barrera_pct) if int(barrera_pct) != int(barrera_defecto) else None
+        # Se pasa SIEMPRE el umbral de la UI: el pipeline compara con el que
+        # lleva grabado tpi_{s}.tif y solo regenera la capa si difieren.
+        umbral = float(barrera_pct)
         bar = st.progress(0, text="Iniciando pipeline...")
         try:
             resultados = _ejecutar_pipeline(

@@ -103,6 +103,10 @@ class LayerStatus(str, Enum):
     FAILED = "failed"   # la descarga falló (servicio caído, timeout, error de
                         #   parseo…): NO se escribe GPKG vacío, no sabemos si hay
                         #   cobertura o no
+    PARTIAL = "partial" # se escribieron datos, pero alguna subfuente falló
+                        #   (p. ej. una colección SNCZI): la capa puede estar
+                        #   incompleta → aguas arriba se degrada a AVISO visible,
+                        #   nunca a OK silencioso ni a error que aborte
     SKIPPED = "skipped" # el archivo ya existía y no se solicitó sobrescribir
 
 
@@ -572,15 +576,20 @@ def download_zonas_inundables(
 
     La unión requiere que las colecciones respondan: si TODAS fallan no podemos
     afirmar que el AOI esté libre de inundables → FAILED. Si al menos una responde
-    (aunque todas vengan vacías), es una ausencia de cobertura legítima → EMPTY.
+    (aunque todas vengan vacías) y NINGUNA falla, es una ausencia de cobertura
+    legítima → EMPTY. Si alguna responde pero otra(s) fallan, la capa escrita
+    puede estar incompleta (infravaloraría el riesgo de inundación) → PARTIAL,
+    que aguas arriba se convierte en aviso visible en la pantalla de resultados.
     """
     log.info(f"  OGC API Features SNCZI/MITECO → {_MITECO_OAFEAT}")
     partes = []
     respondidas = 0
+    fallidas: list[str] = []
     for collection_id in _OAFEAT_ZI:
         gdf_t = _ogc_features_bbox(_MITECO_OAFEAT, collection_id, bbox_25830, log)
         if gdf_t is None:
             log.warning(f"    {collection_id} → descarga fallida")
+            fallidas.append(collection_id)
             continue
         respondidas += 1
         if not gdf_t.empty:
@@ -590,22 +599,36 @@ def download_zonas_inundables(
         else:
             log.debug(f"    {collection_id} → sin cobertura en el AOI")
 
+    detalle_parcial = (
+        f"descarga incompleta (falló {', '.join(fallidas)}) — las zonas "
+        f"inundables del AOI pueden estar infravaloradas"
+    )
+
     if partes:
         gdf = (
             partes[0]
             if len(partes) == 1
             else gpd.GeoDataFrame(gpd.pd.concat(partes, ignore_index=True), crs=partes[0].crs)
         )
-        return _vector_result(gdf, out_path, log, "SNCZI/MITECO")
+        res = _vector_result(gdf, out_path, log, "SNCZI/MITECO")
+        if fallidas:
+            log.warning(f"  ⚠ SNCZI {detalle_parcial}")
+            return LayerResult(LayerStatus.PARTIAL, res.rows, detalle_parcial)
+        return res
 
     if respondidas == 0:
         log.error("  ✗ SNCZI: todas las colecciones fallaron → no se escribe GPKG")
         return LayerResult(LayerStatus.FAILED, 0, "SNCZI: todas las colecciones fallaron")
 
-    # Alguna colección respondió correctamente pero vacía: ausencia confirmada.
+    # Alguna colección respondió correctamente pero vacía. Solo es una ausencia
+    # confirmada si NINGUNA falló; con fallos parciales no podemos afirmarlo.
     log.warning("  ○ SNCZI sin láminas de inundación en el AOI")
     empty = gpd.GeoDataFrame(geometry=gpd.GeoSeries(crs="EPSG:25830"))
-    return _vector_result(empty, out_path, log, "SNCZI/MITECO")
+    res = _vector_result(empty, out_path, log, "SNCZI/MITECO")
+    if fallidas:
+        log.warning(f"  ⚠ SNCZI {detalle_parcial}")
+        return LayerResult(LayerStatus.PARTIAL, res.rows, detalle_parcial)
+    return res
 
 
 def download_osm(
@@ -919,11 +942,14 @@ def main() -> None:
     # Recuento por estado a partir de los resultados por capa
     counts = {st: 0 for st in LayerStatus}
     failed_layers: list[str] = []
+    partial_layers: list[str] = []
     for s, res in all_results.items():
         for name, r in res.items():
             counts[r.status] += 1
             if r.status is LayerStatus.FAILED:
                 failed_layers.append(f"{name}: {r.detail}")
+            elif r.status is LayerStatus.PARTIAL:
+                partial_layers.append(f"{name}: {r.detail}")
 
     _write_manifest(all_results, log)
 
@@ -932,8 +958,13 @@ def main() -> None:
     log.info(f"{'=' * 62}")
     log.info(f"  OK          : {counts[LayerStatus.OK]}   (con datos)")
     log.info(f"  Sin cobertura: {counts[LayerStatus.EMPTY]}   (AOI vacío, GPKG vacío legítimo)")
+    log.info(f"  Parciales   : {counts[LayerStatus.PARTIAL]}   (escritas, pero con alguna subfuente caída)")
     log.info(f"  Fallidas    : {counts[LayerStatus.FAILED]}   (descarga fallida, SIN escribir vacío)")
     log.info(f"  Omitidas    : {counts[LayerStatus.SKIPPED]}   (ya existían)")
+    if partial_layers:
+        log.warning("  Capas parciales (posiblemente incompletas):")
+        for item in partial_layers:
+            log.warning(f"    - {item}")
     if failed_layers:
         log.warning("  Capas fallidas:")
         for item in failed_layers:
