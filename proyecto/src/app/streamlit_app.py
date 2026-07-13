@@ -1219,6 +1219,34 @@ def _dist_m(x1: float, y1: float, x2: float, y2: float) -> float:
     return math.hypot(x2 - x1, y2 - y1)
 
 
+# Polígono de tierra firme española (Natural Earth 1:10m recortado a España,
+# simplificado a ~100 m y reproyectado a EPSG:25830; incluye Baleares, Canarias
+# y Ceuta/Melilla). Sirve para avisar cuando un origen/destino cae en el mar.
+_TIERRA_PATH = Path(__file__).resolve().parent / "assets" / "espana_tierra_25830.geojson"
+
+
+@lru_cache(maxsize=1)
+def _tierra_espana():
+    """Geometría 'prepared' de la tierra firme, o None si falta el asset
+    (en ese caso la validación de mar se desactiva en vez de romper la app)."""
+    try:
+        gj = json.loads(_TIERRA_PATH.read_text(encoding="utf-8"))
+        geom = _shp_shape(gj["features"][0]["geometry"])
+        from shapely.prepared import prep  # noqa: PLC0415
+        return prep(geom)
+    except Exception:
+        return None
+
+
+def _punto_en_mar(x: float, y: float) -> bool:
+    """True si (x, y) EPSG:25830 NO está sobre tierra firme española (mar o
+    fuera de España). Con la precisión del recorte (~100-200 m en costa)."""
+    tierra = _tierra_espana()
+    if tierra is None:
+        return False
+    return not tierra.contains(Point(x, y))
+
+
 def _leer_cfg() -> dict:
     return yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8"))
 
@@ -2893,10 +2921,20 @@ def _render_paso1():
 
             for rol in ("origen", "destino"):
                 punto = "#4b6700" if rol == "origen" else "#004e7e"
+                # Aviso de punto en el mar, con el mismo formato que la nota
+                # "supera 15 km" de la tarjeta de distancia.
+                mar_nota = (
+                    '<span style="color:var(--error);font-weight:700;font-size:0.62rem;'
+                    'letter-spacing:0;text-transform:none;margin-left:8px;">'
+                    '· en el mar</span>'
+                ) if _punto_en_mar(
+                    st.session_state[f"{esc_activo}_{rol}_x"],
+                    st.session_state[f"{esc_activo}_{rol}_y"],
+                ) else ""
                 st.markdown(
                     f'<p class="section-label" style="display:flex;align-items:center;gap:6px;">'
                     f'<span style="width:8px;height:8px;border-radius:50%;background:{punto};'
-                    f'display:inline-block;"></span>{rol.capitalize()}</p>',
+                    f'display:inline-block;"></span>{rol.capitalize()}{mar_nota}</p>',
                     unsafe_allow_html=True,
                 )
                 c1, c2 = st.columns(2)
@@ -3011,6 +3049,14 @@ def _render_paso1():
     }
     can_next_dist = all(d <= MAX_DIST_M for d in distancias.values())
 
+    # Puntos sobre el mar (o fuera de España): bloquean igual que la distancia.
+    puntos_mar = [
+        f"{s} ({rol})"
+        for s in escenarios
+        for rol in ("origen", "destino")
+        if _punto_en_mar(coords[s][rol]["x"], coords[s][rol]["y"])
+    ]
+
     # Puerta de catastro: si se localizaron los municipios del corredor y falta
     # subir el ZIP de alguno, avisamos — pero SOLO al pulsar "Pesos y Perfiles →"
     # (no de forma preventiva). El primer clic con catastros pendientes muestra
@@ -3038,7 +3084,7 @@ def _render_paso1():
             key="cat_confirmar_incompleto",
         )
 
-    can_next = can_next_dist
+    can_next = can_next_dist and not puntos_mar
 
     c_back, _, c_next = st.columns([1.4, 2, 1.4])
     with c_back:
@@ -3065,6 +3111,12 @@ def _render_paso1():
             "warning",
             "Corrige las distancias antes de continuar. "
             f"Escenarios fuera de límite: {', '.join(invalidos)}",
+        )
+    if puntos_mar:
+        _alerta(
+            "warning",
+            "Hay puntos situados en el mar (o fuera de España): "
+            f"{', '.join(puntos_mar)}. Muévelos a tierra firme antes de continuar.",
         )
 
 

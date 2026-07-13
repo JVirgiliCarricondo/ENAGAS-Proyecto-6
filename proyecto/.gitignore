@@ -30,6 +30,9 @@ data/raw/
 *.geojson
 # excepción: ficheros de configuración del caso de estudio sí se versionan
 !data/config/**
+# excepción: assets estáticos de la app (p. ej. el polígono de tierra firme
+# para validar que origen/destino no caen en el mar) sí se versionan
+!src/app/assets/**
 # datos procesados: NO se versionan (se regeneran en cada ejecución de la
 # herramienta); solo se conservan la estructura y su documentación
 !data/processed/**/.gitkeep
