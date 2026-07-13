@@ -13,7 +13,8 @@
 | IGME | Mapa Geológico IGME | Automática (`descargar_capas.py`) | 2026-06-16 | EPSG:25830 | Vector |
 | INUND | Zonas inundables SNCZI (MITECO) | Automática (`descargar_capas.py`) | 2026-06-29 | EPSG:4326 | Vector |
 | RN2000 | Red Natura 2000 (MITECO) | Automática (`descargar_capas.py`) | 2026-07-09 | EPSG:4326 | Vector |
-| CATASTRO | Catastro INSPIRE (DGC) | **Manual** (leer instrucciones) | 2026-06-16 | EPSG:25830 | Vector |
+| CATASTRO | Catastro INSPIRE (DGC, régimen común) | **Manual** (leer instrucciones) | 2026-06-16 | EPSG:25830 | Vector |
+| CATASTRO FORAL | Catastro Navarra + País Vasco | Automática (`catastro_foral.py`) | 2026-07-13 | EPSG:25830 | Vector |
 
 ---
 
@@ -143,6 +144,22 @@ data/raw/CATASTRO/
 
 - **Salida en `Recorte_AOI/`:** `catastro_aoi_A.gpkg` (1 221 parcelas), `catastro_aoi_B.gpkg` (160 parcelas).
 - **Licencia:** datos públicos de la Dirección General del Catastro, Ministerio de Hacienda. Reutilización sujeta a condiciones INSPIRE.
+
+### CATASTRO FORAL — Navarra y País Vasco (descarga automática por bbox)
+
+El Catastro nacional (DGC) **no cubre Navarra ni País Vasco**: tienen catastro foral con IDE propia. Estos territorios **sí** exponen servicios abiertos por bbox (sin cl@ve), así que `catastro_foral.py` los descarga automáticamente cuando el AOI los intersecta y deja las parcelas como `data/raw/Catastro/foral_<territorio>_<escenario>/PARCELA.shp` (columnas `[refcat, geometry]`, EPSG:25830) — mismo formato que el catastro nacional, así que `alinear_capas.py` los fusiona sin cambios.
+
+| Territorio | Método | Endpoint | Capas | Campo ref. | Estado |
+|-----------|--------|----------|-------|-----------|--------|
+| Navarra | WFS 2.0.0 (GeoJSON) | `https://idena.navarra.es/ogc/wfs` (IDENA/SITNA) | `IDENA:CATAST_Pol_ParcelaUrba` / `…Rusti` / `…Mixta` | `IDCATASTRO` | ✅ verificado |
+| Gipuzkoa | WFS 2.0.0 INSPIRE (GML) | `https://b5m.gipuzkoa.eus/inspire/wfs/gipuzkoa_wfs_cp` | `cp:CadastralParcel` | `localId` | ✅ verificado |
+| Álava | ArcGIS REST `/query` | `https://geo.araba.eus/geoaraba/rest/services/OGC_ARABA/WFS_Katastroa/MapServer` | layers `19` (urbanas), `23` (rústicas) | `REF_CATASTRAL` | ✅ verificado |
+| Bizkaia | ArcGIS REST `/query` | `https://geo.bizkaia.eus/arcgisserverinspire/rest/services/Catastro/Annex1/MapServer` | layer `8` (Cadastral Parcel) | `nationalCadastralRef` | ✅ verificado |
+
+- **CRS:** Navarra y Álava responden ya en EPSG:25830; Gipuzkoa devuelve EPSG:4258 y se reproyecta.
+- **Nota técnica:** el WFS de Álava (ArcGIS) ignora el filtro `BBOX` por KVP (bug conocido de ArcGIS WFSServer), por eso se usa su REST `/query` con `esriGeometryEnvelope` (mismo patrón que IGME). Bizkaia comparte método.
+- **Best-effort:** un fallo de estos servicios se registra pero **no** bloquea el pipeline (el Catastro es capa opcional). Si el AOI cae en territorio de régimen común (p. ej. Aragón), no se hace ninguna petición.
+- **Licencia:** datos públicos de las Diputaciones Forales (Araba, Bizkaia, Gipuzkoa) y del Gobierno de Navarra (SITNA/IDENA). Reutilización sujeta a condiciones INSPIRE.
 
 ---
 
