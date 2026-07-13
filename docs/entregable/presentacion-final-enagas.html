@@ -135,13 +135,13 @@
 
   /* pipeline flow diagram */
   .pflow{display:flex;flex-direction:column;gap:0}
-  .pflow .node{padding:.55rem 1rem;border-radius:11px;font-size:.82rem;font-weight:600;text-align:center;
+  .pflow .node{padding:.34rem .9rem;border-radius:10px;font-size:.78rem;font-weight:600;text-align:center;
     border:1px solid var(--border-2);background:var(--panel)}
-  .pflow .node small{display:block;font-weight:400;color:var(--txt-faint);font-size:.68rem;margin-top:.15rem;font-family:var(--mono)}
+  .pflow .node small{display:block;font-weight:400;color:var(--txt-faint);font-size:.64rem;margin-top:.08rem;font-family:var(--mono)}
   .pflow .node.term{background:var(--grad);color:#fff;border:none;box-shadow:0 6px 18px rgba(31,95,214,.25)}
   .pflow .node.term small{color:rgba(255,255,255,.82)}
   .pflow .node.dec{background:rgba(90,63,208,.07);border:1.5px dashed var(--accent-2)}
-  .pflow .conn{width:2px;height:14px;background:var(--border-2);align-self:center;position:relative}
+  .pflow .conn{width:2px;height:8px;background:var(--border-2);align-self:center;position:relative}
   .pflow .conn::after{content:"";position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);
     border:4px solid transparent;border-top-color:var(--border-2)}
 
@@ -168,8 +168,9 @@
   .exec-line{display:flex;align-items:flex-start;gap:.75rem;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:.6rem .9rem}
   .exec-line .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;font-size:1rem;background:var(--panel-2)}
   .exec-line .tx{font-size:.85rem;line-height:1.4}
-  .exec-line .tx b{font-weight:650;display:block;font-size:.88rem;margin-bottom:.1rem}
+  .exec-line .tx > b{font-weight:650;display:block;font-size:.88rem;margin-bottom:.1rem}
   .exec-line .tx span{color:var(--txt-dim)}
+  .exec-line .tx span b{font-weight:600}
 
   /* formula box */
   .formula{background:#0e1830;border:1px solid var(--border-2);border-radius:11px;padding:.7rem .9rem;
@@ -317,7 +318,7 @@
       <div class="aitem"><span class="n">6</span><div class="b"><b>Diferenciación de rutas</b><span>Por qué salen 4 rutas distintas y cómo se valida</span></div></div>
       <div class="aitem"><span class="n">7</span><div class="b"><b>Métricas</b><span>La comparativa multicriterio</span></div></div>
       <div class="aitem hl"><span class="n">8</span><div class="b"><b>Demo en vivo · app Streamlit</b><span>Asistente de 3 pasos → mapa, KPIs e informe</span></div></div>
-      <div class="aitem"><span class="n">9</span><div class="b"><b>Reproducibilidad y cierre</b><span>Entorno, qué se versiona, líneas abiertas</span></div></div>
+      <div class="aitem"><span class="n">9</span><div class="b"><b>Cierre</b><span>Conclusiones y líneas abiertas</span></div></div>
     </div>
   </section>
 
@@ -344,10 +345,10 @@
         </div>
         <div class="exec-line">
           <span class="ic">📏</span>
-          <div class="tx"><b>Regla no negociable</b><span>Todo coste es un <b style="color:var(--txt)">índice relativo normalizado</b>, calibrado con la metodología oficial de Enagás. El sistema nunca estima euros.</span></div>
+          <div class="tx"><b>Coste relativo, nunca en euros</b><span>Todos los costes son <b style="color:var(--txt)">índices normalizados</b>, calibrados con la metodología oficial de Enagás. La herramienta compara trazados; no estima costes económicos.</span></div>
         </div>
       </div>
-      <div class="card">
+      <div class="card" style="padding:.75rem .9rem">
         <div class="pflow">
           <div class="node term">ENTRADA<small>origen · destino (UTM) · pesos por perfil</small></div>
           <div class="conn"></div>
@@ -649,33 +650,7 @@
     </div>
   </section>
 
-  <!-- 10 · ENTORNO Y REPRODUCIBILIDAD -->
-  <section class="slide" id="s10">
-    <div class="slide-head">
-      <div class="kicker"><span class="num">10</span><span class="dot"></span>Entorno y reproducibilidad</div>
-      <h2>Cualquiera del equipo (o de Enagás) <span class="grad-text">lo ejecuta igual</span></h2>
-      <p class="lead">La ingeniería alrededor del prototipo también es entregable: entorno pineado, puesta en marcha de un comando y una frontera clara entre lo que se versiona y lo que se regenera.</p>
-    </div>
-    <div class="grid g3">
-      <div class="rcard r1">
-        <span class="sp">setup.ps1 / setup.sh</span>
-        <h4>Un comando, mismo entorno</h4>
-        <p>Crea <code>proyecto/.venv</code> (Python 3.10), instala <code>requirements.txt</code> congelado y verifica cada import (OK/FALTA). Idempotente: se repite tras cada <code>git pull</code>.</p>
-      </div>
-      <div class="rcard r3">
-        <span class="sp">git + data/</span>
-        <h4>Qué se versiona y qué no</h4>
-        <p><b style="color:var(--green)">Sí:</b> código, <code>data/config/</code> (escenarios y perfiles), <code>FUENTES.md</code>.<br><b style="color:var(--red)">No:</b> <code>data/raw/</code> y <code>data/processed/</code> — se descargan y regeneran; el repositorio guarda la receta, no el plato.</p>
-      </div>
-      <div class="rcard r4">
-        <span class="sp">determinismo</span>
-        <h4>Mismo YAML, mismas rutas</h4>
-        <p>Pipeline sin azar: misma configuración → mismas 4 rutas y mismas métricas, en cualquier máquina. Es la base para auditar y calibrar con el cliente.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- 11 · CIERRE -->
+  <!-- 10 · CIERRE -->
   <section class="slide" id="close">
     <div class="logo-bar right">
       <div class="logo-chip">
@@ -693,7 +668,7 @@
       </div>
     </div>
     <div style="max-width:64ch">
-      <div class="kicker"><span class="num">11</span><span class="dot"></span>Cierre</div>
+      <div class="kicker"><span class="num">10</span><span class="dot"></span>Cierre</div>
       <h1 style="font-size:clamp(2.2rem,5vw,4rem)">Pipeline completo, <span class="grad-text">conversación abierta</span></h1>
       <p class="lead" style="margin-top:1.3rem">El prototipo está operativo end-to-end: de un origen y un destino a cuatro trazados diferenciados, medidos y comparables. Lo que mejor puede aportar ahora Enagás:</p>
       <div class="dlist" style="margin-top:1.6rem;max-width:58ch">
@@ -721,7 +696,7 @@
   <div class="dots" id="dots"></div>
   <div class="ctrls">
     <button class="nav" id="prevBtn" aria-label="Anterior">‹</button>
-    <span class="count" id="counter">1 / 12</span>
+    <span class="count" id="counter">1 / 11</span>
     <button class="nav" id="nextBtn" aria-label="Siguiente">›</button>
     <button class="nav" id="fsBtn" aria-label="Pantalla completa">⛶</button>
   </div>
