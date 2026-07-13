@@ -134,13 +134,6 @@ flowchart TB
    automáticos). El estado por capa se registra en <code>manifiesto_estado.json</code>
    (<code>ok</code>/<code>empty</code>/<code>failed</code>/<code>partial</code>).</p>
 
-<p class="note" style="font-size:.9rem"><b>Diferenciación (paso 5), informativa:</b> la diversidad de corredores es
-   una <b>medición a posteriori</b>, no una compuerta. Se generan siempre las 4 rutas (una por perfil) y todas
-   pasan a métricas y al mapa <b>aunque un par supere el 50 % de solapamiento</b>. La app muestra la matriz de
-   solapamiento en la pestaña «Diversidad» para que el usuario juzgue; el sistema <b>no descarta, no regenera ni
-   reajusta pesos</b> por sí mismo. La diferenciación se persigue <em>de raíz</em>, dando pesos distintos a cada
-   perfil (superficies de coste distintas ⇒ corredores distintos), no filtrando al final.</p>
-
 <!-- ============================================================ -->
 <h2 id="capas"><span class="n">02</span>Capas de coste y estandarización</h2>
 
