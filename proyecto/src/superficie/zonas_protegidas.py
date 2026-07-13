@@ -70,7 +70,22 @@ VALOR_FONDO: float = float(_zcfg["valor_fondo"])
 
 
 def procesar_escenario(s: str) -> None:
-    """Genera protegida_{s}.tif a partir de natura2000_aoi_{s}.gpkg."""
+    """Genera protegida_{s}.tif a partir de natura2000_aoi_{s}.gpkg.
+
+    Entradas (data/processed/Recorte_AOI/):
+        - dem_aoi_{s}.tif        : rejilla de referencia (define transform/tamaño/CRS).
+        - natura2000_aoi_{s}.gpkg: polígonos Red Natura 2000 recortados al AOI.
+
+    Salida (data/processed/Capas_Coste/):
+        - protegida_{s}.tif      : coste binario {0, VALOR_PROTEGIDA} en escala [0, 1].
+
+    Args:
+        s: Identificador de escenario ('A' o 'B').
+
+    Raises:
+        FileNotFoundError: Si falta el DEM o la capa Red Natura.
+        ValueError: Si la capa Red Natura no tiene CRS definido.
+    """
     dem_path = ENTRADA_DIR / f"dem_aoi_{s}.tif"
     natura_path = ENTRADA_DIR / f"natura2000_aoi_{s}.gpkg"
 
@@ -135,6 +150,7 @@ def procesar_escenario(s: str) -> None:
 
 
 def main() -> None:
+    """Genera protegida_A.tif y protegida_B.tif (capa de zonas protegidas)."""
     for s in ESCENARIOS:
         procesar_escenario(s)
     print("Script 06 completado: capa de coste 'protegida' generada (A y B).")

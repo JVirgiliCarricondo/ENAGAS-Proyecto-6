@@ -53,6 +53,17 @@ PESO_A_CAPA = {
 
 
 def _layer_paths(scenario: str) -> list[Path]:
+    """Lista las capas de coste de un escenario en Capas_Coste/.
+
+    Devuelve todos los ``*_{s}.tif`` de la carpeta EXCLUYENDO las superficies ya
+    combinadas (``superficie_*``), para no realimentar la combinación consigo misma.
+
+    Args:
+        scenario: 'A' o 'B'.
+
+    Returns:
+        Rutas de las capas de coste individuales, ordenadas alfabéticamente.
+    """
     s = scenario.upper()
     return sorted([
         p for p in CAPAS_COSTE.glob(f"*_{s}.tif")
@@ -61,7 +72,17 @@ def _layer_paths(scenario: str) -> list[Path]:
 
 
 def _layer_name(path: Path, scenario: str) -> str:
-    """pendiente_A.tif → 'pendiente'"""
+    """Extrae el nombre de capa quitando el sufijo de escenario.
+
+    Ejemplo: pendiente_A.tif → 'pendiente'.
+
+    Args:
+        path: Ruta del GeoTIFF de la capa.
+        scenario: 'A' o 'B' (el sufijo a recortar).
+
+    Returns:
+        El nombre de la capa sin el sufijo ``_{escenario}``.
+    """
     suffix = f"_{scenario.upper()}"
     return path.stem[: -len(suffix)] if path.stem.endswith(suffix) else path.stem
 
@@ -85,8 +106,17 @@ def combinar_pesos(
     Args:
         scenario: 'A' o 'B'.
         pesos:    dict nombre_capa → peso, tal como aparece en perfiles.yaml.
+
+    Returns:
+        Tupla (acc, transform, crs): array float64 de coste combinado (nan fuera
+        del AOI o en barrera), y el transform/CRS heredados de las capas leídas.
+
+    Raises:
+        FileNotFoundError: Si el perfil no referencia ninguna capa disponible.
     """
     s = scenario.upper()
+    # Coste base por celda (longitud): garantiza que la distancia siempre cuente
+    # en el LCP aunque todos los pesos de capa sean 0.
     base = BASE_LONG * float(pesos.get("longitud", 1.0))
 
     acc: np.ndarray | None = None
@@ -102,10 +132,14 @@ def combinar_pesos(
         with rasterio.open(path) as src:
             arr = src.read(1).astype("float64")
             if acc is None:
+                # La primera capa fija la rejilla de salida (transform/CRS) y
+                # siembra el acumulador con el coste base de longitud.
                 transform, crs = src.transform, src.crs
                 acc = np.full(arr.shape, base, dtype="float64")
         arr = np.where(arr == NODATA, np.nan, arr)  # fuera del AOI o barrera → nan
         log.info("[combinar_%s]   %-22s  w=%.3f", s, path.name, float(w))
+        # Suma ponderada celda a celda. Cualquier nan (celda impasable en ESTA
+        # capa) contamina la suma y deja la celda impasable en la superficie final.
         acc = acc + float(w) * arr                        # nan se propaga
 
     if acc is None:
@@ -123,6 +157,11 @@ def run(scenario: str, pesos: dict[str, float] | None = None) -> Path:
         pesos:    dict nombre_capa → peso (ver `combinar_pesos`). La clave
                   especial 'longitud' escala BASE_LONG. Capas no listadas se
                   ignoran. None → peso igual 1/n para todas las capas halladas.
+
+    Returns:
+        Ruta del GeoTIFF combinado escrito en Trazados/superficie_{s}.tif (con
+        su .qml de leyenda al lado). Valores de coste continuos; NODATA (-9999)
+        marca fuera del AOI y barreras.
     """
     s = scenario.upper()
     if pesos is None:
@@ -168,7 +207,17 @@ def run(scenario: str, pesos: dict[str, float] | None = None) -> Path:
 
 
 def _write_qml(tif_path: Path, vmin: float, vmax: float) -> None:
-    """Leyenda de rampa continua verde→amarillo→rojo para QGIS."""
+    """Escribe la leyenda QGIS: rampa continua verde→amarillo→rojo.
+
+    A diferencia de las capas individuales (rampas discretas), la superficie
+    combinada tiene coste continuo, por lo que la rampa se INTERPOLA entre el
+    mínimo (verde) y el máximo (rojo), con el punto medio en amarillo.
+
+    Args:
+        tif_path: Ruta del GeoTIFF combinado; el .qml se escribe al lado.
+        vmin: Valor de coste mínimo (extremo verde de la rampa).
+        vmax: Valor de coste máximo (extremo rojo de la rampa).
+    """
     qml = f"""<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
 <qgis version="3.0" styleCategories="AllStyleCategories">
   <pipe>
@@ -199,6 +248,7 @@ def _write_qml(tif_path: Path, vmin: float, vmax: float) -> None:
 
 
 def _verify(path: Path) -> None:
+    """Imprime un resumen de control del raster combinado (shape, rango, nodata)."""
     with rasterio.open(path) as src:
         arr = src.read(1)
     valid = arr[arr != NODATA]

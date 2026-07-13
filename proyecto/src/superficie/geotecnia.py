@@ -63,7 +63,22 @@ _LABELS: dict[float, str] = {
 
 
 def _read_reference(dem_path: Path) -> tuple[dict, np.ndarray]:
-    """Devuelve (profile, valid_mask); valid_mask=True donde el DEM tiene dato."""
+    """Lee la rejilla de referencia del DEM y su máscara de celdas con dato.
+
+    El DEM alineado define la rejilla común (transform, tamaño, CRS EPSG:25830)
+    a la que se rasteriza esta capa. La máscara de validez marca dónde el DEM
+    tiene dato real (dentro del AOI); las celdas nodata quedan fuera del AOI.
+
+    Args:
+        dem_path: Ruta al DEM alineado dem_aoi_{s}.tif.
+
+    Returns:
+        Tupla (profile, valid_mask) donde ``valid_mask`` es True donde el DEM
+        tiene dato (dentro del AOI) y False donde es nodata (fuera del AOI).
+
+    Raises:
+        FileNotFoundError: Si no existe el DEM de referencia.
+    """
     if not dem_path.exists():
         raise FileNotFoundError(f"DEM de referencia no encontrado: {dem_path}")
     with rasterio.open(dem_path) as src:
@@ -71,14 +86,28 @@ def _read_reference(dem_path: Path) -> tuple[dict, np.ndarray]:
         dem_data = src.read(1)
         if src.nodata is not None:
             nd = float(src.nodata)
+            # El nodata puede ser NaN (comparación especial) o un valor centinela
+            # normal (p.ej. -9999): se distinguen ambos casos para la máscara.
             valid_mask = ~np.isnan(dem_data) & (dem_data != nd) if np.isnan(nd) else dem_data != nd
         else:
+            # Sin nodata declarado: se considera válido todo lo finito.
             valid_mask = np.isfinite(dem_data)
     return profile, valid_mask.astype(bool)
 
 
 def _assign_costs(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Añade columna 'cost' mapeando DLO → índice geotécnico."""
+    """Añade columna 'cost' mapeando DLO → índice geotécnico.
+
+    La columna DLO del IGME identifica la litología. Cada valor se traduce a su
+    índice de coste con ``COST_TABLE``; los códigos no presentes en la tabla
+    reciben ``DEFAULT_COST``.
+
+    Args:
+        gdf: Polígonos geológicos IGME con la columna 'DLO'.
+
+    Returns:
+        Copia del GeoDataFrame con una nueva columna 'cost' (float en [0, 1]).
+    """
     gdf = gdf.copy()
     gdf["cost"] = gdf["DLO"].map(
         lambda dlo: COST_TABLE.get(str(dlo).strip(), DEFAULT_COST)
@@ -89,12 +118,27 @@ def _assign_costs(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 def _rasterize_geology(
     gdf: gpd.GeoDataFrame, profile: dict, valid_mask: np.ndarray
 ) -> np.ndarray:
-    """Rasteriza polígonos IGME sobre la rejilla del DEM."""
+    """Rasteriza los polígonos IGME sobre la rejilla del DEM.
+
+    Convierte los polígonos vectoriales de litología en un raster de coste
+    alineado a la rejilla común. La composición de valores es en capas:
+    primero nodata en todo, luego DEFAULT_COST dentro del AOI, y por último el
+    coste litológico donde hay polígono IGME.
+
+    Args:
+        gdf: Polígonos IGME con columna 'cost' (ver ``_assign_costs``).
+        profile: Profile del DEM de referencia (aporta transform/width/height).
+        valid_mask: True dentro del AOI (celdas con dato en el DEM).
+
+    Returns:
+        Array float32 con el coste geotécnico por celda; NODATA fuera del AOI.
+    """
     height: int = profile["height"]
     width: int = profile["width"]
     transform = profile["transform"]
 
-    # Nodata en todo el array; DEFAULT_COST donde el DEM es válido (dentro del AOI)
+    # Base: nodata en todo el array; DEFAULT_COST donde el DEM es válido (AOI).
+    # Así las celdas del AOI sin polígono IGME reciben el coste por defecto.
     result = np.full((height, width), NODATA, dtype="float32")
     result[valid_mask] = DEFAULT_COST
 
@@ -102,9 +146,13 @@ def _rasterize_geology(
     if valid_geoms.empty:
         return result
 
+    # Cada polígono se "quema" con su valor de coste (pares geometría, valor).
     shapes = list(zip(valid_geoms.geometry, valid_geoms["cost"].astype(float)))
 
-    # fill=-1.0 como centinela: "ningún polígono IGME cubre esta celda"
+    # rasterize convierte los polígonos a rejilla. fill=-1.0 es un centinela que
+    # marca "ningún polígono IGME cubre esta celda" (distinto de un coste real).
+    # all_touched=False: solo se pinta la celda si su CENTRO cae dentro del
+    # polígono (evita engordar artificialmente las coberturas).
     rasterized = rasterize(
         shapes,
         out_shape=(height, width),
@@ -114,7 +162,9 @@ def _rasterize_geology(
         all_touched=False,
     )
 
-    # Aplicar coste IGME solo donde el DEM es válido y hay polígono
+    # Sobreescribir con el coste IGME solo donde hay polígono (>= 0, no el
+    # centinela -1) Y la celda está dentro del AOI. Fuera de eso queda el
+    # DEFAULT_COST (AOI sin polígono) o el NODATA (fuera del AOI).
     igme_covered = rasterized >= 0.0
     result[valid_mask & igme_covered] = rasterized[valid_mask & igme_covered]
 
@@ -122,7 +172,17 @@ def _rasterize_geology(
 
 
 def _write_qml(tif_path: Path) -> None:
-    """Escribe un fichero .qml junto al TIF para que QGIS cargue los colores automáticamente."""
+    """Escribe un .qml (estilo QGIS) junto al TIF para colorear la capa.
+
+    Genera una leyenda de rampa DISCRETA (una clase por litología). Como la
+    rampa es discreta, el límite superior de cada clase se fija en el punto
+    medio hasta el siguiente valor de coste, de modo que la imprecisión float32
+    no haga caer un valor en la clase equivocada.
+
+    Args:
+        tif_path: Ruta del GeoTIFF de coste; el .qml se escribe con el mismo
+            nombre y extensión .qml.
+    """
     costs = sorted(_COLORS)
     items_lines = []
     for i, v in enumerate(costs):
@@ -212,7 +272,23 @@ def _validate_output(path: Path, ref_profile: dict) -> None:
 
 
 def process_scenario(scenario: str) -> None:
-    """Genera la capa de coste geotécnico para un escenario (A o B)."""
+    """Genera la capa de coste geotécnico para un escenario (A o B).
+
+    Entradas (data/processed/Recorte_AOI/):
+        - dem_aoi_{s}.tif  : rejilla de referencia (define transform/tamaño/CRS).
+        - igme_aoi_{s}.gpkg: polígonos geológicos IGME (columna DLO) del AOI.
+
+    Salida (data/processed/Capas_Coste/):
+        - geotecnia_{s}.tif: coste litológico por celda en [0.05, 1.0] (+ su .qml).
+                             NODATA (-9999) fuera del AOI.
+
+    Args:
+        scenario: Identificador de escenario ('A' o 'B').
+
+    Raises:
+        FileNotFoundError: Si falta el DEM o el GPKG del IGME.
+        ValueError: Si la capa IGME no contiene la columna 'DLO'.
+    """
     dem_path = RECORTE_DIR / f"dem_aoi_{scenario}.tif"
     igme_path = RECORTE_DIR / f"igme_aoi_{scenario}.gpkg"
     output_path = CAPAS_COSTE_DIR / f"geotecnia_{scenario}.tif"

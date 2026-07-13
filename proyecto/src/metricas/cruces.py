@@ -39,8 +39,25 @@ PERFILES = ["corto", "equilibrio", "ambiental", "pendiente"]
 def _puntos_interseccion(geom_a: BaseGeometry, geom_b: BaseGeometry) -> int:
     """Número de puntos de cruce transversal entre dos geometrías lineales.
 
-    Devuelve 0 para solapamientos lineales (no son cruces transversales).
+    Un cruce = la ruta atraviesa la infraestructura, cortándola en un punto. Se
+    cuenta clasificando la geometría de la intersección de las dos líneas:
+
+      · Point           → 1 cruce transversal.
+      · MultiPoint      → tantos cruces como puntos (la ruta cruza varias veces).
+      · GeometryCollection → se cuentan solo las componentes Point (mezcla de
+        cortes puntuales y tramos solapados: los tramos no son cruces).
+      · LineString/otros → 0: es un solapamiento lineal (la ruta va co-lineal con
+        la infraestructura, no la cruza), que por convenio NO se cuenta como cruce.
+
+    Args:
+        geom_a: Geometría lineal (la ruta).
+        geom_b: Geometría lineal (una infraestructura: río, carretera o vía).
+
+    Returns:
+        Número de puntos de cruce transversal (0 si no se tocan o solo se solapan).
     """
+    # intersects es una comprobación rápida (bounding box + relación topológica);
+    # evita calcular la intersección exacta cuando no hay contacto.
     if not geom_a.intersects(geom_b):
         return 0
     inter = geom_a.intersection(geom_b)
@@ -88,9 +105,13 @@ def contar_cruces(
       callado se confundiría con "comprobado = 0 cruces". Se emite además un warning.
     """
     if "railway" in osm_gdf.columns:
+        # Una fila OSM es ferrocarril si tiene 'railway' no vacío; el resto con
+        # 'highway' no nulo son viario rodado. La exclusión (~ferrocarril_mask)
+        # evita contar dos veces una fila que trajera ambos campos.
         ferrocarril_mask = osm_gdf["railway"].notna() & (osm_gdf["railway"].str.strip() != "")
         carretera_mask = ~ferrocarril_mask & osm_gdf["highway"].notna()
         ferrocarril = osm_gdf[ferrocarril_mask]
+        # Suma de cruces transversales de la ruta con cada geometría de ferrocarril.
         n_ferrocarril: int | None = sum(
             _puntos_interseccion(ruta_geom, g) for g in ferrocarril.geometry
         )
@@ -108,6 +129,8 @@ def contar_cruces(
 
     carreteras = osm_gdf[carretera_mask]
 
+    # Cruces con ríos y carreteras: se suma, por cada geometría de la capa, el
+    # número de cortes transversales que la ruta hace con ella.
     n_rios = sum(_puntos_interseccion(ruta_geom, g) for g in hidro_gdf.geometry)
     n_carreteras = sum(_puntos_interseccion(ruta_geom, g) for g in carreteras.geometry)
 
@@ -119,7 +142,20 @@ def contar_cruces(
 
 
 def cruces_escenario(ruta_path: Path | str, escenario: str) -> dict[str, int | None]:
-    """Carga la ruta y las capas del escenario y devuelve el conteo de cruces."""
+    """Carga la ruta y las capas del escenario y devuelve el conteo de cruces.
+
+    Args:
+        ruta_path: Ruta al .gpkg de la ruta a analizar.
+        escenario: 'A' o 'B' (selecciona las capas osm/hidrografía del AOI).
+
+    Returns:
+        Dict con n_cruces_rios, n_cruces_carreteras y n_cruces_ferrocarril
+        (este último None si la capa OSM no trae la columna 'railway').
+
+    Raises:
+        FileNotFoundError: Si falta la ruta o alguna de las capas del escenario.
+        ValueError: Si alguna capa no tiene CRS definido (vía ``_limpiar``).
+    """
     ruta_path = Path(ruta_path)
     osm_path = RECORTE_DIR / f"osm_aoi_{escenario}.gpkg"
     hidro_path = RECORTE_DIR / f"hidrografia_aoi_{escenario}.gpkg"
@@ -129,6 +165,8 @@ def cruces_escenario(ruta_path: Path | str, escenario: str) -> dict[str, int | N
             raise FileNotFoundError(f"No existe la entrada esperada: {p}")
 
     ruta_gdf = _limpiar(gpd.read_file(ruta_path))
+    # union_all fusiona todas las filas de la ruta en una sola geometría, para
+    # intersectarla de una vez contra cada infraestructura.
     ruta_geom = ruta_gdf.geometry.union_all()
 
     osm_gdf = _limpiar(gpd.read_file(osm_path))

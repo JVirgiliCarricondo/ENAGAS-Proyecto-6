@@ -52,9 +52,24 @@ def _coords_de(geom: BaseGeometry) -> list[list]:
 def _medir_polilinea(
     coords: list, arr: np.ndarray, transform: rasterio.Affine, paso: float
 ) -> tuple[float, float]:
-    """Recorre una polilínea muestreando el raster en el punto medio de cada
-    sub-segmento de longitud 'paso'. Devuelve (longitud_total, longitud_protegida)."""
+    """Longitud total y longitud protegida de una polilínea, por muestreo del raster.
+
+    Mide POR LONGITUD (no por celdas): cada segmento de la polilínea se parte en
+    sub-segmentos de longitud ~``paso``, y cada sub-segmento se clasifica leyendo
+    el raster en su punto medio (conversión coordenada→celda con la afín inversa).
+    Si esa celda está protegida, la longitud del sub-segmento suma a la parte protegida.
+
+    Args:
+        coords: Vértices de la polilínea [(x, y), ...] en EPSG:25830.
+        arr: Raster binario de protección (>0 = Red Natura; NODATA = sin dato).
+        transform: Transformación afín del raster (para coordenada→celda).
+        paso: Longitud objetivo de cada sub-segmento (m); media celda por defecto.
+
+    Returns:
+        (longitud_total_m, longitud_protegida_m) de esta polilínea, en metros.
+    """
     H, W = arr.shape
+    # Inversos de la afín precalculados: coordenada→celda es (coord - origen)/tamaño.
     inv_a = 1.0 / transform.a
     inv_e = 1.0 / transform.e
     total = 0.0
@@ -64,15 +79,19 @@ def _medir_polilinea(
         seg_len = float(np.hypot(x1 - x0, y1 - y0))
         if seg_len == 0.0:
             continue
+        # Densificar: partir el segmento en n trozos de longitud ~paso (media celda),
+        # para no saltarse ninguna celda que el segmento atraviese.
         n = max(1, int(np.ceil(seg_len / paso)))
         sub_len = seg_len / n
         for k in range(n):
-            t = (k + 0.5) / n  # punto medio del sub-segmento k
+            t = (k + 0.5) / n  # punto medio del sub-segmento k (fracción del segmento)
             xm = x0 + t * (x1 - x0)
             ym = y0 + t * (y1 - y0)
+            # Coordenada UTM → índice de celda (col, row) del raster.
             col = int((xm - transform.c) * inv_a)
             row = int((ym - transform.f) * inv_e)
             total += sub_len
+            # Celda dentro del raster y con valor de dato positivo → protegida.
             if 0 <= row < H and 0 <= col < W:
                 v = arr[row, col]
                 if v != NODATA and v > 0:
@@ -92,6 +111,9 @@ def calcular(linea: BaseGeometry, escenario: str) -> dict[str, float]:
           km_total      longitud total de la ruta (km)
           km_protegida  longitud dentro de Red Natura 2000 (km)
           pct_protegida porcentaje de la longitud dentro de protegido (0-100)
+
+    Raises:
+        FileNotFoundError: Si no existe el raster protegida_{s}.tif del escenario.
     """
     s = escenario.upper()
     protegida_path = CAPAS_DIR / f"protegida_{s}.tif"
