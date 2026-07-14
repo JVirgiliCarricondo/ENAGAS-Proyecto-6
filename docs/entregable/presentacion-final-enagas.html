@@ -182,11 +182,11 @@
   .rail-step.active .ric{color:#fff}
   .rail-step.active::before{content:"";position:absolute;left:-.95rem;top:50%;transform:translateY(-50%);
     border:6px solid transparent;border-left-color:var(--accent-2)}
-  .rail-out{position:relative;display:flex;align-items:center;gap:.65rem;background:var(--dark);color:#fff;border-radius:12px;padding:.6rem .7rem;margin-top:.55rem}
-  .rail-out .ric{width:20px;height:20px;color:#cdd8f5;flex:0 0 auto}
+  .rail-out{position:relative;display:flex;align-items:center;gap:.65rem;background:var(--panel);border:1px solid var(--border);color:var(--txt);border-radius:12px;padding:.6rem .7rem;margin-top:.55rem}
+  .rail-out .ric{width:20px;height:20px;color:var(--accent);flex:0 0 auto}
   .rail-out .ric svg{width:100%;height:100%}
-  .rail-out b{font-family:var(--font-title);font-size:.8rem;font-weight:600;display:block}
-  .rail-out span{font-size:.62rem;color:rgba(255,255,255,.62);display:block;margin-top:.12rem}
+  .rail-out b{font-family:var(--font-title);font-size:.8rem;font-weight:600;display:block;color:var(--txt)}
+  .rail-out span{font-size:.62rem;color:var(--txt-faint);display:block;margin-top:.12rem}
   .rail-out.active{outline:2px solid var(--accent-2);outline-offset:1px}
   .rail-out.active::before{content:"";position:absolute;left:-.95rem;top:50%;transform:translateY(-50%);
     border:6px solid transparent;border-left-color:var(--accent-2)}
@@ -248,9 +248,10 @@
   /* slide 2: stretch both columns to fill the slide, distribute the flow */
   #s2 .two-col{flex:1 1 auto;align-items:stretch;min-height:0}
   #s2 .exec-col{justify-content:space-between}
-  #s2 .card{display:flex;flex-direction:column;justify-content:center}
+  #s2 .card{display:flex;flex-direction:column;justify-content:flex-start;overflow:hidden}
   #s2 .pflow{flex:1 1 auto;justify-content:space-between}
-  #s2 .pflow .conn{flex:1 1 auto;min-height:10px}
+  #s2 .pflow .node{padding-top:.3rem;padding-bottom:.3rem}
+  #s2 .pflow .conn{flex:1 1 auto;min-height:3px}
 
   /* ---------- exec lines ---------- */
   .exec-col{display:flex;flex-direction:column;gap:.6rem}
@@ -458,7 +459,7 @@
       <div class="idx-card"><span class="ico-sq tint-blue"><svg><use href="#i-nodes"/></svg></span><span class="idx-n">05</span><span class="idx-sep"></span><span class="idx-t">Motor de trazado (LCP)</span></div>
       <div class="idx-card"><span class="ico-sq tint-blue"><svg><use href="#i-venn"/></svg></span><span class="idx-n">06</span><span class="idx-sep"></span><span class="idx-t">Diferenciación de rutas</span></div>
       <div class="idx-card"><span class="ico-sq tint-blue"><svg><use href="#i-bars"/></svg></span><span class="idx-n">07</span><span class="idx-sep"></span><span class="idx-t">Métricas</span></div>
-      <div class="idx-card hl"><span class="ico-sq tint-purple"><svg><use href="#i-broadcast"/></svg></span><span class="idx-n">08</span><span class="idx-sep"></span><span class="idx-t">Demo en vivo · app Streamlit</span></div>
+      <div class="idx-card"><span class="ico-sq tint-blue"><svg><use href="#i-broadcast"/></svg></span><span class="idx-n">08</span><span class="idx-sep"></span><span class="idx-t">Demo en vivo · app Streamlit</span></div>
       <div class="idx-card"><span class="ico-sq tint-blue"><svg><use href="#i-flag"/></svg></span><span class="idx-n">09</span><span class="idx-sep"></span><span class="idx-t">Cierre</span></div>
     </div>
   </section>
@@ -467,7 +468,7 @@
   <section class="slide" id="s2">
     <div class="slide-head">
       <div class="kicker"><span class="num">02</span><span class="dot"></span>Visión general</div>
-      <h2>Un problema de <span class="grad-text">selección de trazados</span>, no de costes en €</h2>
+      <h2>Un problema de <span class="grad-text">selección de trazados</span></h2>
       <p class="lead">Dado un <b style="color:var(--txt)">origen</b> (planta de generación o punto de entrega) y un <b style="color:var(--txt)">destino</b> (conexión a red troncal), la herramienta propone <b style="color:var(--txt)">4 trazados alternativos diferenciados</b> sobre GIS público y los presenta en comparativa multicriterio.</p>
     </div>
     <div class="two-col" style="grid-template-columns:1.1fr 1fr">
@@ -491,17 +492,19 @@
       </div>
       <div class="card" style="padding:.85rem .95rem">
         <div class="pflow">
-          <div class="node term">ENTRADA<small>origen · destino (UTM) · pesos por perfil</small></div>
+          <div class="node term">ENTRADA<small>origen · destino (UTM)</small></div>
           <div class="conn"></div>
-          <div class="node">1 · Ingesta y alineación<small>descarga por AOI · EPSG:25830 · rejilla 30 m</small></div>
+          <div class="node">1 · Configuración y escenarios<small>escenario.yaml · perfiles.yaml · AOI</small></div>
           <div class="conn"></div>
-          <div class="node">2 · Superficies de coste<small>6 capas estandarizadas en [0,1]</small></div>
+          <div class="node">2 · Ingesta y alineación<small>descarga por AOI · EPSG:25830 · rejilla 30 m</small></div>
           <div class="conn"></div>
-          <div class="node">3 · Motor LCP<small>Dijkstra 8-conexo · una ruta por perfil</small></div>
+          <div class="node">3 · Superficies de coste<small>6 capas estandarizadas en [0,1]</small></div>
           <div class="conn"></div>
-          <div class="node dec">4 · Diferenciación<small>solape entre corredores · buffer 60 m / 50 %</small></div>
+          <div class="node">4 · Motor LCP<small>Dijkstra 8-conexo · una ruta por perfil</small></div>
           <div class="conn"></div>
-          <div class="node">5 · Métricas multicriterio<small>longitud · coste · cruces · zonas · pendiente</small></div>
+          <div class="node dec">5 · Diferenciación<small>solape entre corredores · buffer 60 m / 50 %</small></div>
+          <div class="conn"></div>
+          <div class="node">6 · Métricas multicriterio<small>longitud · coste · cruces · zonas · pendiente</small></div>
           <div class="conn"></div>
           <div class="node term">SALIDA<small>mapa de 4 rutas · tabla comparativa · PDF</small></div>
         </div>
@@ -510,7 +513,7 @@
   </section>
 
   <!-- 3 · CONFIGURACIÓN Y ESCENARIOS -->
-  <section class="slide proc" id="s3" data-stage="2">
+  <section class="slide proc" id="s3" data-stage="1">
     <div class="proc-grid">
       <div class="proc-main">
         <div class="slide-head">
@@ -566,7 +569,7 @@
   </section>
 
   <!-- 4 · INGESTA -->
-  <section class="slide proc" id="s4" data-stage="1">
+  <section class="slide proc" id="s4" data-stage="2">
     <div class="proc-grid">
       <div class="proc-main">
         <div class="slide-head">
@@ -901,8 +904,8 @@
 
   // ---- process rail (single source of truth) ----
   var STAGES = [
-    {n:1, t:'Ingesta y alineación',       s:'descarga por AOI · EPSG:25830 · rejilla 30 m', icon:'i-cloud'},
-    {n:2, t:'Configuración y escenarios', s:'escenario.yaml · perfiles.yaml · AOI',         icon:'i-sliders'},
+    {n:1, t:'Configuración y escenarios', s:'escenario.yaml · perfiles.yaml · AOI',         icon:'i-sliders'},
+    {n:2, t:'Ingesta y alineación',       s:'descarga por AOI · EPSG:25830 · rejilla 30 m', icon:'i-cloud'},
     {n:3, t:'Superficies de coste',       s:'6 capas estandarizadas en [0,1]',              icon:'i-layers'},
     {n:4, t:'Motor LCP',                  s:'Dijkstra 8-conexo propio, celda a celda',      icon:'i-nodes'},
     {n:5, t:'Diferenciación de rutas',    s:'4 corredores de verdad, sin ruido',            icon:'i-venn'},
