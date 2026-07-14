@@ -162,14 +162,7 @@
   .hud button.nav:hover{background:var(--panel-2);color:var(--txt);border-color:var(--accent)}
   .hud .count{min-width:52px;text-align:center;color:var(--txt-dim);font-weight:500}
 
-  /* ---------- process badge + rail ---------- */
-  .proc-badge{position:absolute;top:3.4vh;left:50%;transform:translateX(-50%);z-index:6;
-    display:flex;align-items:center;gap:.65rem;background:var(--panel);border:1px solid var(--border);
-    border-radius:13px;padding:.5rem 1.05rem;box-shadow:0 8px 22px rgba(16,42,87,.08)}
-  .proc-badge .pd{width:9px;height:9px;border-radius:50%;background:var(--grad);flex:0 0 auto}
-  .proc-badge .pb-t{font-size:.7rem;color:var(--accent);font-weight:600}
-  .proc-badge .pb-s{font-size:.86rem;color:var(--txt);font-weight:700}
-
+  /* ---------- process rail ---------- */
   .proc-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:1.6rem;align-items:start;width:100%}
   .proc-main{min-width:0;padding-top:2.4vh}
 
@@ -252,6 +245,12 @@
   .pflow .node.term small{color:rgba(255,255,255,.72)}
   .pflow .node.dec{background:rgba(90,63,208,.07);border:1.5px dashed var(--accent-2);color:var(--accent-2)}
   .pflow .conn{width:2px;height:9px;background:var(--border-2);align-self:center}
+  /* slide 2: stretch both columns to fill the slide, distribute the flow */
+  #s2 .two-col{flex:1 1 auto;align-items:stretch;min-height:0}
+  #s2 .exec-col{justify-content:space-between}
+  #s2 .card{display:flex;flex-direction:column;justify-content:center}
+  #s2 .pflow{flex:1 1 auto;justify-content:space-between}
+  #s2 .pflow .conn{flex:1 1 auto;min-height:10px}
 
   /* ---------- exec lines ---------- */
   .exec-col{display:flex;flex-direction:column;gap:.6rem}
@@ -850,7 +849,7 @@
       <p class="close-sub">Tiempo de preguntas</p>
       <div class="team">
         <div class="team-h">Equipo de trabajo</div>
-        <div class="names"><span>Lorena Palacios</span><span>José Virgili</span><span>José Guinea</span><span>Mateos Pérez</span><span>Mónica Olmos</span></div>
+        <div class="names"><span>Lorena García</span><span>José Virgili</span><span>José Guinea</span><span>Mateo Pérez</span><span>Mónica Olmos</span></div>
       </div>
       <div class="close-cards">
         <div class="ccard">
@@ -924,25 +923,10 @@
        + '<span class="rt"><b>'+OUT.t+'</b><span>'+OUT.s+'</span></span></div>';
     return h;
   }
-  function badgeHTML(active){
-    var label, title;
-    if(active === 'salida'){ label = 'Salida del proceso'; title = 'Demo en vivo'; }
-    else {
-      var st = STAGES[Number(active)-1];
-      label = 'Parte del proceso: '+active+' de '+STAGES.length;
-      title = st ? st.t : '';
-    }
-    return '<span class="pd"></span><div><div class="pb-t">'+label+'</div><div class="pb-s">'+title+'</div></div>';
-  }
-
   document.querySelectorAll('.slide[data-stage]').forEach(function(sl){
     var active = sl.getAttribute('data-stage');
     var rail = sl.querySelector('.proc-rail');
     if(rail) rail.innerHTML = railHTML(active);
-    var badge = document.createElement('div');
-    badge.className = 'proc-badge';
-    badge.innerHTML = badgeHTML(active);
-    sl.appendChild(badge);
   });
 
   // ---- deck navigation ----
