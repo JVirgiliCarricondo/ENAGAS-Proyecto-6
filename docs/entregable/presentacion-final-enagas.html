@@ -193,14 +193,14 @@
 
   /* ---------- cover ---------- */
   #cover{justify-content:center}
-  .cover-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:3vw;align-items:center;width:100%;max-width:1220px;margin:0 auto}
+  .cover-grid{position:relative;z-index:2;max-width:640px;margin-top:-19vh;margin-left:2.4vw}
   .cover-tag{display:inline-flex;align-items:center;gap:.5rem;background:var(--grad);color:#fff;font-weight:700;
     font-size:.86rem;letter-spacing:.01em;padding:.5rem 1.1rem;border-radius:12px;
     box-shadow:0 10px 30px rgba(33,89,208,.30);margin-bottom:1.5rem}
   #cover h1{max-width:12ch}
   .cover-sub{margin:1.4rem 0 0;font-size:clamp(1rem,1.55vw,1.24rem);color:var(--txt-dim);font-weight:400;max-width:48ch;line-height:1.5}
-  .cover-meta{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:2rem}
-  .cover-foot{position:absolute;left:5.6vw;right:5.6vw;bottom:6vh;display:flex;justify-content:space-between;
+  .cover-meta{position:absolute;left:8vw;bottom:calc(11vh + 3.5rem);z-index:2;display:flex;flex-wrap:wrap;gap:.7rem}
+  .cover-foot{position:absolute;left:8vw;right:5.6vw;bottom:11vh;display:flex;justify-content:space-between;
     align-items:flex-end;color:var(--txt-faint);font-size:.8rem}
   .cover-foot .r{text-align:right}
   .cover-foot b{color:var(--txt-dim);font-weight:600;display:block}
@@ -227,6 +227,20 @@
   .chip-c{bottom:8%;left:2%}
   .chip-c span small{display:block;color:var(--txt-faint);font-weight:400;font-size:.66rem}
 
+  /* ---------- portada: mapa topográfico real recoloreado, a sangre completa ---------- */
+  .cover-map-bg{position:absolute;top:0;right:0;bottom:0;width:72%;overflow:hidden;z-index:0;
+    -webkit-mask-image:linear-gradient(100deg,transparent 0%,transparent 8%,rgba(0,0,0,.03) 20%,rgba(0,0,0,.09) 32%,rgba(0,0,0,.2) 44%,rgba(0,0,0,.36) 55%,rgba(0,0,0,.55) 66%,rgba(0,0,0,.75) 76%,rgba(0,0,0,.9) 86%,#000 96%);
+    mask-image:linear-gradient(100deg,transparent 0%,transparent 8%,rgba(0,0,0,.03) 20%,rgba(0,0,0,.09) 32%,rgba(0,0,0,.2) 44%,rgba(0,0,0,.36) 55%,rgba(0,0,0,.55) 66%,rgba(0,0,0,.75) 76%,rgba(0,0,0,.9) 86%,#000 96%)}
+  .cover-map-bg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:18% 46%;display:block}
+  .cover-map-bg svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  /* ---------- cover authors ---------- */
+  .cover-foot .r.cover-authors{display:flex;flex-direction:column;align-items:flex-end;gap:.22rem;
+    color:#fff;font-size:1.08rem;font-weight:600;text-shadow:0 1px 4px rgba(10,20,50,.35);
+    padding:.6rem 1rem;border-radius:14px;
+    background:radial-gradient(ellipse at 100% 100%,rgba(8,16,38,.5) 0%,rgba(8,16,38,.28) 55%,rgba(8,16,38,0) 100%);
+    -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+
   /* ---------- indice ---------- */
   .idx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:.4rem}
   .idx-card{display:flex;align-items:center;gap:1rem;background:var(--panel);border:1px solid var(--border);border-radius:15px;padding:1.15rem 1.25rem;
@@ -245,13 +259,65 @@
   .pflow .node.term small{color:rgba(255,255,255,.72)}
   .pflow .node.dec{background:rgba(90,63,208,.07);border:1.5px dashed var(--accent-2);color:var(--accent-2)}
   .pflow .conn{width:2px;height:9px;background:var(--border-2);align-self:center}
-  /* slide 2: stretch both columns to fill the slide, distribute the flow */
-  #s2 .two-col{flex:1 1 auto;align-items:stretch;min-height:0}
-  #s2 .exec-col{justify-content:space-between}
-  #s2 .card{display:flex;flex-direction:column;justify-content:flex-start;overflow:hidden}
-  #s2 .pflow{flex:1 1 auto;justify-content:space-between}
-  #s2 .pflow .node{padding-top:.3rem;padding-bottom:.3rem}
-  #s2 .pflow .conn{flex:1 1 auto;min-height:3px}
+  /* ---------- slide 2: infografía animada del flujo, sin texto ---------- */
+  #s2{justify-content:center}
+  .fi-row{display:flex;align-items:center;justify-content:center;gap:0;width:100%;margin-top:1.4rem}
+  .fi-stage{flex:0 0 auto;opacity:0;transform:translateY(16px) scale(.93)}
+  #s2.active .fi-stage{animation:fiIn .7s cubic-bezier(.22,.61,.36,1) forwards;animation-delay:var(--d,0s)}
+  @keyframes fiIn{to{opacity:1;transform:none}}
+  .fi-tile{width:172px;height:172px;border-radius:22px;background:linear-gradient(165deg,var(--panel) 0%,#f7f9fe 130%);
+    border:1px solid var(--border);box-shadow:0 10px 28px rgba(16,42,87,.07);position:relative;overflow:hidden;
+    display:grid;place-items:center}
+  .fi-grid{background-image:linear-gradient(rgba(120,140,190,.22) 1px,transparent 1px),linear-gradient(90deg,rgba(120,140,190,.22) 1px,transparent 1px);background-size:18px 18px}
+  .fi-arrow{flex:0 0 auto;width:44px;display:grid;place-items:center}
+  .fi-arrow svg{width:36px;height:22px;overflow:visible}
+  .fi-arrow polyline{fill:none;stroke:var(--border-2);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+  #s2.active .fi-arrow polyline{animation:fiChevron 1.8s ease-in-out infinite}
+  #s2.active .fi-arrow polyline:nth-child(2){animation-delay:.22s}
+  @keyframes fiChevron{0%,100%{opacity:.22;transform:translateX(-3px)}50%{opacity:1;transform:translateX(3px)}}
+
+  /* stage 1: origen / destino */
+  .fi-pin{position:absolute;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;box-shadow:0 6px 16px rgba(16,42,87,.16);z-index:2}
+  .fi-pin svg{width:18px;height:18px}
+  .fi-pin-a{top:26px;left:26px;background:rgba(90,63,208,.14);color:var(--accent-2);border:1px solid rgba(90,63,208,.3)}
+  .fi-pin-b{bottom:26px;right:26px;background:rgba(33,89,208,.14);color:var(--accent);border:1px solid rgba(33,89,208,.3)}
+  .fi-link{position:absolute;inset:0;width:100%;height:100%}
+  .fi-link path{fill:none;stroke:var(--accent-2);stroke-width:2.4;stroke-linecap:round;stroke-dasharray:1 9}
+
+  /* stage 2: descarga de capas al AOI */
+  .fi-aoi{position:relative;width:104px;height:104px;border:2px dashed var(--border-2);border-radius:14px}
+  .fi-chip{position:absolute;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;box-shadow:0 6px 14px rgba(16,42,87,.14)}
+  .fi-chip svg{width:15px;height:15px}
+  #s2.active .fi-chip{animation:fiDrop 2.6s ease-in-out infinite}
+  .fi-c1{top:-14px;left:2px;--tx:22px;--ty:26px}
+  .fi-c2{top:-14px;right:2px;--tx:-22px;--ty:26px;animation-delay:.2s!important}
+  .fi-c3{bottom:-14px;left:2px;--tx:22px;--ty:-26px;animation-delay:.4s!important}
+  .fi-c4{bottom:-14px;right:2px;--tx:-22px;--ty:-26px;animation-delay:.6s!important}
+  @keyframes fiDrop{0%,100%{transform:translate(0,0);opacity:.95}55%{transform:translate(var(--tx),var(--ty));opacity:.3}}
+
+  /* stage 3: alineación a CRS y rejilla comunes */
+  .fi-align{position:absolute;width:48px;height:48px;border-radius:9px;border:2px solid var(--accent);background:rgba(33,89,208,.08)}
+  .fi-align.b{border-color:var(--cyan);background:rgba(11,145,189,.08)}
+  #s2.active .fi-align{animation:fiSnap 2.6s ease-in-out infinite}
+  #s2.active .fi-align.b{animation-delay:.18s}
+  @keyframes fiSnap{0%{transform:rotate(-7deg) translate(5px,-4px)}42%,70%{transform:none}100%{transform:rotate(-7deg) translate(5px,-4px)}}
+  .fi-a1{top:28px;left:28px}
+  .fi-a2{bottom:28px;right:28px}
+  .fi-badge{position:absolute;bottom:10px;right:10px}
+
+  /* stage 4: coste por atributo */
+  .fi-cost-stack{display:flex;flex-direction:column;gap:9px}
+  .fi-cost-bar{width:98px;height:14px;border-radius:7px;background:linear-gradient(90deg,var(--g1),var(--g2));box-shadow:inset 0 0 0 1px rgba(16,42,87,.1)}
+
+  /* stage 5: superposición en capa de coste único (ilustración de portada, sin chips) */
+  .fi-iso-tile{background:radial-gradient(130% 130% at 28% 15%,rgba(111,227,210,.22),transparent 55%),radial-gradient(130% 130% at 75% 85%,rgba(90,63,208,.20),transparent 55%),linear-gradient(165deg,#e7ecfb 0%,#d9e1fa 100%)}
+  .fi-iso-tile .iso{width:330px;height:330px;transform:scale(.56) rotateX(56deg) rotateZ(-42deg)}
+  .fi-iso-tile .plate{border-width:1.5px;box-shadow:0 10px 20px rgba(16,42,87,.22)}
+
+  /* stage 6: motor LCP */
+  .fi-lcp-path{stroke-dasharray:260;stroke-dashoffset:260;opacity:0}
+  #s2.active .fi-lcp-path{animation:fiDraw 3.2s ease-in-out infinite}
+  @keyframes fiDraw{0%{stroke-dashoffset:260;opacity:0}8%{opacity:1}55%{stroke-dashoffset:0}88%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
 
   /* ---------- exec lines ---------- */
   .exec-col{display:flex;flex-direction:column;gap:.6rem}
@@ -342,7 +408,7 @@
   @media (max-width:980px){
     .proc-grid{grid-template-columns:1fr}
     .proc-rail{display:none}
-    .cover-grid{grid-template-columns:1fr}
+    .cover-map-bg{display:none}
     .hero{display:none}
     .idx-grid,.mchips{grid-template-columns:1fr 1fr}
     .two-col,.drow,.close-cards{grid-template-columns:1fr}
@@ -409,40 +475,59 @@
         <img class="enagas-logo" data-enagas alt="Enagás">
       </div>
     </div>
+    <div class="cover-map-bg" aria-hidden="true">
+      <img src="assets/cover-topo-bg.jpg" alt="">
+      <svg class="cover-map-route" viewBox="0 0 700 700" preserveAspectRatio="xMidYMid slice">
+        <!-- ruta (ramal) sobre el mapa: trazo oscuro con orla clara para legibilidad -->
+        <path d="M110 560 L205 480 L262 502 L340 402 L402 352 L482 258 L575 148" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M110 560 L205 480 L262 502 L340 402 L402 352 L482 258 L575 148" fill="none" stroke="#060a16" stroke-width="1.6" stroke-linecap="butt" stroke-linejoin="round" stroke-dasharray="14 9"/>
+        <circle cx="110" cy="560" r="6" fill="#fff" opacity=".55"/><circle cx="110" cy="560" r="4.5" fill="#060a16"/>
+        <circle cx="262" cy="502" r="4" fill="#060a16"/>
+        <circle cx="402" cy="352" r="4" fill="#060a16"/>
+        <circle cx="575" cy="148" r="6" fill="#fff" opacity=".55"/><circle cx="575" cy="148" r="4.5" fill="#060a16"/>
+      </svg>
+    </div>
     <div class="cover-grid">
-      <div>
-        <div class="cover-tag">Enagás · CI2 Lab 2026</div>
-        <h1>Generador de <span class="grad-text">ramales</span></h1>
-        <p class="cover-sub">Prototipo <b style="color:var(--txt)">end-to-end</b> que genera trazados alternativos diferenciados entre un punto de origen y un punto de destino, sobre GIS público y comparados por criterios objetivos.</p>
-        <div class="cover-meta">
-          <span class="pill tag-green"><span class="d green"></span>Presentación de resultados</span>
-          <span class="pill tag-blue"><span class="d blue"></span>Demo en vivo de la aplicación</span>
-        </div>
-      </div>
-      <div class="hero">
-        <div class="iso">
-          <div class="plate p5"></div>
-          <div class="plate p4"></div>
-          <div class="plate p3"></div>
-          <div class="plate p2"></div>
-          <div class="plate p1"></div>
-          <svg class="route" viewBox="0 0 330 330" fill="none">
-            <path d="M70 96 L120 120 L150 108 L188 150 L214 176 L250 214" stroke="url(#rg)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="70" cy="96" r="9" fill="#fff" stroke="#5a3fd0" stroke-width="4"/>
-            <circle cx="250" cy="214" r="9" fill="#fff" stroke="#2159d0" stroke-width="4"/>
-            <defs><linearGradient id="rg" x1="70" y1="96" x2="250" y2="214" gradientUnits="userSpaceOnUse"><stop stop-color="#5a3fd0"/><stop offset="1" stop-color="#2159d0"/></linearGradient></defs>
-          </svg>
-        </div>
-        <div class="chip-o"><span class="ico-sq tint-purple"><svg><use href="#i-pin"/></svg></span>Origen (UTM)</div>
-        <div class="chip-d"><span class="ico-sq tint-blue"><svg><use href="#i-pin"/></svg></span>Destino (UTM)</div>
-        <div class="chip-c"><span class="ico-sq tint-blue"><svg><use href="#i-bars"/></svg></span><span>Criterios<small>multicriterio</small></span></div>
-      </div>
+      <div class="cover-tag">Enagás · CI2 Lab 2026</div>
+      <h1>Generador de <span class="grad-text">ramales</span></h1>
+    </div>
+    <div class="cover-meta">
+      <span class="pill tag-blue"><span class="d blue"></span>Descripción del proyecto</span>
+      <span class="pill tag-blue"><span class="d blue"></span>Demo en vivo de la aplicación</span>
     </div>
     <div class="cover-foot">
       <div><b>Cátedra de Industria Inteligente</b>ETSI ICAI · Comillas</div>
-      <div class="r"><b>16 de julio de 2026</b>CI2 Lab</div>
+      <div class="r cover-authors">
+        <span>José Guinea Sotillo</span>
+        <span>José Virgili Carricondo</span>
+        <span>Mónica Olmos Nieto</span>
+        <span>Mateo Pérez Bermejo</span>
+        <span>Lorena García Pardo</span>
+      </div>
     </div>
   </section>
+
+  <!-- Ilustración isométrica original de portada — conservada para reutilizar más adelante -->
+  <template id="hero-iso-original">
+    <div class="hero">
+      <div class="iso">
+        <div class="plate p5"></div>
+        <div class="plate p4"></div>
+        <div class="plate p3"></div>
+        <div class="plate p2"></div>
+        <div class="plate p1"></div>
+        <svg class="route" viewBox="0 0 330 330" fill="none">
+          <path d="M70 96 L120 120 L150 108 L188 150 L214 176 L250 214" stroke="url(#rg)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="70" cy="96" r="9" fill="#fff" stroke="#5a3fd0" stroke-width="4"/>
+          <circle cx="250" cy="214" r="9" fill="#fff" stroke="#2159d0" stroke-width="4"/>
+          <defs><linearGradient id="rg" x1="70" y1="96" x2="250" y2="214" gradientUnits="userSpaceOnUse"><stop stop-color="#5a3fd0"/><stop offset="1" stop-color="#2159d0"/></linearGradient></defs>
+        </svg>
+      </div>
+      <div class="chip-o"><span class="ico-sq tint-purple"><svg><use href="#i-pin"/></svg></span>Origen (UTM)</div>
+      <div class="chip-d"><span class="ico-sq tint-blue"><svg><use href="#i-pin"/></svg></span>Destino (UTM)</div>
+      <div class="chip-c"><span class="ico-sq tint-blue"><svg><use href="#i-bars"/></svg></span><span>Criterios<small>multicriterio</small></span></div>
+    </div>
+  </template>
 
   <!-- 1 · ÍNDICE -->
   <section class="slide" id="s1">
@@ -464,51 +549,97 @@
     </div>
   </section>
 
-  <!-- 2 · VISIÓN GENERAL -->
+  <!-- 2 · VISIÓN GENERAL — infografía animada, sin texto -->
   <section class="slide" id="s2">
     <div class="slide-head">
       <div class="kicker"><span class="num">02</span><span class="dot"></span>Visión general</div>
       <h2>Un problema de <span class="grad-text">selección de trazados</span></h2>
-      <p class="lead">Dado un <b style="color:var(--txt)">origen</b> (planta de generación o punto de entrega) y un <b style="color:var(--txt)">destino</b> (conexión a red troncal), la herramienta propone <b style="color:var(--txt)">4 trazados alternativos diferenciados</b> sobre GIS público y los presenta en comparativa multicriterio.</p>
+      <div class="accent-rule"></div>
     </div>
-    <div class="two-col" style="grid-template-columns:1.1fr 1fr">
-      <div class="exec-col">
-        <div class="exec-line">
-          <span class="ico-sq tint-blue"><svg><use href="#i-compass"/></svg></span>
-          <div class="tx"><b>Qué resuelve</b><span>En fase temprana de un ramal, lo caro es <b>explorar alternativas a mano</b>. Aquí el abanico de corredores sale en minutos, con los mismos criterios para todos.</span></div>
-        </div>
-        <div class="exec-line">
-          <span class="ico-sq tint-blue"><svg><use href="#i-layers"/></svg></span>
-          <div class="tx"><b>Idea clave nº 1 — alinear antes de combinar</b><span>Ninguna capa entra al pipeline sin reproyectarse a EPSG:25830 y remuestrearse a la rejilla común de 30 m. Si las capas no están alineadas, los costes mienten.</span></div>
-        </div>
-        <div class="exec-line">
-          <span class="ico-sq tint-purple"><svg><use href="#i-shuffle"/></svg></span>
-          <div class="tx"><b>Idea clave nº 2 — diferenciar antes de comparar</b><span>Las 4 rutas nacen de 4 perfiles de prioridad distintos y se comprueba que son corredores realmente diferentes, no el mismo trazado con ruido.</span></div>
-        </div>
-        <div class="exec-line">
-          <span class="ico-sq tint-blue"><svg><use href="#i-ruler"/></svg></span>
-          <div class="tx"><b>Coste relativo, nunca en euros</b><span>Todos los costes son <b>índices normalizados</b>, calibrados con la metodología oficial de Enagás. La herramienta compara trazados; no estima costes económicos.</span></div>
+    <div class="fi-row">
+
+      <!-- 1 · origen y destino -->
+      <div class="fi-stage" style="--d:.05s">
+        <div class="fi-tile fi-grid">
+          <span class="fi-pin fi-pin-a"><svg><use href="#i-pin"/></svg></span>
+          <span class="fi-pin fi-pin-b"><svg><use href="#i-pin"/></svg></span>
+          <svg class="fi-link" viewBox="0 0 172 172"><path d="M52 118 L120 54"/></svg>
         </div>
       </div>
-      <div class="card" style="padding:.85rem .95rem">
-        <div class="pflow">
-          <div class="node term">ENTRADA<small>origen · destino (UTM)</small></div>
-          <div class="conn"></div>
-          <div class="node">1 · Configuración y escenarios<small>escenario.yaml · perfiles.yaml · AOI</small></div>
-          <div class="conn"></div>
-          <div class="node">2 · Ingesta y alineación<small>descarga por AOI · EPSG:25830 · rejilla 30 m</small></div>
-          <div class="conn"></div>
-          <div class="node">3 · Superficies de coste<small>6 capas estandarizadas en [0,1]</small></div>
-          <div class="conn"></div>
-          <div class="node">4 · Motor LCP<small>Dijkstra 8-conexo · una ruta por perfil</small></div>
-          <div class="conn"></div>
-          <div class="node dec">5 · Diferenciación<small>solape entre corredores · buffer 60 m / 50 %</small></div>
-          <div class="conn"></div>
-          <div class="node">6 · Métricas multicriterio<small>longitud · coste · cruces · zonas · pendiente</small></div>
-          <div class="conn"></div>
-          <div class="node term">SALIDA<small>mapa de 4 rutas · tabla comparativa · PDF</small></div>
+      <div class="fi-arrow"><svg viewBox="0 0 40 24"><polyline points="4,4 16,12 4,20"/><polyline points="18,4 30,12 18,20"/></svg></div>
+
+      <!-- 2 · descarga automática de capas al AOI -->
+      <div class="fi-stage" style="--d:.35s">
+        <div class="fi-tile">
+          <div class="fi-aoi">
+            <span class="fi-chip fi-c1 tint-blue"><svg><use href="#i-mountain"/></svg></span>
+            <span class="fi-chip fi-c2 tint-green"><svg><use href="#i-map"/></svg></span>
+            <span class="fi-chip fi-c3 tint-purple"><svg><use href="#i-shield"/></svg></span>
+            <span class="fi-chip fi-c4 tint-amber"><svg><use href="#i-building"/></svg></span>
+          </div>
         </div>
       </div>
+      <div class="fi-arrow"><svg viewBox="0 0 40 24"><polyline points="4,4 16,12 4,20"/><polyline points="18,4 30,12 18,20"/></svg></div>
+
+      <!-- 3 · alineación a CRS y rejilla comunes -->
+      <div class="fi-stage" style="--d:.65s">
+        <div class="fi-tile fi-grid">
+          <span class="fi-align fi-a1"></span>
+          <span class="fi-align b fi-a2"></span>
+          <span class="ico-sq sm tint-blue fi-badge"><svg><use href="#i-refresh"/></svg></span>
+        </div>
+      </div>
+      <div class="fi-arrow"><svg viewBox="0 0 40 24"><polyline points="4,4 16,12 4,20"/><polyline points="18,4 30,12 18,20"/></svg></div>
+
+      <!-- 4 · coste por atributo -->
+      <div class="fi-stage" style="--d:.95s">
+        <div class="fi-tile">
+          <div class="fi-cost-stack">
+            <span class="fi-cost-bar" style="--g1:#0f9c63;--g2:#d23d57"></span>
+            <span class="fi-cost-bar" style="--g1:#2159d0;--g2:#b3820a"></span>
+            <span class="fi-cost-bar" style="--g1:#5a3fd0;--g2:#0b91bd"></span>
+          </div>
+          <span class="ico-sq sm tint-purple fi-badge"><svg><use href="#i-sliders"/></svg></span>
+        </div>
+      </div>
+      <div class="fi-arrow"><svg viewBox="0 0 40 24"><polyline points="4,4 16,12 4,20"/><polyline points="18,4 30,12 18,20"/></svg></div>
+
+      <!-- 5 · superposición en una capa de coste único -->
+      <div class="fi-stage" style="--d:1.25s">
+        <div class="fi-tile fi-iso-tile">
+          <div class="iso">
+            <div class="plate p5"></div><div class="plate p4"></div><div class="plate p3"></div><div class="plate p2"></div><div class="plate p1"></div>
+            <svg class="route" viewBox="0 0 330 330" fill="none">
+              <path d="M70 96 L120 120 L150 108 L188 150 L214 176 L250 214" stroke="url(#rg-s2)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="70" cy="96" r="9" fill="#fff" stroke="#5a3fd0" stroke-width="4"/>
+              <circle cx="250" cy="214" r="9" fill="#fff" stroke="#2159d0" stroke-width="4"/>
+              <defs><linearGradient id="rg-s2" x1="70" y1="96" x2="250" y2="214" gradientUnits="userSpaceOnUse"><stop stop-color="#5a3fd0"/><stop offset="1" stop-color="#2159d0"/></linearGradient></defs>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="fi-arrow"><svg viewBox="0 0 40 24"><polyline points="4,4 16,12 4,20"/><polyline points="18,4 30,12 18,20"/></svg></div>
+
+      <!-- 6 · motor LCP (Dijkstra) sobre la rejilla -->
+      <div class="fi-stage" style="--d:1.55s">
+        <div class="fi-tile">
+          <svg viewBox="0 0 172 172" width="172" height="172">
+            <defs>
+              <pattern id="fi-dotgrid" width="18" height="18" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="1.6" fill="#c9d4e8"/>
+              </pattern>
+              <linearGradient id="fi-lcpg" x1="30" y1="142" x2="142" y2="30" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#5a3fd0"/><stop offset="1" stop-color="#2159d0"/>
+              </linearGradient>
+            </defs>
+            <rect width="172" height="172" fill="url(#fi-dotgrid)"/>
+            <path class="fi-lcp-path" d="M30 142 L30 112 L58 112 L58 82 L86 82 L86 52 L142 52 L142 30" fill="none" stroke="url(#fi-lcpg)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="30" cy="142" r="6.5" fill="#5a3fd0"/>
+            <circle cx="142" cy="30" r="6.5" fill="#2159d0"/>
+          </svg>
+        </div>
+      </div>
+
     </div>
   </section>
 
