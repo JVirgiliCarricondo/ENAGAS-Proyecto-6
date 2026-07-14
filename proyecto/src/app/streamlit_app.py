@@ -1035,6 +1035,13 @@ _CSS = """
   .st-key-wcard_docs > div[data-testid="stElementContainer"]:last-child {
     flex: 0 0 auto;
   }
+  /* El botón "Comenzar simulación" queda a ras de suelo, pero el 2º botón de la
+     tarjeta de documentación ("Ver informe de arquitectura") vive dentro de un
+     iframe de altura fija y su holgura interna lo deja algo por encima del suelo.
+     Subimos el botón verde esa misma holgura para que ambos queden alineados. */
+  .st-key-wcard_sim > div[data-testid="stElementContainer"]:last-child {
+    margin-bottom: 14px;
+  }
   /* La columna izquierda entera llega al suelo del hero: su bloque vertical
      ocupa toda la altura y la fila de tarjetas absorbe el espacio restante,
      de modo que el borde inferior de las tarjetas = borde inferior de la
