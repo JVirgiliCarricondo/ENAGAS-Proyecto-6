@@ -88,7 +88,7 @@
 
 <header class="hero">
   <div class="inner">
-    <div class="kicker">Enagás · CI2 Lab 2026 · Grupo 6 · Reto 6</div>
+    <div class="kicker">Enagás · CI2 Lab 2026</div>
     <h1>Informe de Arquitectura de la Aplicación<br>Generador de Ramales</h1>
     <p>Documento técnico de la arquitectura <b>frontend</b> (interfaz web Streamlit) y
        <b>backend</b> (pipeline geoespacial determinista en Python), con el flujo de datos
@@ -134,7 +134,7 @@ multicriterio.</p>
   <b>rejilla común</b>. El coste es siempre un <b>índice adimensional</b>, nunca un valor económico.
 </div>
 
-<h4>Cómo se ejecuta el pipeline</h4>
+<h4 id="ejecucion">Cómo se ejecuta el pipeline</h4>
 <p style="font-size:.9rem">La vía principal y <span class="tag ok">operativa</span> es la interfaz web
    (<code>streamlit_app.py</code> → <code>_ejecutar_pipeline()</code>), que actúa como orquestador real
    encadenando preparación, trazado y métricas; de forma <span class="tag part">parcial</span> también
@@ -149,7 +149,7 @@ multicriterio.</p>
 │   ├── superficie/    # superficies de coste por criterio (raster [0,1]) + combinación por perfil
 │   ├── trazados/      # motor LCP (Dijkstra 8-conexo) + diferenciación de rutas
 │   ├── metricas/      # métricas multicriterio por ruta + diversidad de corredores
-│   ├── comparacion/   # comparador y scoring formal (esqueleto, Sprint 7)
+│   ├── comparacion/   # comparador y scoring formal (esqueleto)
 │   └── app/           # streamlit_app.py — interfaz web (orquestador puente) + informe.py (PDF)
 ├── data/
 │   ├── config/        # escenario.yaml (AOI, origen/destino) · perfiles.yaml (pesos) — versionados
@@ -292,7 +292,7 @@ flowchart LR
         <code>LayerControl</code> y leyenda de perfiles.</li>
     <li><b>Tabs Métricas (por escenario):</b> tabla de <code>MetricasRuta</code> (km, coste rel.,
         pendiente, km protegida/inundable/urbano, nº cruces) + tarjetas KPI.</li>
-    <li><b>Tab Diversidad:</b> matriz de solapamiento dirigido entre corredores (validación de que
+    <li><b>Tab Diversidad:</b> matriz de solapamiento dirigido entre corredores (para juzgar si
         las rutas son realmente distintas).</li>
     <li><b>Informe PDF por escenario</b> (<code>src/app/informe.py</code>): metodología, ráster +
         ruta y comparativa por perfil, con caché invalidada por contenido; y <b>descarga ZIP</b>
@@ -352,7 +352,7 @@ flowchart LR
           <code>PARCELA.shp</code> recortado al AOI. El catastro <b>foral</b> (Navarra y País Vasco)
           sí se descarga por bbox (<code>catastro_foral.py</code>).</li>
       <li><b>Red Natura 2000 es automática pero opcional:</b> se descarga vía OGC API Features de
-          MITECO (el WFS INSPIRE del IGN, inestable, se abandonó); si el servicio falla, el pipeline
+          MITECO; si el servicio falla, el pipeline
           <b>continúa con un aviso</b> y ese criterio no entra en el coste del escenario.</li>
       <li><b>Zonas inundables (SNCZI):</b> vector oficial con atributos vía OGC API Features de MITECO
           (colecciones T10/T100/T500). Si alguna colección falla habiendo datos de otras, la capa se
@@ -384,8 +384,10 @@ flowchart LR
     <li><code>tpi.py</code> — relieve: cresta barata / valle caro; e impone la <b>barrera dura de pendiente</b>
         (umbral y equivalencia en grados, en el <a href="#coste">§07 Modelo de coste</a>).</li>
   </ul>
-  <p style="font-size:.9rem"><b><code>combinar.py → combinar_pesos(s, pesos)</code></b> es la
-     <b>única fuente de verdad</b> de la ponderación: suma cada capa de coste multiplicada por su peso de perfil,
+  <p style="font-size:.86rem">Para más información (tablas de coste por celda de cada capa), consulta el
+     <a href="Diagrama_Flujo_Pipeline.html#capas">Diagrama de Flujo, §02</a>.</p>
+  <p style="font-size:.9rem"><b><code>combinar.py → combinar_pesos(s, pesos)</code></b> concentra
+     <b>toda la ponderación en un único punto</b>: suma cada capa de coste multiplicada por su peso de perfil,
      más un término base de longitud para que la distancia siempre cuente (la fórmula exacta, en el
      <a href="Diagrama_Flujo_Pipeline.html#algoritmos">diagrama de flujo §03</a>).</p>
   <p style="font-size:.86rem">Convenio de impasabilidad: <code>NODATA (-9999)</code> e <code>inf</code> → <code>nan</code>;
@@ -420,19 +422,17 @@ flowchart LR
       <tr><td><code>zonas_inundables.py</code></td><td>km_inundable · pct_inundable</td></tr>
       <tr><td><code>zonas_urbanas.py</code></td><td>km de suelo urbano / diseminado / rústico / especial (catastro)</td></tr>
       <tr><td><code>cruces.py</code></td><td>nº cruces de ríos / carreteras / ferrocarril</td></tr>
-      <tr><td><code>diversidad_corredores.py</code></td><td>matriz de solapamiento dirigido; veredicto diferenciadas/redundantes</td></tr>
+      <tr><td><code>diversidad_corredores.py</code></td><td>matriz de solapamiento dirigido entre corredores</td></tr>
     </tbody>
   </table>
   <p style="font-size:.86rem;margin-top:8px">La <b>diversidad</b> se calcula una vez por escenario:
      engorda cada ruta a un corredor (buffer 60 m) y mide qué % de la longitud de A discurre dentro del
-     corredor de B (asimétrico). Un par es redundante si supera el <b>umbral 50 %</b>.</p>
+     corredor de B (asimétrico).</p>
 </div>
 
 <div class="warn" style="font-size:.88rem">
-  <b>Comparación/scoring formal:</b> los módulos <code>src/comparacion/comparador.py</code> y
-  <code>src/app/cli.py</code> son <b>esqueletos</b> (Sprint 7). Hoy la comparativa y el ranking se
-  construyen directamente en la página de resultados de Streamlit (DataFrames + KPIs + matriz de diversidad),
-  no en un módulo de scoring dedicado.
+  <b>Comparación y ranking:</b> se construyen directamente en la página de resultados de Streamlit
+  (DataFrames + KPIs + matriz de diversidad).
 </div>
 
 <!-- ============================================================ -->
@@ -479,13 +479,6 @@ python -m src.metricas.calculo           --escenario A     # métricas + diversi
 <code>perfiles.yaml</code> (o, si se editaron en la UI, en <code>st.session_state.perfiles_procesados</code>,
 mostrados en la página de resultados en «Pesos de capas usados en este procesamiento»). Los estilos
 <code>.qml</code> acompañan a cada raster/ruta para inspección directa en QGIS.</p>
-
-<div class="note" style="font-size:.88rem">
-  <b>Reglas no negociables (heredadas del diseño):</b> (1) toda capa <b>alineada</b> a EPSG:25830 y rejilla
-  común antes de combinarse; (2) rutas <b>demostrablemente diferenciadas</b>, no el mismo corredor con ruido;
-  (3) todo coste es <b>índice relativo, nunca €</b>; (4) las claves de descarga, si las hubiera, solo en
-  <code>.env</code> (nunca versionado).
-</div>
 
 <!-- ============================================================ -->
 <h2 id="coste"><span class="n">07</span>Modelo de coste y ponderación</h2>
@@ -568,7 +561,7 @@ coste del factor de ponderación oficial <code>A</code> con divisor común
   </div>
 
 <footer>
-  Informe técnico de arquitectura · App Generador de Ramales · Enagás × CI2 Lab 2026 · Grupo 6 (Reto 6)
+  Informe técnico de arquitectura · App Generador de Ramales · Enagás × CI2 Lab 2026
 </footer>
 
 </div>
