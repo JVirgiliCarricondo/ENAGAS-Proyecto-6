@@ -91,6 +91,12 @@ class ForalService:
         layers: typenames WFS o ids de capa REST (o "auto" para autodescubrir).
         ref_field: Nombre del campo que contiene la referencia catastral; se renombra
             a 'refcat' en la salida (None si el servicio no lo expone).
+        layer_tipos: TIPO catastral ('U' urbana / 'R' rústica / None desconocido) de
+            cada capa de `layers`, en el mismo orden. Los servicios que separan
+            urbana y rústica en capas distintas (Navarra, Álava) permiten etiquetar
+            el TIPO; los que exponen una única capa INSPIRE (Gipuzkoa, Bizkaia) lo
+            dejan a None → la expropiación les aplica el coste por defecto. Vacío =
+            todas las capas sin tipo.
     """
     key: str                                   # id corto: navarra, araba, …
     label: str                                 # etiqueta para logs
@@ -99,6 +105,7 @@ class ForalService:
     endpoint: str
     layers: tuple[str, ...]                     # typenames WFS o ids/"auto" REST
     ref_field: str | None                       # campo → 'refcat' (o None)
+    layer_tipos: tuple[str | None, ...] = ()    # TIPO por capa ('U'/'R'/None)
 
 
 # Extents provinciales aproximados en EPSG:25830 (generosos y solapados: solo
@@ -117,6 +124,7 @@ FORAL_SERVICES: tuple[ForalService, ...] = (
             "IDENA:CATAST_Pol_ParcelaMixta",
         ),
         ref_field="IDCATASTRO",
+        layer_tipos=("U", "R", None),   # urbana / rústica / mixta (sin tipo)
     ),
     ForalService(
         key="gipuzkoa",
@@ -135,6 +143,7 @@ FORAL_SERVICES: tuple[ForalService, ...] = (
         endpoint="https://geo.araba.eus/geoaraba/rest/services/OGC_ARABA/WFS_Katastroa/MapServer",
         layers=("19", "23"),   # 19 = parcelas urbanas, 23 = parcelas rústicas
         ref_field="REF_CATASTRAL",
+        layer_tipos=("U", "R"),   # 19 urbanas / 23 rústicas
     ),
     ForalService(
         key="bizkaia",
@@ -403,7 +412,10 @@ def _descargar_servicio(svc: ForalService,
     """
     partes: list["gpd.GeoDataFrame"] = []
     algun_ok = False
-    for capa in svc.layers:
+    # TIPO por capa (urbana/rústica/None), en el mismo orden que svc.layers; si el
+    # servicio no lo declara, todas las capas van sin tipo.
+    tipos = svc.layer_tipos or (None,) * len(svc.layers)
+    for capa, tipo in zip(svc.layers, tipos):
         if svc.kind == "arcgis_rest":
             gdf = _fetch_arcgis(svc.endpoint, capa, bbox_25830, log)
         else:
@@ -413,32 +425,36 @@ def _descargar_servicio(svc: ForalService,
             continue                     # esta capa falló; probamos las demás
         algun_ok = True
         if not gdf.empty:
-            partes.append(_normalizar(gdf, svc.ref_field))
+            partes.append(_normalizar(gdf, svc.ref_field, tipo))
     if not algun_ok:
         return None                      # ninguna capa respondió → fallo real
     if not partes:
-        return gpd.GeoDataFrame(columns=["refcat", "geometry"],
+        return gpd.GeoDataFrame(columns=["refcat", "TIPO", "geometry"],
                                 geometry="geometry", crs="EPSG:25830")
     fusion = gpd.GeoDataFrame(gpd.pd.concat(partes, ignore_index=True),
                               crs="EPSG:25830")
     return fusion
 
 
-def _normalizar(gdf: "gpd.GeoDataFrame", ref_field: str | None
-                ) -> "gpd.GeoDataFrame":
-    """Normaliza una capa de parcelas a [refcat, geometry] en EPSG:25830.
+def _normalizar(gdf: "gpd.GeoDataFrame", ref_field: str | None,
+                tipo: str | None = None) -> "gpd.GeoDataFrame":
+    """Normaliza una capa de parcelas a [refcat, TIPO, geometry] en EPSG:25830.
 
     Reproyecta al CRS común, renombra el campo de referencia catastral a 'refcat'
-    (o lo deja a None si el servicio no lo expone) y descarta geometrías que no
-    sean polígonos (puntos/líneas de rótulos o auxiliares) para quedarse solo con
-    parcelas.
+    (o lo deja a None si el servicio no lo expone), etiqueta el TIPO catastral de
+    la capa ('U'/'R'/None) para que la superficie de expropiación lo pondere igual
+    que el catastro nacional, y descarta geometrías que no sean polígonos
+    (puntos/líneas de rótulos o auxiliares) para quedarse solo con parcelas.
 
     Args:
         gdf: Capa cruda tal cual la devolvió el servicio.
         ref_field: Nombre del campo con la referencia catastral (o None).
+        tipo: TIPO catastral de esta capa ('U' urbana, 'R' rústica) o None si el
+            servicio no distingue (una sola capa INSPIRE).
 
     Returns:
-        GeoDataFrame con columnas [refcat, geometry] en EPSG:25830, solo polígonos.
+        GeoDataFrame con columnas [refcat, TIPO, geometry] en EPSG:25830, solo
+        polígonos.
     """
     if gdf.crs is None:
         gdf = gdf.set_crs("EPSG:25830")
@@ -448,7 +464,7 @@ def _normalizar(gdf: "gpd.GeoDataFrame", ref_field: str | None
         refcat = gdf[ref_field].astype("string")
     else:
         refcat = gpd.pd.Series([None] * len(gdf), dtype="string")
-    out = gpd.GeoDataFrame({"refcat": refcat.values},
+    out = gpd.GeoDataFrame({"refcat": refcat.values, "TIPO": tipo},
                            geometry=gdf.geometry.values, crs="EPSG:25830")
     out = out[out.geometry.geom_type.isin(("Polygon", "MultiPolygon"))]
     return out
