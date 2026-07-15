@@ -52,6 +52,7 @@ Thumbs.db
 *.aux.xml
 proyecto/data/processed/**/*.aux.xml
 
-# Vídeo de respaldo de la presentación: supera el límite de 100 MB de GitHub,
-# se queda solo en local (docs/entregable/assets/video/)
-docs/entregable/assets/video/
+# Vídeo de respaldo de la presentación: se versiona la versión comprimida
+# (<100 MB); cualquier otro original pesado en esa carpeta queda fuera.
+docs/entregable/assets/video/*
+!docs/entregable/assets/video/VideoTut_2.mp4
