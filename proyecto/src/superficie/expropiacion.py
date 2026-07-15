@@ -120,6 +120,13 @@ def _assign_cost(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         Copia del GeoDataFrame con la columna 'cost' (float32 en [0, 1]).
     """
     gdf = gdf.copy()
+    # El formato INSPIRE de parcelas (descarga abierta nacional y catastro foral
+    # de Navarra/País Vasco) no siempre trae la columna TIPO urbana/rústica; solo
+    # el shapefile de la Sede (cl@ve) la incluye completa. Si la columna falta por
+    # entero, o hay parcelas sin tipo, se aplica el coste por defecto en vez de
+    # romper el cálculo (que caía con KeyError 'TIPO' en corredores 100 % forales).
+    if "TIPO" not in gdf.columns:
+        gdf["TIPO"] = None
     gdf["cost"] = gdf["TIPO"].map(TIPO_COST).fillna(TIPO_DEFAULT).astype("float32")
     # refinamiento opcional: parcelas rústicas muy pequeñas = periurbano
     mask_periurban = (gdf["TIPO"] == "R") & (gdf.geometry.area < AREA_PERIURBANO_M2)

@@ -2372,6 +2372,31 @@ def _catastro_atom_por_nombre(prov: str, nombre: str) -> dict | None:
     return None
 
 
+# ── Territorios de catastro FORAL (Navarra + País Vasco) ───────────────────────
+# El Catastro común NO cubre estos territorios; el pipeline los descarga solo por
+# bbox (ingesta/catastro_foral.py) y aterrizan como PARCELA.shp que alinear_capas
+# fusiona sin cambios. Por eso NO requieren el paso manual de cl@ve + subida: en
+# la app se muestran como capa de descarga automática, no se piden al usuario y no
+# bloquean el avance de paso. Las provincias forales son Álava (01), Gipuzkoa (20),
+# Navarra (31) y Bizkaia (48).
+_PROV_FORAL = {"01": "Álava", "20": "Gipuzkoa", "31": "Navarra", "48": "Bizkaia"}
+
+
+def _muni_prov(m: dict) -> str:
+    """Código de provincia (2 dígitos) de un municipio del corredor, ya venga su
+    identificador como código DGC de 5 dígitos (Catastro común) o como
+    'INE-XXXXX' (territorio foral, sin entrada en el feed común)."""
+    dgc = str(m.get("dgc", ""))
+    return dgc[4:6] if dgc.startswith("INE-") else dgc[:2]
+
+
+def _muni_foral(m: dict) -> str | None:
+    """Nombre del territorio foral (Navarra/País Vasco) al que pertenece el
+    municipio, o None si es de régimen común. Los forales se descargan solos, así
+    que no llevan enlace a la Sede ni subida de ZIP."""
+    return _PROV_FORAL.get(_muni_prov(m))
+
+
 # ── Subida de ZIP catastrales por municipio (paso manual con cl@ve) ────────────
 # El usuario descarga en la Sede Electronica (cl@ve) la cartografia urbana y
 # rustica de cada municipio y la sube aqui (un subidor por tipo). Cada ZIP va a
@@ -2637,22 +2662,44 @@ def _catastro_municipios_ovc(coords_esc: dict) -> list[dict]:
 def _render_municipios_catastro(municipios: list[dict]) -> None:
     """Lista interactiva de municipios del corredor (paso 4 + 5).
 
-    Por cada municipio: UN enlace a la Sede Electronica (cl@ve) — la urbana y la
-    rustica se descargan desde la misma pagina — y DOS subidores de ZIP, uno por
-    tipo de cartografia, cada uno con su propio tick. El municipio queda marcado
-    como listo con ≥1 tipo legible. El estado se persiste en disco
-    (data/raw/Catastro/<dgc>/<tipo>/), asi que sobrevive a los reruns de Streamlit.
+    Distingue dos regímenes catastrales:
+
+      * FORAL (Navarra / País Vasco): el Catastro común no los cubre; el pipeline
+        descarga sus parcelas automáticamente por bbox (``catastro_foral.py``). Se
+        muestran solo a título informativo, marcados como descarga automática —
+        sin enlace a la Sede ni subidores, y no bloquean el avance de paso.
+      * COMÚN (resto de España): sin descarga automática fiable. Por cada uno, UN
+        enlace a la Sede Electronica (cl@ve) — la urbana y la rustica se descargan
+        desde la misma pagina — y DOS subidores de ZIP, uno por tipo de
+        cartografia, cada uno con su propio tick. El municipio queda marcado como
+        listo con ≥1 tipo legible. El estado se persiste en disco
+        (data/raw/Catastro/<dgc>/<tipo>/), asi que sobrevive a los reruns.
     """
-    listos = sum(1 for m in municipios if _cat_es_legible(m["dgc"]))
-    total = len(municipios)
-    completo = listos == total
-    st.markdown(
-        f'<div class="cat-count" style="color:{"var(--secondary)" if completo else "#b26a00"};">'
-        f'<span class="material-symbols-outlined" style="font-size:19px;">expand_more</span>'
-        f'{listos}/{total} municipios con catastro listo (shapefile de parcelas)</div>',
-        unsafe_allow_html=True,
-    )
-    for m in municipios:
+    forales = [m for m in municipios if _muni_foral(m)]
+    comunes = [m for m in municipios if not _muni_foral(m)]
+
+    # Recuento: solo los municipios de régimen común cuentan para el tick de
+    # "listo" (los forales no requieren acción del usuario).
+    if comunes:
+        listos = sum(1 for m in comunes if _cat_es_legible(m["dgc"]))
+        total = len(comunes)
+        completo = listos == total
+        st.markdown(
+            f'<div class="cat-count" style="color:{"var(--secondary)" if completo else "#b26a00"};">'
+            f'<span class="material-symbols-outlined" style="font-size:19px;">expand_more</span>'
+            f'{listos}/{total} municipios con catastro listo (shapefile de parcelas)</div>',
+            unsafe_allow_html=True,
+        )
+    if forales:
+        terrs = ", ".join(sorted({_muni_foral(m) for m in forales}))
+        st.markdown(
+            f'<div class="cat-count" style="color:var(--secondary);">'
+            f'<span class="material-symbols-outlined" style="font-size:19px;">cloud_download</span>'
+            f'{len(forales)} municipio(s) de catastro foral ({terrs}) — descarga automática</div>',
+            unsafe_allow_html=True,
+        )
+
+    for m in comunes:
         dgc = m["dgc"]
         nombre = (m["nombre"] or "Municipio").title()
         subido = _cat_es_legible(dgc)
@@ -2723,6 +2770,19 @@ def _render_municipios_catastro(municipios: list[dict]) -> None:
                            "(subida anterior, sin separar urbana/rústica)")
             if hubo_nuevo:
                 st.rerun()
+
+    # Municipios forales: solo informativos. El pipeline descarga sus parcelas
+    # automáticamente al generar las rutas; no hay enlace a la Sede ni subida.
+    for m in forales:
+        nombre = (m["nombre"] or "Municipio").title()
+        terr = _muni_foral(m)
+        with st.expander(f"☁️ **{nombre}** — catastro foral ({terr})",
+                         expanded=False):
+            st.caption(
+                f"Territorio foral ({terr}): el Catastro común no lo cubre, pero "
+                "la herramienta descarga sus parcelas automáticamente por bbox al "
+                "generar las rutas. No requiere descarga ni subida manual."
+            )
 
 
 def _estado_datos_aoi(coords_esc: dict, esc: str) -> list[dict]:
@@ -3350,7 +3410,10 @@ def _render_paso1():
     # (no de forma preventiva). El primer clic con catastros pendientes muestra
     # el aviso y pide confirmación explícita (checkbox) en vez de navegar.
     municipios_cat = st.session_state.get("_cat_municipios_lista") or []
-    faltan_cat = [m for m in municipios_cat if not _cat_es_legible(m["dgc"])]
+    # Los municipios forales (Navarra/País Vasco) se descargan solos: no cuentan
+    # como pendientes de subir aunque no tengan aún PARCELA.shp en disco.
+    faltan_cat = [m for m in municipios_cat
+                  if not _muni_foral(m) and not _cat_es_legible(m["dgc"])]
     if not faltan_cat:
         # Ya está todo subido (o no hay lista): retiramos el aviso si estaba.
         st.session_state.pop("_cat_aviso_pendiente", None)
