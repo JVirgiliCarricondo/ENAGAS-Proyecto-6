@@ -98,6 +98,14 @@ _TRAZADOS_DIR  = _ROOT / "data" / "processed" / "Trazados"
 # aportó el escenario efímero de la sesión anterior.
 _CAT_ESC_DGC_PATH = _ROOT / "data" / "raw" / "Catastro" / "_escenarios_dgc.json"
 
+# Escenarios cuyos FICHEROS se conservan entre sesiones aunque no estén en la
+# config de fábrica (el escenario en sí sigue siendo efímero: hay que volver a
+# crearlo y teclear sus coordenadas). Pensado para demos: si las coordenadas
+# tecleadas coinciden con las que generaron los ficheros conservados,
+# preparar_escenario los da por válidos y el pipeline se salta la descarga y
+# la preparación completas.
+_ESCENARIOS_PRESERVADOS = {"C"}
+
 
 def _restaurar_escenarios_fabrica() -> None:
     """Reset "de fábrica" al arrancar cada sesión del navegador.
@@ -111,12 +119,17 @@ def _restaurar_escenarios_fabrica() -> None:
     Los escenarios de la base (A y B) no se tocan JAMÁS aquí: ni coordenadas
     ni ficheros; su regeneración tras una edición manual dentro de la sesión
     la resuelve preparar_escenario.recorte_desactualizado() al procesar.
+    Los de _ESCENARIOS_PRESERVADOS tampoco pierden sus FICHEROS (aunque su
+    config sí se restaura: hay que recrearlos a mano en cada sesión).
     """
     if not _CONFIG_BASE_PATH.exists():
         return
     base = yaml.safe_load(_CONFIG_BASE_PATH.read_text(encoding="utf-8")) or {}
+    # Los preservados cuentan como sagrados A EFECTOS DE FICHEROS: su config
+    # sigue sin restaurarse (no están en la base), pero sus capas, salidas y
+    # catastro sobreviven al reset para poder reutilizarlos en la demo.
     sagrados = {k.removeprefix("escenario_") for k in base
-                if k.startswith("escenario_")}
+                if k.startswith("escenario_")} | _ESCENARIOS_PRESERVADOS
     try:
         vigente = yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
@@ -1666,12 +1679,13 @@ def _renombrar_escenario(cfg: dict, coords: dict, old: str, nuevo_id: str) -> st
 
 def _limpiar_salidas_huerfanas(escenarios: list[str]) -> None:
     """Borra de Rutas/ y Trazados/ las salidas de escenarios que ya no existen
-    en la sesión actual (p. ej. un escenario C creado en una sesión anterior:
-    la config se restaura a los escenarios de fábrica al abrir la app, pero sus
-    ficheros quedaban huérfanos en disco). Tras cada ejecución, en disco solo
-    quedan las salidas de los escenarios vigentes."""
+    en la sesión actual (la config se restaura a los escenarios de fábrica al
+    abrir la app, pero sus ficheros quedaban huérfanos en disco). Tras cada
+    ejecución, en disco solo quedan las salidas de los escenarios vigentes —
+    más las de _ESCENARIOS_PRESERVADOS, que se conservan siempre para poder
+    reutilizarlas al recrear el escenario en otra sesión."""
     vigentes: set[str] = set()
-    for s in escenarios:
+    for s in set(escenarios) | _ESCENARIOS_PRESERVADOS:
         vigentes |= {f"superficie_{s}.tif", f"superficie_{s}.qml"}
         for p in PERFILES:
             vigentes |= {
