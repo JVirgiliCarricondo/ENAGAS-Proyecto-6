@@ -51,3 +51,7 @@ Thumbs.db
 # Estadísticas GDAL/QGIS (caché derivado, se regenera automáticamente)
 *.aux.xml
 proyecto/data/processed/**/*.aux.xml
+
+# Vídeo de respaldo de la presentación: supera el límite de 100 MB de GitHub,
+# se queda solo en local (docs/entregable/assets/video/)
+docs/entregable/assets/video/
