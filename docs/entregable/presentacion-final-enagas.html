@@ -101,6 +101,7 @@
     -webkit-mask-composite:xor;mask-composite:exclude;opacity:.5}
   .card h3{font-family:var(--font-title);font-size:1.04rem;font-weight:600;margin-bottom:.5rem;letter-spacing:-.01em}
   .card p{font-size:.88rem;color:var(--txt-dim);line-height:1.5}
+  .card .ico-sq{margin-bottom:.65rem}
 
   .grid{display:grid;gap:.85rem}
   .g2{grid-template-columns:repeat(2,1fr)}
@@ -321,6 +322,17 @@
     font-size:.82rem;font-weight:600;color:var(--txt);white-space:nowrap;opacity:0;transition:opacity .4s ease .9s}
   #s2[data-step="2"] .s2-dijkstra{opacity:1}
 
+  /* referencia a la especificación EV-500, visible junto con la ruta óptima en el paso 2 */
+  .s2-ev500{position:absolute;top:58%;right:-24%;z-index:3;
+    display:flex;align-items:center;gap:1.2rem;padding:.9rem 1.6rem .9rem .9rem;border-radius:26px;
+    background:rgba(255,255,255,.92);border:1px solid var(--border-2);box-shadow:0 10px 26px rgba(16,42,87,.16);
+    opacity:0;transition:opacity .4s ease .95s}
+  .s2-ev500 img{width:76px;height:100px;object-fit:cover;border-radius:10px;flex:0 0 auto;
+    border:1px solid rgba(0,0,0,.08);box-shadow:0 3px 8px rgba(16,42,87,.25);transform:rotate(-3deg)}
+  .s2-ev500 .tx{font-size:1.02rem;line-height:1.3;color:var(--txt-dim)}
+  .s2-ev500 .tx b{display:block;font-family:var(--font-title);font-weight:600;font-size:1.18rem;color:var(--txt)}
+  #s2[data-step="2"] .s2-ev500{opacity:1}
+
   /* ---------- exec lines ---------- */
   .exec-col{display:flex;flex-direction:column;gap:.6rem}
   .exec-line{display:flex;align-items:flex-start;gap:.8rem;background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:.7rem .95rem;box-shadow:0 6px 18px rgba(16,42,87,.04)}
@@ -372,6 +384,13 @@
   .mchip .mt{font-family:var(--font-title);font-weight:600;font-size:1rem;display:flex;align-items:center;gap:.6rem}
   .mchip .ms{font-size:.79rem;color:var(--txt-dim);margin-top:.5rem;line-height:1.45}
 
+  /* ---------- comparativa vs. Optioneer: bullets flanqueando capturas centrales ---------- */
+  .compare-grid{grid-template-columns:1fr 1.1fr 1fr;align-items:center;gap:1.6rem}
+  .compare-center{display:flex;flex-direction:column;gap:.9rem}
+  .compare-shot{margin:0;border-radius:14px;overflow:hidden;border:1px solid var(--border);box-shadow:0 10px 26px rgba(16,42,87,.08);background:var(--panel-2)}
+  .compare-shot img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;background:var(--panel-2)}
+  .compare-shot figcaption{padding:.4rem .7rem;font-size:.66rem;font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--txt-faint);border-top:1px solid var(--border)}
+
   /* ---------- yaml ---------- */
   .yaml{background:var(--dark);border:1px solid #24345c;border-radius:12px;padding:.75rem .95rem;
     font-family:var(--mono);font-size:.68rem;line-height:1.55;color:#dbe6ff;overflow-x:auto}
@@ -420,7 +439,7 @@
     .cover-map-bg{display:none}
     .hero{display:none}
     .mchips{grid-template-columns:1fr 1fr}
-    .two-col,.drow,.close-cards{grid-template-columns:1fr}
+    .two-col,.drow,.close-cards,.compare-grid{grid-template-columns:1fr}
   }
 </style>
 </head>
@@ -538,10 +557,51 @@
     </div>
   </template>
 
-  <!-- 1 · VISIÓN GENERAL — el sándwich de capas como pieza central, revelado paso a paso -->
+  <!-- 1 · DIAGNÓSTICO — límites del método tradicional de trazado -->
+  <section class="slide" id="problemas">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">01</span><span class="dot"></span>Diagnóstico</div>
+      <h2>Los límites del <span class="grad-text">trazado tradicional</span></h2>
+      <div class="accent-rule"></div>
+    </div>
+    <div class="grid g3">
+      <div class="card">
+        <span class="ico-sq tint-amber"><svg><use href="#i-euro"/></svg></span>
+        <h3>Lento y caro</h3>
+        <p>Semanas o meses de ingeniería de detalle solo para comparar alternativas de trazado.</p>
+      </div>
+      <div class="card">
+        <span class="ico-sq tint-purple"><svg><use href="#i-eye"/></svg></span>
+        <h3>Trazado «a ojo»</h3>
+        <p>El criterio experto sobre un mapa no cuantifica pendientes, cruces ni zonas protegidas.</p>
+      </div>
+      <div class="card">
+        <span class="ico-sq tint-red"><svg><use href="#i-layers"/></svg></span>
+        <h3>Capas sin alinear</h3>
+        <p>Cruzar capas GIS con distinto CRS o resolución produce mapas de coste que mienten.</p>
+      </div>
+      <div class="card">
+        <span class="ico-sq tint-cyan"><svg><use href="#i-route"/></svg></span>
+        <h3>Una sola alternativa</h3>
+        <p>El proceso entrega un trazado, no un abanico de opciones real que comparar.</p>
+      </div>
+      <div class="card">
+        <span class="ico-sq tint-blue"><svg><use href="#i-search"/></svg></span>
+        <h3>Sin trazabilidad</h3>
+        <p>La decisión no queda documentada capa a capa: no es auditable ni reproducible.</p>
+      </div>
+      <div class="card">
+        <span class="ico-sq tint-grey"><svg><use href="#i-cap"/></svg></span>
+        <h3>Conocimiento no escalable</h3>
+        <p>El criterio vive en la cabeza del ingeniero senior, no en un modelo compartido.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 · VISIÓN GENERAL — el sándwich de capas como pieza central, revelado paso a paso -->
   <section class="slide" id="s2">
     <div class="slide-head">
-      <div class="kicker"><span class="num">01</span><span class="dot"></span>Visión general</div>
+      <div class="kicker"><span class="num">02</span><span class="dot"></span>Visión general</div>
       <h2>Flujo de <span class="grad-text">funcionamiento</span></h2>
       <div class="accent-rule"></div>
     </div>
@@ -595,33 +655,68 @@
         </div>
 
         <div class="s2-dijkstra"><span class="ico-sq sm tint-blue"><svg><use href="#i-nodes"/></svg></span>Motor LCP · algoritmo de <b>Dijkstra</b></div>
+        <div class="s2-ev500">
+          <img src="assets/EV-500_Portada.png" alt="Portada de la especificación técnica EV-500 de Enagás">
+          <span class="tx"><b>EV-500</b>Especificación técnica de Enagás</span>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- 2 · DEMOSTRACIÓN -->
+  <!-- 3 · DEMOSTRACIÓN -->
   <section class="slide" id="demo">
     <div class="close-wrap">
-      <div class="kicker" style="justify-content:center"><span class="num">02</span><span class="dot"></span>Demostración</div>
+      <div class="kicker" style="justify-content:center"><span class="num">03</span><span class="dot"></span>Demostración</div>
       <h1>Demostración</h1>
       <div class="close-rule"></div>
       <p class="close-sub">Durante este tiempo haremos la demo con la herramienta.</p>
     </div>
   </section>
 
-  <!-- 3 · CIERRE -->
+  <!-- 4 · COMPARATIVA — ventajas frente a Optioneer (Continuum Industries) -->
+  <section class="slide" id="ventajas">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">04</span><span class="dot"></span>Comparativa</div>
+      <h2>La ventaja de construirlo <span class="grad-text">dentro de Enagás</span></h2>
+      <div class="accent-rule"></div>
+    </div>
+    <div class="grid compare-grid">
+      <ul class="bullets">
+        <li><span class="bi"><svg><use href="#i-shield"/></svg></span><span><b>No es caja negra.</b> Factores oficiales de Enagás (A, G = E·F), no un algoritmo propietario cerrado.</span></li>
+        <li><span class="bi"><svg><use href="#i-target"/></svg></span><span><b>Especialista, no generalista.</b> Todo el diseño está pensado solo para ramales de H₂ en España.</span></li>
+        <li><span class="bi"><svg><use href="#i-anchor"/></svg></span><span><b>El dato no sale de casa.</b> Trazados de infraestructura crítica en la propia infraestructura de Enagás.</span></li>
+      </ul>
+      <div class="compare-center">
+        <figure class="compare-shot">
+          <img src="assets/optioneer-dashboard.jpg" alt="Interfaz de Optioneer (Continuum Industries): comparación de rutas y frente coste-penalización">
+          <figcaption>Optioneer · Continuum Industries</figcaption>
+        </figure>
+        <figure class="compare-shot">
+          <img src="assets/optioneer-analysis.jpg" alt="Interfaz de Optioneer (Continuum Industries): tabla de análisis comparativo por alternativa">
+          <figcaption>Optioneer · Continuum Industries</figcaption>
+        </figure>
+      </div>
+      <ul class="bullets">
+        <li><span class="bi"><svg><use href="#i-check"/></svg></span><span><b>Ya está pagado.</b> Continuar un prototipo que funciona, no arrancar un contrato SaaS desde cero.</span></li>
+        <li><span class="bi"><svg><use href="#i-sliders"/></svg></span><span><b>Control total del modelo.</b> Cambiar un peso o una capa es una línea de configuración, no un ticket a un proveedor.</span></li>
+        <li><span class="bi"><svg><use href="#i-doc"/></svg></span><span><b>Encaje nativo con EV-500.</b> Pensado desde el origen para alimentar el paquete de pre-ingeniería de Enagás.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 5 · CIERRE -->
   <section class="slide" id="close">
     <div class="close-wrap">
-      <div class="kicker" style="justify-content:center"><span class="num">03</span><span class="dot"></span>Cierre</div>
+      <div class="kicker" style="justify-content:center"><span class="num">05</span><span class="dot"></span>Cierre</div>
       <h1><span class="grad-text">Gracias</span></h1>
       <div class="close-rule"></div>
     </div>
   </section>
 
-  <!-- 4 · VÍDEO DE RESPALDO -->
+  <!-- 6 · VÍDEO DE RESPALDO -->
   <section class="slide" id="video">
     <div class="close-wrap">
-      <div class="kicker" style="justify-content:center"><span class="num">04</span><span class="dot"></span>Vídeo de respaldo</div>
+      <div class="kicker" style="justify-content:center"><span class="num">06</span><span class="dot"></span>Vídeo de respaldo</div>
       <h1>Vídeo de respaldo</h1>
       <div class="close-rule"></div>
       <div class="video-wrap">
@@ -682,7 +777,7 @@
     brand.classList.toggle('hide', id==='cover' || id==='close');
   }
 
-  // ---- revelado paso a paso de la diapositiva 02 (flujo de funcionamiento) ----
+  // ---- revelado paso a paso de la diapositiva de flujo de funcionamiento (id="s2") ----
   var S2_INDEX = slides.findIndex(function(s){ return s.id === 's2'; });
   var s2El = S2_INDEX>=0 ? slides[S2_INDEX] : null;
   var s2Steps = 2;
