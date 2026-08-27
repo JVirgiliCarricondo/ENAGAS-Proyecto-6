@@ -234,10 +234,10 @@
   .cover-map-bg svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 
   /* ---------- cover authors ---------- */
-  .cover-foot .r.cover-authors{display:flex;flex-direction:column;align-items:flex-end;gap:.22rem;
-    color:#fff;font-size:1.08rem;font-weight:600;text-shadow:0 1px 4px rgba(10,20,50,.35);
-    padding:.6rem 1rem;border-radius:14px;
-    background:radial-gradient(ellipse at 100% 100%,rgba(8,16,38,.5) 0%,rgba(8,16,38,.28) 55%,rgba(8,16,38,0) 100%);
+  .cover-foot .r.cover-authors{display:flex;flex-direction:column;align-items:flex-end;
+    color:#fff;font-size:1.32rem;font-weight:600;text-shadow:0 1px 4px rgba(10,20,50,.35);
+    padding:.55rem 1.3rem;border-radius:999px;
+    background:radial-gradient(ellipse at 100% 100%,rgba(8,16,38,.55) 0%,rgba(8,16,38,.32) 60%,rgba(8,16,38,0) 100%);
     -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 
 
@@ -384,10 +384,20 @@
   .mchip .mt{font-family:var(--font-title);font-weight:600;font-size:1rem;display:flex;align-items:center;gap:.6rem}
   .mchip .ms{font-size:.79rem;color:var(--txt-dim);margin-top:.5rem;line-height:1.45}
 
+  /* ---------- logo de referencia (Continuum Industries) en la comparativa ---------- */
+  .ventajas-logo{position:absolute;top:4.4vh;right:5.6vw;height:30px;z-index:5}
+  .ventajas-logo img{display:block;height:100%;width:auto}
+
+  /* ---------- hoja de ruta: más aire entre título y recuadros, y entre recuadros ---------- */
+  #hoja-ruta .slide-head{margin-bottom:2.6rem}
+  #hoja-ruta .grid.g3{gap:1.8rem 2rem;max-width:1320px;margin:0 auto}
+  #hoja-ruta .demo-steps{gap:1.15rem}
+  #hoja-ruta .dstep{padding:1.05rem 1.3rem}
+
   /* ---------- comparativa vs. Optioneer: bullets flanqueando capturas centrales ---------- */
-  .compare-grid{grid-template-columns:1fr 1.1fr 1fr;align-items:center;gap:1.6rem}
-  .compare-center{display:flex;flex-direction:column;gap:.9rem}
-  .compare-shot{margin:0;border-radius:14px;overflow:hidden;border:1px solid var(--border);box-shadow:0 10px 26px rgba(16,42,87,.08);background:var(--panel-2)}
+  .compare-grid{grid-template-columns:1fr 1fr;align-items:start;gap:2.2rem}
+  .compare-col{display:flex;flex-direction:column;gap:1.3rem}
+  .compare-shot{margin:0;width:80%;align-self:center;border-radius:14px;overflow:hidden;border:1px solid var(--border);box-shadow:0 10px 26px rgba(16,42,87,.08);background:var(--panel-2)}
   .compare-shot img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;background:var(--panel-2)}
   .compare-shot figcaption{padding:.4rem .7rem;font-size:.66rem;font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--txt-faint);border-top:1px solid var(--border)}
 
@@ -526,11 +536,7 @@
     <div class="cover-foot">
       <div><b>Cátedra de Industria Inteligente</b>ETSI ICAI · Comillas</div>
       <div class="r cover-authors">
-        <span>José Guinea Sotillo</span>
         <span>José Virgili Carricondo</span>
-        <span>Mónica Olmos Nieto</span>
-        <span>Mateo Pérez Bermejo</span>
-        <span>Lorena García Pardo</span>
       </div>
     </div>
   </section>
@@ -675,48 +681,77 @@
 
   <!-- 4 · COMPARATIVA — ventajas frente a Optioneer (Continuum Industries) -->
   <section class="slide" id="ventajas">
+    <img class="ventajas-logo" src="assets/continuum-industries-logo.png" alt="Continuum Industries">
     <div class="slide-head">
       <div class="kicker"><span class="num">04</span><span class="dot"></span>Comparativa</div>
       <h2>La ventaja de construirlo <span class="grad-text">dentro de Enagás</span></h2>
       <div class="accent-rule"></div>
     </div>
     <div class="grid compare-grid">
-      <ul class="bullets">
-        <li><span class="bi"><svg><use href="#i-shield"/></svg></span><span><b>No es caja negra.</b> Factores oficiales de Enagás (A, G = E·F), no un algoritmo propietario cerrado.</span></li>
-        <li><span class="bi"><svg><use href="#i-target"/></svg></span><span><b>Especialista, no generalista.</b> Todo el diseño está pensado solo para ramales de H₂ en España.</span></li>
-        <li><span class="bi"><svg><use href="#i-anchor"/></svg></span><span><b>El dato no sale de casa.</b> Trazados de infraestructura crítica en la propia infraestructura de Enagás.</span></li>
-      </ul>
-      <div class="compare-center">
+      <div class="compare-col">
         <figure class="compare-shot">
           <img src="assets/optioneer-dashboard.jpg" alt="Interfaz de Optioneer (Continuum Industries): comparación de rutas y frente coste-penalización">
           <figcaption>Optioneer · Continuum Industries</figcaption>
         </figure>
+        <ul class="bullets">
+          <li><span class="bi"><svg><use href="#i-shield"/></svg></span><span><b>No es caja negra.</b> Factores oficiales de Enagás (A, G = E·F), no un algoritmo propietario cerrado.</span></li>
+          <li><span class="bi"><svg><use href="#i-target"/></svg></span><span><b>Especialista, no generalista.</b> Todo el diseño está pensado solo para ramales de H₂ en España.</span></li>
+          <li><span class="bi"><svg><use href="#i-anchor"/></svg></span><span><b>El dato no sale de casa.</b> Trazados de infraestructura crítica en la propia infraestructura de Enagás.</span></li>
+        </ul>
+      </div>
+      <div class="compare-col">
+        <ul class="bullets">
+          <li><span class="bi"><svg><use href="#i-check"/></svg></span><span><b>No se parte de 0.</b> Continuar un prototipo que funciona, no arrancar un contrato SaaS desde cero.</span></li>
+          <li><span class="bi"><svg><use href="#i-sliders"/></svg></span><span><b>Control total del modelo.</b> Cambiar un peso o una capa es una línea de configuración, no un ticket a un proveedor.</span></li>
+          <li><span class="bi"><svg><use href="#i-doc"/></svg></span><span><b>Encaje nativo con EV-500.</b> Pensado desde el origen para alimentar el paquete de pre-ingeniería de Enagás.</span></li>
+        </ul>
         <figure class="compare-shot">
           <img src="assets/optioneer-analysis.jpg" alt="Interfaz de Optioneer (Continuum Industries): tabla de análisis comparativo por alternativa">
           <figcaption>Optioneer · Continuum Industries</figcaption>
         </figure>
       </div>
-      <ul class="bullets">
-        <li><span class="bi"><svg><use href="#i-check"/></svg></span><span><b>Ya está pagado.</b> Continuar un prototipo que funciona, no arrancar un contrato SaaS desde cero.</span></li>
-        <li><span class="bi"><svg><use href="#i-sliders"/></svg></span><span><b>Control total del modelo.</b> Cambiar un peso o una capa es una línea de configuración, no un ticket a un proveedor.</span></li>
-        <li><span class="bi"><svg><use href="#i-doc"/></svg></span><span><b>Encaje nativo con EV-500.</b> Pensado desde el origen para alimentar el paquete de pre-ingeniería de Enagás.</span></li>
-      </ul>
     </div>
   </section>
 
-  <!-- 5 · CIERRE -->
+  <!-- 5 · HOJA DE RUTA — lo que falta para la integración completa -->
+  <section class="slide" id="hoja-ruta">
+    <div class="slide-head">
+      <div class="kicker"><span class="num">05</span><span class="dot"></span>Hoja de ruta</div>
+      <h2>Lo que queda para la <span class="grad-text">integración completa</span></h2>
+      <div class="accent-rule"></div>
+    </div>
+    <div class="grid g3">
+      <div class="demo-steps">
+        <div class="dstep"><div class="dn">1</div><div class="dt2"><b>Costes por elemento constructivo</b><span>Incorporar el coste real de cada elemento constructivo (cruces, técnicas, materiales) según el trazado, no solo el índice de terreno.</span></div></div>
+        <div class="dstep"><div class="dn">2</div><div class="dt2"><b>Más parámetros en la optimización</b><span>Estudiar nuevos condicionantes (arqueología, cultivos, corredores existentes) en el modelo multicriterio.</span></div></div>
+        <div class="dstep"><div class="dn">3</div><div class="dt2"><b>Refino del motor LCP</b><span>Ajustar el algoritmo de camino de mínimo coste para ganar precisión y rendimiento a mayor escala.</span></div></div>
+      </div>
+      <div class="demo-steps">
+        <div class="dstep"><div class="dn">4</div><div class="dt2"><b>Empaquetar</b><span>Docker con versiones fijas: fin a la doble verdad de entornos que hoy complica cada arranque.</span></div></div>
+        <div class="dstep"><div class="dn">5</div><div class="dt2"><b>Cerrar los módulos pendientes</b><span>Comparador de scoring y CLI, hoy documentados pero vacíos: sin ellos el ranking no es reutilizable.</span></div></div>
+        <div class="dstep"><div class="dn">6</div><div class="dt2"><b>Caché interna de capas</b><span>Sin salida libre a internet en un servidor corporativo, el pipeline necesita sus propias fuentes.</span></div></div>
+      </div>
+      <div class="demo-steps">
+        <div class="dstep"><div class="dn">7</div><div class="dt2"><b>Login corporativo</b><span>Integración con el directorio de Enagás (SSO): hoy la app no pide ninguna credencial.</span></div></div>
+        <div class="dstep"><div class="dn">8</div><div class="dt2"><b>Exportación a EV-500</b><span>Shapefile/GeoPackage y Excel comparativo, para que ingeniería de detalle lo use sin traducir nada.</span></div></div>
+        <div class="dstep"><div class="dn">9</div><div class="dt2"><b>Cola de trabajos compartida</b><span>Para varios analistas a la vez, sin que procesar un escenario bloquee al resto del equipo.</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · CIERRE -->
   <section class="slide" id="close">
     <div class="close-wrap">
-      <div class="kicker" style="justify-content:center"><span class="num">05</span><span class="dot"></span>Cierre</div>
+      <div class="kicker" style="justify-content:center"><span class="num">06</span><span class="dot"></span>Cierre</div>
       <h1><span class="grad-text">Gracias</span></h1>
       <div class="close-rule"></div>
     </div>
   </section>
 
-  <!-- 6 · VÍDEO DE RESPALDO -->
+  <!-- 7 · VÍDEO DE RESPALDO -->
   <section class="slide" id="video">
     <div class="close-wrap">
-      <div class="kicker" style="justify-content:center"><span class="num">06</span><span class="dot"></span>Vídeo de respaldo</div>
+      <div class="kicker" style="justify-content:center"><span class="num">07</span><span class="dot"></span>Vídeo de respaldo</div>
       <h1>Vídeo de respaldo</h1>
       <div class="close-rule"></div>
       <div class="video-wrap">
